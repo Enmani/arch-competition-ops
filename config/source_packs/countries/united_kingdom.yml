@@ -1,0 +1,22 @@
+﻿# AI maintenance note:
+# Keep all United Kingdom source definitions in this file.
+# Put long portal lists or buyer lists in config/source_lists/ and reference them by path.
+# Do not add speculative enabled sources without verifying the official entry point first.
+sources:
+  - source_id: uk_contracts_finder_tenders
+    name: UK Contracts Finder Tenders
+    kind: official_procurement
+    jurisdiction: united_kingdom
+    base_url: https://www.contractsfinder.service.gov.uk/Published/Notices/OCDS/Search
+    collector: contracts_finder_ocds
+    scan_method: api
+    extractor: generic_listing_html
+    source_tier: primary
+    priority: 0.86
+    enabled: true
+    regions:
+      - europe
+      - united_kingdom
+    languages:
+      - en
+    notes: Official UK Contracts Finder OCDS search endpoint for live tender notices. Current collector keeps only built-environment and design-relevant tenders.

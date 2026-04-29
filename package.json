@@ -1,0 +1,40 @@
+{
+  "name": "arch-competition-ops-workspace",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/web",
+    "packages/core",
+    "packages/storage"
+  ],
+  "scripts": {
+    "dev:web": "npm --workspace apps/web run dev",
+    "dev:web:up": "powershell -ExecutionPolicy Bypass -File .\\dev-port.ps1 up",
+    "dev:web:restart": "powershell -ExecutionPolicy Bypass -File .\\dev-port.ps1 restart",
+    "dev:web:stop": "powershell -ExecutionPolicy Bypass -File .\\dev-port.ps1 stop",
+    "dev:web:status": "powershell -ExecutionPolicy Bypass -File .\\dev-port.ps1 status",
+    "build:web": "npm --workspace apps/web run build",
+    "start:web": "npm --workspace apps/web run start",
+    "lint:web": "npm --workspace apps/web run lint",
+    "test:storage": "tsx --test packages/storage/src/**/*.test.ts",
+    "test:dev-port": "node --test tests/dev-port.test.mjs",
+    "ops:auto-fetch:day": "powershell -ExecutionPolicy Bypass -File .\\scripts\\run-ingest-batch.ps1 -BatchId official_daytime",
+    "ops:auto-fetch:night": "powershell -ExecutionPolicy Bypass -File .\\scripts\\run-ingest-batch.ps1 -BatchId secondary_nightly",
+    "ops:auto-fetch:install": "powershell -ExecutionPolicy Bypass -File .\\scripts\\register-auto-ingest-tasks.ps1 -Action Install",
+    "ops:auto-fetch:remove": "powershell -ExecutionPolicy Bypass -File .\\scripts\\register-auto-ingest-tasks.ps1 -Action Remove",
+    "ops:auto-fetch:status": "powershell -ExecutionPolicy Bypass -File .\\scripts\\register-auto-ingest-tasks.ps1 -Action Show",
+    "check:doc-governance": "node scripts/doc-governance.mjs scan",
+    "check:doc-governance:file": "node scripts/doc-governance.mjs scan",
+    "check:encoding:all": "node scripts/doc-governance.mjs check-encoding",
+    "doc:normalize": "node scripts/doc-governance.mjs normalize",
+    "doc:set-status": "node scripts/doc-governance.mjs set-status",
+    "doc:write": "node scripts/doc-governance.mjs write"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.0"
+  }
+}

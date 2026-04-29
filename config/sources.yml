@@ -1,0 +1,4 @@
+include_paths:
+  - config/source_packs/core.yml
+include_globs:
+  - config/source_packs/countries/*.yml

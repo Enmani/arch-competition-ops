@@ -1,0 +1,23 @@
+# Curated Italy focus list for the official SCP open-data feed.
+# Match against normalized buyer names to keep the source catalog compact while
+# biasing toward major municipal authorities with real built-work pipelines.
+comune di milano
+comune di torino
+comune di bologna
+comune di firenze
+roma capitale
+comune di napoli
+comune di genova
+comune di venezia
+comune di bari
+comune di palermo
+comune di parma
+comune di ravenna
+comune di catania
+comune di verona
+comune di padova
+comune di trieste
+comune di modena
+comune di reggio emilia
+comune di cagliari
+comune di perugia

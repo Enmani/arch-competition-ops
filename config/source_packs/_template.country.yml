@@ -1,0 +1,19 @@
+sources:
+  - source_id: example_country_source
+    name: Example Country Source
+    kind: official_procurement
+    jurisdiction: example_country
+    base_url: https://example.gov/
+    scan_method: html
+    extractor: generic_listing_html
+    source_tier: primary
+    priority: 0.8
+    enabled: false
+    regions:
+      - europe
+      - example_country
+    languages:
+      - en
+    notes: >
+      Keep country-specific sources here. Move long URL sets or authority
+      allowlists into config/source_lists/ and reference them by path.

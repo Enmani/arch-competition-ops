@@ -1,0 +1,36 @@
+﻿sources:
+  - source_id: anac_bdncp_contracts
+    name: ANAC BDNCP
+    kind: official_procurement
+    jurisdiction: italy
+    base_url: https://www.anticorruzione.it/-/banca-dati-nazionale-dei-contratti-pubblici
+    scan_method: html
+    extractor: bdncp_notice_parser
+    source_tier: primary
+    priority: 0.95
+    enabled: true
+    regions:
+      - europe
+      - italy
+    languages:
+      - it
+    notes: Italian national contract database and procurement transparency entry point.
+
+  - source_id: serviziocontrattipubblici_hub
+    name: Servizio Contratti Pubblici
+    kind: official_procurement
+    jurisdiction: italy
+    base_url: https://www.serviziocontrattipubblici.it/
+    buyer_allowlist_path: config/source_lists/italy_city_authorities.txt
+    scan_method: html
+    extractor: procurement_hub_parser
+    source_tier: primary
+    priority: 0.9
+    enabled: true
+    regions:
+      - europe
+      - italy
+    languages:
+      - it
+      - en
+    notes: Italian public contracts service hub and gateway into platform workflows, curated with an external city-authority focus list to keep the source catalog compact.

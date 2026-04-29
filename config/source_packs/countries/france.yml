@@ -1,0 +1,17 @@
+﻿sources:
+  - source_id: boamp_design_notices
+    name: BOAMP Design and Public Procurement Notices
+    kind: official_procurement
+    jurisdiction: france
+    base_url: https://www.boamp.fr/
+    scan_method: api
+    extractor: boamp_notice_parser
+    source_tier: primary
+    priority: 0.96
+    enabled: true
+    regions:
+      - europe
+      - france
+    languages:
+      - fr
+    notes: Official French public procurement bulletin. Use the official BOAMP API or licensed open-data endpoints rather than HTML scraping.

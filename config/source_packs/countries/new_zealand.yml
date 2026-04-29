@@ -1,0 +1,21 @@
+# AI maintenance note:
+# GETS offers an official current-tenders RSS feed.
+# Keep the source compact here and improve the shared RSS collector if another country can reuse the same feed pattern.
+sources:
+  - source_id: gets_open_tenders
+    name: GETS Open Tenders
+    kind: official_procurement
+    jurisdiction: new_zealand
+    base_url: https://www.gets.govt.nz/ExternalRSSFeed.htm
+    collector: generic_rss_feed
+    scan_method: rss
+    extractor: generic_listing_html
+    source_tier: primary
+    priority: 0.88
+    enabled: true
+    regions:
+      - oceania
+      - new_zealand
+    languages:
+      - en
+    notes: Official New Zealand Government Electronic Tenders Service RSS feed for current open tenders. Collector retains built-environment and design-relevant opportunities only.

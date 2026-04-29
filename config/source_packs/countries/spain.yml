@@ -1,0 +1,25 @@
+﻿# AI maintenance note:
+# Keep all Spain source definitions in this file.
+# Put long portal lists or buyer lists in config/source_lists/ and reference them by path.
+# Do not add speculative enabled sources without verifying the official entry point first.
+sources:
+  - source_id: pcsp_syndicated_notices
+    name: PCSP Syndicated Notices
+    kind: official_procurement
+    jurisdiction: spain
+    base_url: https://contrataciondelsectorpublico.gob.es/sindicacion/sindicacion_643/licitacionesPerfilesContratanteCompleto3.atom
+    collector: pcsp_atom_feed
+    scan_method: atom
+    extractor: generic_listing_html
+    source_tier: primary
+    priority: 0.78
+    enabled: true
+    regions:
+      - europe
+      - spain
+    languages:
+      - es
+      - ca
+      - gl
+      - eu
+    notes: Official Plataforma de Contratacion del Sector Publico syndication Atom feed. Enabled through a bounded Atom-plus-detail collector that filters for architecture-relevant procurement and preserves the public detail URL as the official trace.

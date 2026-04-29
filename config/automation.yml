@@ -1,0 +1,15 @@
+batches:
+  - batch_id: official_daytime
+    description: Higher-frequency official procurement sources.
+    include_kinds:
+      - official_procurement
+    limit_per_source: 20
+    publication_window_days: 7
+
+  - batch_id: secondary_nightly
+    description: Slower authority and aggregator sources.
+    include_kinds:
+      - authority_portal
+      - aggregator
+    limit_per_source: 20
+    publication_window_days: 30

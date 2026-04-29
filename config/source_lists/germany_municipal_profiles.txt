@@ -1,0 +1,9 @@
+# Official German municipal procurement publishing surfaces compatible with the
+# current municipal buyer-profile collector.
+https://www.berlin.de/vergabeplattform/veroeffentlichungen/bekanntmachungen/feed.rss
+https://www.vergabe.stadt-frankfurt.de/NetServer/PublicationSearchControllerServlet?function=SearchPublications&Gesetzesgrundlage=All&Category=InvitationToTender&thContext=publications
+https://lhs-vpbw.vmstart.de/NetServer/PublicationSearchControllerServlet?function=SearchPublications
+https://www.hamburg.de/politik-und-verwaltung/ausschreibungen/lieferungen-und-leistungen-vgv-uvgo-
+https://vergabe.muenchen.de/NetServer/PublicationSearchControllerServlet?function=SearchPublications&Gesetzesgrundlage=VOF&Category=InvitationToTender&thContext=publications
+https://vergabeplattform.stadt-koeln.de/NetServer/PublicationSearchControllerServlet?Category=InvitationToTender&Gesetzesgrundlage=All&function=SearchPublications&thContext=publications
+https://vergabe.duesseldorf.de/NetServer/PublicationSearchControllerServlet?Category=InvitationToTender&Gesetzesgrundlage=All&function=SearchPublications&thContext=publications

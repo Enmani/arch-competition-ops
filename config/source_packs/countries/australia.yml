@@ -1,0 +1,21 @@
+# AI maintenance note:
+# AusTender exposes an official approaches-to-market RSS feed, but direct worker fetches currently hit a CloudFront 403 from this environment.
+# Keep this source disabled until an allowed transport path is implemented and verified; do not replace it with unofficial mirrors.
+sources:
+  - source_id: austender_atm_feed
+    name: AusTender Approaches to Market
+    kind: official_procurement
+    jurisdiction: australia
+    base_url: https://www.tenders.gov.au/public_data/rss/rss.xml
+    collector: generic_rss_feed
+    scan_method: rss
+    extractor: generic_listing_html
+    source_tier: primary
+    priority: 0.82
+    enabled: false
+    regions:
+      - oceania
+      - australia
+    languages:
+      - en
+    notes: Official AusTender RSS feed documented via data.gov.au resource metadata. Disabled until the worker can fetch the feed without the current 403 block from tenders.gov.au.

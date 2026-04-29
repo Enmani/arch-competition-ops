@@ -1,0 +1,16 @@
+{
+  "name": "@arch-competition/storage",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@arch-competition/core": "0.1.0",
+    "better-sqlite3": "^12.9.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13"
+  }
+}

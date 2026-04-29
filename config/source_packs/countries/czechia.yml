@@ -1,0 +1,5 @@
+﻿# AI maintenance note:
+# Keep all Czechia source definitions in this file.
+# Put long portal lists or buyer lists in config/source_lists/ and reference them by path.
+# Do not add speculative enabled sources without verifying the official entry point first.
+sources: []

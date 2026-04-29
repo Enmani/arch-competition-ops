@@ -1,0 +1,22 @@
+﻿# AI maintenance note:
+# Keep all Portugal source definitions in this file.
+# Put long portal lists or buyer lists in config/source_lists/ and reference them by path.
+# Do not add speculative enabled sources without verifying the official entry point first.
+sources:
+  - source_id: portugal_base_portal
+    name: Portal BASE Public Contracts
+    kind: official_procurement
+    jurisdiction: portugal
+    base_url: https://www.base.gov.pt/Base4/pt/
+    collector: disabled_scaffold
+    scan_method: html
+    extractor: generic_listing_html
+    source_tier: primary
+    priority: 0.72
+    enabled: false
+    regions:
+      - europe
+      - portugal
+    languages:
+      - pt
+    notes: Official Portal BASE entry point. Kept disabled until a stable public machine-readable notice endpoint is verified from this environment.

@@ -1,0 +1,20 @@
+﻿sources:
+  - source_id: simap_public_design_notices
+    name: simap Swiss Public Procurement
+    kind: official_procurement
+    jurisdiction: switzerland
+    base_url: https://www.simap.ch/
+    scan_method: api
+    extractor: simap_notice_parser
+    verifier: simap_official_enricher
+    source_tier: primary
+    priority: 0.94
+    enabled: true
+    regions:
+      - europe
+      - switzerland
+    languages:
+      - de
+      - fr
+      - it
+    notes: Official Swiss procurement platform. Prefer the official API flow with an approved API client instead of ad hoc HTML scraping.

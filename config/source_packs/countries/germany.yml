@@ -1,0 +1,19 @@
+﻿sources:
+  - source_id: municipal_buyer_profiles
+    name: Municipal Buyer Profiles
+    kind: authority_portal
+    jurisdiction: germany
+    base_url: https://www.berlin.de/vergabeplattform/veroeffentlichungen/bekanntmachungen/feed.rss
+    url_list_path: config/source_lists/germany_municipal_profiles.txt
+    scan_method: rss
+    extractor: buyer_profile_parser
+    source_tier: primary
+    priority: 0.88
+    enabled: true
+    regions:
+      - europe
+      - germany
+    languages:
+      - de
+      - en
+    notes: Germany seed for official municipal procurement pages, currently sourced from Berlin, Frankfurt, Stuttgart, Hamburg, Munich, Cologne, and Dusseldorf municipal publishing surfaces.

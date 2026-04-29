@@ -1,0 +1,67 @@
+targeting:
+  regions:
+    - europe
+    - germany
+    - italy
+    - france
+    - switzerland
+  languages:
+    - en
+    - it
+    - fr
+    - de
+  audience:
+    - professionals
+    - multidisciplinary
+  competition_types:
+    - architecture
+    - public_building
+    - urban_design
+    - healthcare
+    - education
+    - masterplan
+    - adaptive_reuse
+  opportunity_types:
+    - public_design_contest
+    - public_design_services_procurement
+    - framework_design_services
+  procedure_types:
+    - design_contest
+    - negotiated_procedure_after_contest
+    - public_design_services_tender
+    - maitrise_d_oeuvre_procurement
+    - planning_competition
+  evidence_levels:
+    - official_notice
+    - official_listing
+  max_registration_fee_eur: 50
+  max_submission_fee_eur: 80
+  min_estimated_contract_value_eur: 250000
+  deadline_window_days: 120
+  prioritize_official_sources: true
+  require_brief_or_program: true
+  require_implementation_path: true
+  require_licensed_architect_signal: true
+  include_student_only: false
+  include_built_projects: true
+  include_unpaid_calls: false
+  positive_keywords:
+    - design contest
+    - concorso di progettazione
+    - concours
+    - maitrise d'oeuvre
+    - realization
+    - framework agreement
+    - hospital
+    - school
+    - municipal
+    - civic
+    - housing
+  negative_keywords:
+    - ideas competition
+    - student only
+    - open to everyone without qualification
+    - rendering challenge
+    - logo
+    - furniture only
+    - speculative only

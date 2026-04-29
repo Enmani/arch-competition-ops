@@ -1,0 +1,41 @@
+[build-system]
+requires = ["hatchling>=1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "arch-competition-ops"
+version = "0.1.0"
+description = "Local-first architecture competition discovery and verification workspace"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "pydantic>=2.11.0,<3",
+  "pydantic-settings>=2.6.0,<3",
+  "PyYAML>=6.0.2,<7",
+  "requests>=2.32.0,<3",
+]
+
+[project.optional-dependencies]
+browser = [
+  "crawlee[playwright]>=1.6.0,<2",
+  "playwright>=1.52.0,<2",
+]
+
+[project.scripts]
+arch-competition-ops = "arch_competition_ops.cli:main"
+
+[tool.uv]
+dev-dependencies = [
+  "pytest>=8.3.0,<9",
+  "ruff>=0.11.0,<0.12",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["apps/worker/src/arch_competition_ops"]
+
+[tool.pytest.ini_options]
+pythonpath = ["apps/worker/src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"

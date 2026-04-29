@@ -1,0 +1,53 @@
+sources:
+  - source_id: ted_design_notices
+    name: TED Design and Procurement Notices
+    kind: official_procurement
+    jurisdiction: eu
+    base_url: https://ted.europa.eu/
+    scan_method: api
+    extractor: ted_notice_parser
+    source_tier: primary
+    priority: 1.0
+    enabled: true
+    regions:
+      - europe
+    languages:
+      - en
+      - fr
+      - de
+      - it
+      - es
+    notes: Primary source for EU-level design contests and design service procurement notices.
+
+  - source_id: competitions_archi
+    name: Competitions.archi
+    kind: aggregator
+    jurisdiction: global
+    base_url: https://competitions.archi/
+    scan_method: html
+    extractor: generic_listing_html
+    source_tier: secondary
+    priority: 0.62
+    enabled: true
+    regions:
+      - global
+    languages:
+      - en
+    notes: Secondary discovery only. Must not override official procurement facts.
+
+  - source_id: bustler_competitions
+    name: Bustler Competitions
+    kind: media
+    jurisdiction: global
+    base_url: https://bustler.net/competitions
+    collector: disabled_scaffold
+    scan_method: html
+    extractor: generic_listing_html
+    source_tier: tertiary
+    priority: 0.45
+    enabled: false
+    regions:
+      - global
+    languages:
+      - en
+    notes: Low-trust media discovery surface. Useful for backfill only.

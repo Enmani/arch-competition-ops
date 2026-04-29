@@ -1,0 +1,136 @@
+regions:
+  - global
+  - europe
+  - north_america
+  - oceania
+  - australia
+  - canada
+  - italy
+  - france
+  - germany
+  - new_zealand
+  - netherlands
+  - norway
+  - portugal
+  - belgium
+  - spain
+  - switzerland
+  - united_kingdom
+  - austria
+  - iberia
+  - nordics
+
+languages:
+  - en
+  - it
+  - es
+  - fr
+  - de
+  - nl
+  - "no"
+  - pt
+  - ca
+  - gl
+  - eu
+  - zh
+
+source_kinds:
+  - official_procurement
+  - authority_portal
+  - official
+  - organizer
+  - association
+  - media
+  - aggregator
+  - school
+
+source_tiers:
+  - primary
+  - secondary
+  - tertiary
+
+scan_methods:
+  - html
+  - rss
+  - atom
+  - sitemap
+  - playwright
+  - api
+  - csv
+
+competition_statuses:
+  - discovered
+  - shortlisted
+  - verified
+  - discarded
+  - archived
+
+competition_types:
+  - architecture
+  - urban_design
+  - landscape
+  - interior
+  - adaptive_reuse
+  - built_work
+  - housing
+  - pavilion
+  - masterplan
+  - public_building
+  - healthcare
+  - education
+  - infrastructure
+
+opportunity_types:
+  - public_design_contest
+  - public_design_services_procurement
+  - framework_design_services
+  - negotiated_follow_on_services
+
+project_types:
+  - urban_regeneration
+  - environment_design
+  - urban_planning
+  - building_project
+
+building_categories:
+  - healthcare
+  - education
+  - housing
+  - civic_public
+  - sport_leisure
+  - culture_heritage
+  - transport_infrastructure
+
+procedure_types:
+  - design_contest
+  - negotiated_procedure_after_contest
+  - public_design_services_tender
+  - maitrise_d_oeuvre_procurement
+  - planning_competition
+  - selective
+  - framework_agreement
+  - negotiated_procedure
+  - adapted_procedure
+  - open
+  - neg-w-call
+  - neg-wo-call
+
+implementation_paths:
+  - winner_or_winners_progress_to_negotiated_service_award
+  - service_contract_award_after_competitive_selection
+  - framework_selection_for_repeated_design_commissions
+  - unknown
+
+evidence_levels:
+  - official_notice
+  - official_listing
+  - authority_page
+  - secondary
+  - tertiary
+
+audience:
+  - students
+  - young_architects
+  - professionals
+  - open
+  - multidisciplinary

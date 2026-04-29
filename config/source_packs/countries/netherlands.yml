@@ -1,0 +1,23 @@
+﻿# AI maintenance note:
+# Keep all Netherlands source definitions in this file.
+# Put long portal lists or buyer lists in config/source_lists/ and reference them by path.
+# Do not add speculative enabled sources without verifying the official entry point first.
+sources:
+  - source_id: tenderned_contract_notices
+    name: TenderNed Contract Notices
+    kind: official_procurement
+    jurisdiction: netherlands
+    base_url: https://www.tenderned.nl/papi/tenderned-rs-tns/v2/publicaties
+    collector: tenderned_publications_api
+    scan_method: api
+    extractor: generic_listing_html
+    source_tier: primary
+    priority: 0.84
+    enabled: true
+    regions:
+      - europe
+      - netherlands
+    languages:
+      - nl
+      - en
+    notes: Official TenderNed public publications API. Collector keeps live service notices with architecture, landscape, or planning signals instead of generic Dutch service procurements.

@@ -1,0 +1,40 @@
+{
+  "aliasGroups": {
+    "design_contest": ["design_contest", "project_competition"],
+    "planning_competition": ["planning_competition"],
+    "selective": ["selective"],
+    "maitrise_d_oeuvre_procurement": [
+      "maitrise_d_oeuvre_procurement",
+      "maitrise_doeuvre_procurement"
+    ],
+    "public_design_services_tender": [
+      "public_design_services_tender",
+      "ANNOUNCEMENT_OF_COMPETITION",
+      "request_for_proposals",
+      "request_for_tender",
+      "request_for_quotes",
+      "official_procurement_notice",
+      "authority_profile_notice",
+      "anac_public_notice",
+      "Avviso",
+      "P1"
+    ],
+    "framework_agreement": ["framework_agreement", "framework"],
+    "open": [
+      "open",
+      "open_procedure",
+      "Offenes Verfahren",
+      "Procédure Ouverte",
+      "Competitive - Open bidding",
+      "Open procedure (above threshold)",
+      "Open procedure (below threshold)",
+      "Abierto",
+      "UVgO/VgV, Offenes Verfahren"
+    ],
+    "negotiated_procedure": ["negotiated_procedure", "Procédure Négociée"],
+    "adapted_procedure": ["adapted_procedure", "Procédure Adaptée"],
+    "neg-w-call": ["neg-w-call", "Verhandlungsverfahren mit Teilnahmewettbewerb"],
+    "neg-wo-call": ["neg-wo-call", "Single tender action (below threshold)"]
+  },
+  "suppressedAliases": ["secondary_discovery_listing", "AD3", "Altri avvisi"]
+}

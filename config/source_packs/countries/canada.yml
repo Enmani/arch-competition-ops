@@ -1,0 +1,22 @@
+# AI maintenance note:
+# CanadaBuys publishes open tender notice data as an official CSV.
+# Prefer extending collector logic over duplicating the source into multiple near-identical packs.
+sources:
+  - source_id: canadabuys_tender_notices
+    name: CanadaBuys Tender Notices
+    kind: official_procurement
+    jurisdiction: canada
+    base_url: https://canadabuys.canada.ca/opendata/pub/openTenderNotice-ouvertAvisAppelOffres.csv
+    collector: canadabuys_csv
+    scan_method: csv
+    extractor: generic_listing_html
+    source_tier: primary
+    priority: 0.9
+    enabled: true
+    regions:
+      - north_america
+      - canada
+    languages:
+      - en
+      - fr
+    notes: Official CanadaBuys open tender notice dataset. Current filter keeps built-environment and design-delivery opportunities instead of generic consulting or IT notices.

@@ -1,0 +1,23 @@
+﻿# AI maintenance note:
+# Keep all Norway source definitions in this file.
+# Put long portal lists or buyer lists in config/source_lists/ and reference them by path.
+# Do not add speculative enabled sources without verifying the official entry point first.
+sources:
+  - source_id: doffin_notices
+    name: Doffin Notices
+    kind: official_procurement
+    jurisdiction: norway
+    base_url: https://api.doffin.no/webclient/api/v2/search-api/search
+    collector: doffin_search_api
+    scan_method: api
+    extractor: generic_listing_html
+    source_tier: primary
+    priority: 0.87
+    enabled: true
+    regions:
+      - europe
+      - norway
+    languages:
+      - "no"
+      - en
+    notes: Official Doffin public search and detail APIs. Collector requests active service competitions in architecture, planning, and landscape CPV families only.
