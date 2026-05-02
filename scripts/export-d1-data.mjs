@@ -53,7 +53,6 @@ try {
     "-- Apply apps/web/migrations before importing this file.",
     "-- Auth users/sessions are intentionally not exported; D1 uses Workers-compatible password hashes.",
     "PRAGMA defer_foreign_keys = TRUE;",
-    "BEGIN TRANSACTION;",
   ];
 
   for (const table of deleteOrder) {
@@ -85,7 +84,6 @@ try {
     }
   }
 
-  lines.push("COMMIT;");
   lines.push("PRAGMA defer_foreign_keys = FALSE;");
   mkdirSync(path.dirname(outputPath), { recursive: true });
   writeFileSync(outputPath, `${lines.join("\n")}\n`, "utf8");

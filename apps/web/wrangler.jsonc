@@ -2,6 +2,7 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "main": ".open-next/worker.js",
   "name": "arch-competition-ops",
+  "account_id": "9b32ab0cdd1d91002ccfc9b45882b4db",
   "compatibility_date": "2026-04-29",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "assets": {
@@ -18,7 +19,7 @@
     {
       "binding": "DB",
       "database_name": "arch-competition-ops",
-      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "database_id": "b06edcbb-e1bd-44e5-9d9d-edd8a9350d68",
       "migrations_dir": "migrations"
     }
   ]
