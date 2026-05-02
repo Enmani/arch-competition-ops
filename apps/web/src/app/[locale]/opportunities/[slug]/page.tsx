@@ -1,12 +1,11 @@
 import { notFound } from "next/navigation";
 
-import {
-  getStoredOpportunityFeedItemBySlug,
-  isStoredOpportunityWatched,
-} from "@arch-competition/storage";
-
 import { OpportunityDetailSurface } from "@/components/opportunity-detail-surface";
 import { getDictionary, resolveLocaleOrNotFound } from "@/i18n/server";
+import {
+  getWebOpportunityFeedItemBySlug,
+  isWebOpportunityWatched,
+} from "@/lib/server-storage";
 import { isWorkspaceWritesEnabled, resolveWorkspaceKey } from "@/lib/workspace";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +20,7 @@ const LocalizedOpportunityDetailPage = async ({
   const { locale: rawLocale, slug } = await params;
   const locale = resolveLocaleOrNotFound(rawLocale);
   const dictionary = getDictionary(locale);
-  const opportunity = getStoredOpportunityFeedItemBySlug(slug);
+  const opportunity = await getWebOpportunityFeedItemBySlug(slug);
   const workspaceKey = resolveWorkspaceKey();
   const workspaceWritesEnabled = isWorkspaceWritesEnabled();
 
@@ -32,7 +31,7 @@ const LocalizedOpportunityDetailPage = async ({
   return (
     <OpportunityDetailSurface
       dictionary={dictionary}
-      isWatched={isStoredOpportunityWatched({
+      isWatched={await isWebOpportunityWatched({
         opportunityId: opportunity.id,
         workspaceKey,
       })}

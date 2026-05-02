@@ -3,21 +3,20 @@ import { NextResponse } from "next/server";
 import {
   STORED_OPS_REVIEW_REASON_CODES,
   STORED_OPS_REVIEW_STATUSES,
-  getStoredOpsReviewSummary,
-  queryStoredOpsReviewQueue,
   type StoredOpsReviewDecisionStatus,
   type StoredOpsReviewReasonCode,
-} from "@arch-competition/storage";
+  getWebOpsReviewSummary,
+  queryWebOpsReviewQueue,
+} from "@/lib/server-storage";
 
 import { isOpsReviewEnabled } from "@/lib/ops-review-access";
 
-export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const statusOptions = new Set<string>(["all", ...STORED_OPS_REVIEW_STATUSES]);
 const reasonOptions = new Set<string>(["all", ...STORED_OPS_REVIEW_REASON_CODES]);
 
-export const GET = (request: Request) => {
+export const GET = async (request: Request) => {
   const url = new URL(request.url);
   const rawStatus = url.searchParams.get("status") ?? "pending";
   const rawReasonCode = url.searchParams.get("reasonCode") ?? "all";
@@ -42,7 +41,7 @@ export const GET = (request: Request) => {
 
   return NextResponse.json({
     activeOnly,
-    items: queryStoredOpsReviewQueue({
+    items: await queryWebOpsReviewQueue({
       activeOnly,
       limit,
       reasonCode,
@@ -52,6 +51,6 @@ export const GET = (request: Request) => {
     reasonCode,
     reviewEnabled: isOpsReviewEnabled(),
     status,
-    summary: getStoredOpsReviewSummary(),
+    summary: await getWebOpsReviewSummary(),
   });
 };

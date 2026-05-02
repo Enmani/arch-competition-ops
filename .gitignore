@@ -10,6 +10,8 @@ __pycache__/
 node_modules/
 apps/web/.next/
 apps/web/.next-dev/
+apps/web/.open-next/
+apps/web/.wrangler/
 apps/web/out/
 *.tsbuildinfo
 data/competitions.sqlite

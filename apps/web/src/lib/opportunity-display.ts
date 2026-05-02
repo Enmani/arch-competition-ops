@@ -1,4 +1,4 @@
-import type { StoredOpportunityFeedItem } from "@arch-competition/storage";
+import type { StoredOpportunityFeedItem } from "@arch-competition/storage/cloudflare";
 
 import type { AppLocale } from "@/i18n/config";
 import type { AppDictionary } from "@/i18n/dictionaries";

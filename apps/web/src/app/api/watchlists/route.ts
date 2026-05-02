@@ -1,18 +1,13 @@
 import { NextResponse } from "next/server";
 
 import {
-  createStoredWatchlistEntry,
-  deleteStoredWatchlistEntry,
-  listStoredWatchedOpportunityIds,
-  queryStoredWatchlistEntries,
-} from "@arch-competition/storage";
+  createWebWatchlistEntry,
+  deleteWebWatchlistEntry,
+  listWebWatchedOpportunityIds,
+  queryWebWatchlistEntries,
+} from "@/lib/server-storage";
+import { isWorkspaceWritesEnabled, resolveWorkspaceKey } from "@/lib/workspace";
 
-import {
-  isWorkspaceWritesEnabled,
-  resolveWorkspaceKey,
-} from "@/lib/workspace";
-
-export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const parseLimit = (rawValue: string | null) => {
@@ -33,14 +28,14 @@ const readOpportunityId = (payload: unknown) => {
   return typeof body["opportunityId"] === "string" ? body["opportunityId"].trim() : "";
 };
 
-export const GET = (request: Request) => {
+export const GET = async (request: Request) => {
   const url = new URL(request.url);
   const workspaceKey = resolveWorkspaceKey();
   const limit = parseLimit(url.searchParams.get("limit"));
 
   return NextResponse.json({
-    items: queryStoredWatchlistEntries({ limit, workspaceKey }),
-    watchedOpportunityIds: listStoredWatchedOpportunityIds(workspaceKey),
+    items: await queryWebWatchlistEntries({ limit, workspaceKey }),
+    watchedOpportunityIds: await listWebWatchedOpportunityIds(workspaceKey),
     workspaceKey,
     writesEnabled: isWorkspaceWritesEnabled(),
   });
@@ -64,7 +59,7 @@ export const POST = async (request: Request) => {
   }
 
   try {
-    const item = createStoredWatchlistEntry({
+    const item = await createWebWatchlistEntry({
       opportunityId,
       workspaceKey: resolveWorkspaceKey(),
     });
@@ -95,7 +90,7 @@ export const DELETE = async (request: Request) => {
   }
 
   try {
-    const deleted = deleteStoredWatchlistEntry({
+    const deleted = await deleteWebWatchlistEntry({
       opportunityId,
       workspaceKey: resolveWorkspaceKey(),
     });

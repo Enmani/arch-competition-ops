@@ -1,10 +1,5 @@
 import Link from "next/link";
 
-import {
-  getStoredDiscoverSurfaceData,
-  listStoredWatchedOpportunityIds,
-} from "@arch-competition/storage";
-
 import { buildLocalePath, type AppLocale } from "@/i18n/config";
 import type { AppDictionary } from "@/i18n/dictionaries";
 import {
@@ -14,6 +9,10 @@ import {
   type DiscoverSearchParams,
   readDiscoverFilters,
 } from "@/lib/discover";
+import {
+  getWebDiscoverSurfaceData,
+  listWebWatchedOpportunityIds,
+} from "@/lib/server-storage";
 import { isWorkspaceWritesEnabled, resolveWorkspaceKey } from "@/lib/workspace";
 import { DiscoverDock } from "@/components/discover-dock";
 import { OpportunityStreamItem } from "@/components/opportunity-stream-item";
@@ -24,18 +23,18 @@ type DiscoverSurfaceProps = {
   searchParams: DiscoverSearchParams;
 };
 
-export const DiscoverSurface = ({
+export const DiscoverSurface = async ({
   dictionary,
   locale,
   searchParams,
 }: DiscoverSurfaceProps) => {
   const filters = readDiscoverFilters(searchParams);
-  const { opportunities, filterOptions } = getStoredDiscoverSurfaceData(filters);
+  const { opportunities, filterOptions } = await getWebDiscoverSurfaceData(filters);
   const activeFilterCount = countActiveDiscoverFilters(filters);
   const routeBase = buildLocalePath(locale, "/discover");
   const workspaceKey = resolveWorkspaceKey();
   const workspaceWritesEnabled = isWorkspaceWritesEnabled();
-  const watchedOpportunityIds = new Set(listStoredWatchedOpportunityIds(workspaceKey));
+  const watchedOpportunityIds = new Set(await listWebWatchedOpportunityIds(workspaceKey));
   const sortOptions = [
     { label: dictionary.discover.filterOptions.sortByDeadline, value: "deadline" },
     { label: dictionary.discover.filterOptions.sortByLatest, value: "latest" },

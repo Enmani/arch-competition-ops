@@ -1,12 +1,11 @@
-import {
-  getStoredOpportunityFeedItemBySlug,
-  queryStoredWatchlistEntries,
-} from "@arch-competition/storage";
-
 import WatchlistDashboardTable, {
   type WatchlistDashboardRow,
 } from "@/components/watchlist-dashboard-table";
 import { getDictionary, resolveLocaleOrNotFound } from "@/i18n/server";
+import {
+  getWebOpportunityFeedItemBySlug,
+  queryWebWatchlistEntries,
+} from "@/lib/server-storage";
 import { isWorkspaceWritesEnabled, resolveWorkspaceKey } from "@/lib/workspace";
 
 export const dynamic = "force-dynamic";
@@ -21,19 +20,22 @@ const LocalizedDashboardPage = async ({ params }: LocalizedDashboardPageProps) =
   const dictionary = getDictionary(locale);
   const workspaceKey = resolveWorkspaceKey();
   const workspaceWritesEnabled = isWorkspaceWritesEnabled();
-  const opportunities = queryStoredWatchlistEntries({ limit: 24, workspaceKey })
-    .map((entry) => {
-      const opportunity = getStoredOpportunityFeedItemBySlug(entry.opportunityId);
-      if (!opportunity) {
-        return null;
-      }
+  const watchlistEntries = await queryWebWatchlistEntries({ limit: 24, workspaceKey });
+  const opportunities = (
+    await Promise.all(
+      watchlistEntries.map(async (entry) => {
+        const opportunity = await getWebOpportunityFeedItemBySlug(entry.opportunityId);
+        if (!opportunity) {
+          return null;
+        }
 
-      return {
-        opportunity,
-        watchedAt: entry.updatedAt,
-      } satisfies WatchlistDashboardRow;
-    })
-    .filter((item): item is WatchlistDashboardRow => item !== null);
+        return {
+          opportunity,
+          watchedAt: entry.updatedAt,
+        } satisfies WatchlistDashboardRow;
+      }),
+    )
+  ).filter((item): item is WatchlistDashboardRow => item !== null);
 
   return (
     <main className="content-grid" style={{ paddingTop: 28 }}>

@@ -1,12 +1,13 @@
-import { getStoredOpportunityFeedItemBySlug } from "@arch-competition/storage";
-
 import { resolveOpportunityCardImageUrl } from "@/lib/opportunity-card-image";
 import { buildOpportunityLocatorPlaceholderSvg } from "@/lib/opportunity-card-placeholder";
+import {
+  getWebOpportunityFeedItemBySlug,
+  type StoredOpportunityFeedItem,
+} from "@/lib/server-storage";
 
-export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const buildPlaceholderResponse = (opportunity?: ReturnType<typeof getStoredOpportunityFeedItemBySlug>, status = 200) =>
+const buildPlaceholderResponse = (opportunity?: StoredOpportunityFeedItem, status = 200) =>
   new Response(buildOpportunityLocatorPlaceholderSvg(opportunity), {
     status,
     headers: {
@@ -53,7 +54,7 @@ export const GET = async (
   { params }: OpportunityImageRouteContext,
 ) => {
   const { slug } = await params;
-  const opportunity = getStoredOpportunityFeedItemBySlug(slug);
+  const opportunity = await getWebOpportunityFeedItemBySlug(slug);
 
   if (!opportunity) {
     return buildPlaceholderResponse(undefined, 404);

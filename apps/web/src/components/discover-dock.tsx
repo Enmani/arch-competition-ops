@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import type { StoredFilterOptions, StoredOpportunityQuery } from "@arch-competition/storage";
+import type { StoredFilterOptions, StoredOpportunityQuery } from "@arch-competition/storage/cloudflare";
 
 import { serializeSearchParams } from "@/i18n/config";
 import type { AppDictionary } from "@/i18n/dictionaries";

@@ -2,14 +2,14 @@
 
 import { redirect } from "next/navigation";
 
-import {
-  StoredAuthError,
-  createStoredAuthSession,
-  createStoredAuthUser,
-} from "@arch-competition/storage";
-
 import { buildLocalePath, defaultLocale, isLocale, type AppLocale } from "@/i18n/config";
 import { setAuthSessionCookie } from "@/lib/auth";
+import {
+  createWebAuthSession,
+  createWebAuthUser,
+  isAuthStorageError,
+  type StoredAuthUser,
+} from "@/lib/server-storage";
 
 const readFormValue = (formData: FormData, key: string, trim = false) => {
   const value = formData.get(key);
@@ -41,17 +41,17 @@ export const registerAction = async (rawLocale: AppLocale, formData: FormData) =
     redirectWithError(locale, "password_mismatch", email);
   }
 
-  let user: ReturnType<typeof createStoredAuthUser>;
+  let user: StoredAuthUser;
   try {
-    user = createStoredAuthUser({ email, password });
+    user = await createWebAuthUser({ email, password });
   } catch (error) {
-    if (error instanceof StoredAuthError) {
+    if (isAuthStorageError(error)) {
       return redirectWithError(locale, error.code, email);
     }
     return redirectWithError(locale, "unexpected", email);
   }
 
-  const { session, token } = createStoredAuthSession({ userId: user.id });
+  const { session, token } = await createWebAuthSession({ userId: user.id });
   await setAuthSessionCookie(token, session.expiresAt);
   redirect(buildLocalePath(locale, "/dashboard"));
 };

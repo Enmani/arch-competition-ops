@@ -1,22 +1,17 @@
 import { NextResponse } from "next/server";
 
 import {
-  createStoredSavedSearch,
-  deleteStoredSavedSearch,
-  queryStoredSavedSearches,
-} from "@arch-competition/storage";
-
+  createWebSavedSearch,
+  deleteWebSavedSearch,
+  queryWebSavedSearches,
+} from "@/lib/server-storage";
 import {
   countActiveDiscoverFilters,
   readDiscoverFilters,
   type DiscoverSearchParams,
 } from "@/lib/discover";
-import {
-  isWorkspaceWritesEnabled,
-  resolveWorkspaceKey,
-} from "@/lib/workspace";
+import { isWorkspaceWritesEnabled, resolveWorkspaceKey } from "@/lib/workspace";
 
-export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const savedSearchClientErrors = new Set([
@@ -34,13 +29,13 @@ const parseLimit = (rawValue: string | null) => {
   return Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), 100) : 20;
 };
 
-export const GET = (request: Request) => {
+export const GET = async (request: Request) => {
   const url = new URL(request.url);
   const workspaceKey = resolveWorkspaceKey();
   const limit = parseLimit(url.searchParams.get("limit"));
 
   return NextResponse.json({
-    items: queryStoredSavedSearches({ limit, workspaceKey }),
+    items: await queryWebSavedSearches({ limit, workspaceKey }),
     limit,
     workspaceKey,
     writesEnabled: isWorkspaceWritesEnabled(),
@@ -79,7 +74,7 @@ export const POST = async (request: Request) => {
   }
 
   try {
-    const item = createStoredSavedSearch({
+    const item = await createWebSavedSearch({
       filters,
       name,
       workspaceKey: resolveWorkspaceKey(),
@@ -121,7 +116,7 @@ export const DELETE = async (request: Request) => {
   }
 
   try {
-    const deleted = deleteStoredSavedSearch({
+    const deleted = await deleteWebSavedSearch({
       id,
       workspaceKey: resolveWorkspaceKey(),
     });

@@ -5,7 +5,7 @@ import type {
   StoredOpsReviewDecisionStatus,
   StoredOpsReviewQueueItem,
   StoredOpsReviewSummary,
-} from "@arch-competition/storage";
+} from "@arch-competition/storage/cloudflare";
 
 import OpsReviewToolbar from "@/components/ops-review-toolbar";
 import type { AppLocale } from "@/i18n/config";

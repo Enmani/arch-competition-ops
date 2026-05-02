@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 
-import { getStoredAuthSession, type StoredAuthUser } from "@arch-competition/storage";
+import { getWebAuthSession, type StoredAuthUser } from "@/lib/server-storage";
 
 export const authSessionCookieName = "arch_competition_ops_session";
 
@@ -35,5 +35,5 @@ export const clearAuthSessionCookie = async () => {
 
 export const getCurrentAuthUser = async (): Promise<StoredAuthUser | null> => {
   const token = await getAuthSessionToken();
-  return getStoredAuthSession(token)?.user ?? null;
+  return (await getWebAuthSession(token))?.user ?? null;
 };

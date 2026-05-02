@@ -4,7 +4,11 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "workerd": "./src/cloudflare.ts",
+      "default": "./src/index.ts"
+    },
+    "./cloudflare": "./src/cloudflare.ts"
   },
   "dependencies": {
     "@arch-competition/core": "0.1.0",

@@ -1,15 +1,14 @@
-import {
-  getStoredDuplicatePressureSummary,
-  getStoredOpsSnapshot,
-  getStoredOpsReviewSummary,
-  getStoredSourceHealth,
-  queryStoredOpsReviewQueue,
-} from "@arch-competition/storage";
-
 import OpsReviewQueue from "@/components/ops-review-queue";
 import OpsSourceHealthTable from "@/components/ops-source-health-table";
 import { getDictionary, resolveLocaleOrNotFound } from "@/i18n/server";
 import { isOpsReviewEnabled } from "@/lib/ops-review-access";
+import {
+  getWebDuplicatePressureSummary,
+  getWebOpsReviewSummary,
+  getWebOpsSnapshot,
+  getWebSourceHealth,
+  queryWebOpsReviewQueue,
+} from "@/lib/server-storage";
 
 export const dynamic = "force-dynamic";
 
@@ -21,11 +20,13 @@ const LocalizedOpsPage = async ({ params }: LocalizedOpsPageProps) => {
   const { locale: rawLocale } = await params;
   const locale = resolveLocaleOrNotFound(rawLocale);
   const dictionary = getDictionary(locale);
-  const snapshot = getStoredOpsSnapshot();
-  const sourceHealth = getStoredSourceHealth(24);
-  const duplicatePressure = getStoredDuplicatePressureSummary();
-  const reviewSummary = getStoredOpsReviewSummary();
-  const reviewQueue = queryStoredOpsReviewQueue();
+  const [snapshot, sourceHealth, duplicatePressure, reviewSummary, reviewQueue] = await Promise.all([
+    getWebOpsSnapshot(),
+    getWebSourceHealth(24),
+    getWebDuplicatePressureSummary(),
+    getWebOpsReviewSummary(),
+    queryWebOpsReviewQueue(),
+  ]);
   const reviewEnabled = isOpsReviewEnabled();
 
   return (

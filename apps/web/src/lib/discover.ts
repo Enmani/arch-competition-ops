@@ -2,7 +2,7 @@ import type {
   StoredBuildingCategory,
   StoredOpportunityQuery,
   StoredProjectType,
-} from "@arch-competition/storage";
+} from "@arch-competition/storage/cloudflare";
 
 export type DiscoverSearchParams = Record<string, string | string[] | undefined>;
 

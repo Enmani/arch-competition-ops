@@ -1,4 +1,4 @@
-import type { StoredOpportunityFeedItem } from "@arch-competition/storage";
+import type { StoredOpportunityFeedItem } from "@arch-competition/storage/cloudflare";
 
 type OpportunityLocationInput = Pick<
   StoredOpportunityFeedItem,

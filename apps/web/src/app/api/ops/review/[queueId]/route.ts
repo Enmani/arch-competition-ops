@@ -2,17 +2,16 @@ import { NextResponse } from "next/server";
 
 import {
   STORED_OPS_REVIEW_STATUSES,
-  getStoredOpsReviewSummary,
-  writeStoredOpsReviewDecision,
+  getWebOpsReviewSummary,
   type StoredOpsReviewDecisionStatus,
-} from "@arch-competition/storage";
+  writeWebOpsReviewDecision,
+} from "@/lib/server-storage";
 
 import {
   defaultOpsReviewActorLabel,
   isOpsReviewEnabled,
 } from "@/lib/ops-review-access";
 
-export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 type ReviewDecisionRouteContext = {
@@ -53,7 +52,7 @@ export const PATCH = async (
   const { queueId } = await params;
 
   try {
-    const item = writeStoredOpsReviewDecision({
+    const item = await writeWebOpsReviewDecision({
       queueId,
       decision: decision as StoredOpsReviewDecisionStatus,
       actorLabel,
@@ -62,7 +61,7 @@ export const PATCH = async (
 
     return NextResponse.json({
       item,
-      summary: getStoredOpsReviewSummary(),
+      summary: await getWebOpsReviewSummary(),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to write ops review decision.";

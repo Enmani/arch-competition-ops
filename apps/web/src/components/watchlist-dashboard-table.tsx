@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import type { StoredOpportunityFeedItem } from "@arch-competition/storage";
+import type { StoredOpportunityFeedItem } from "@arch-competition/storage/cloudflare";
 
 import WatchToggleButton from "@/components/watch-toggle-button";
 import { buildLocalePath, type AppLocale } from "@/i18n/config";

@@ -1,17 +1,12 @@
 import { NextResponse } from "next/server";
 
-import {
-  queryStoredOpportunityFeed,
-} from "@arch-competition/storage";
-
 import { collectDiscoverSearchParams, readDiscoverFilters } from "@/lib/discover";
+import { queryWebOpportunityFeed } from "@/lib/server-storage";
 
-export const runtime = "nodejs";
-
-export const GET = (request: Request) => {
+export const GET = async (request: Request) => {
   const url = new URL(request.url);
   const filters = readDiscoverFilters(collectDiscoverSearchParams(url.searchParams));
-  const opportunities = queryStoredOpportunityFeed(filters);
+  const opportunities = await queryWebOpportunityFeed(filters);
 
   return NextResponse.json({
     filters,

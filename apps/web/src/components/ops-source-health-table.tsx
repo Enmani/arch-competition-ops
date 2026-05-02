@@ -1,7 +1,7 @@
 import type {
   StoredDuplicatePressureSummary,
   StoredSourceHealthItem,
-} from "@arch-competition/storage";
+} from "@arch-competition/storage/cloudflare";
 
 import type { AppLocale } from "@/i18n/config";
 import type { AppDictionary } from "@/i18n/dictionaries";

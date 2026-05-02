@@ -1,4 +1,4 @@
-import type { StoredOpportunityFeedItem } from "@arch-competition/storage";
+import type { StoredOpportunityFeedItem } from "@arch-competition/storage/cloudflare";
 import countriesAtlas from "world-atlas/countries-50m.json";
 import { geoArea, geoMercator, geoPath } from "d3-geo";
 import { feature } from "topojson-client";
