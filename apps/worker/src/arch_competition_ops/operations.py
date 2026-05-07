@@ -4,8 +4,10 @@ from collections import Counter
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
+from typing import Any, Callable
 
 from arch_competition_ops.collectors import collect_source_documents
+from arch_competition_ops.collectors.common import fetch_json_get
 from arch_competition_ops.config_loader import (
     load_source_catalog,
     load_targeting_preferences,
@@ -20,8 +22,10 @@ from arch_competition_ops.settings import Settings
 from arch_competition_ops.storage import (
     ensure_schema,
     find_duplicate_records,
+    list_anac_source_trace_candidates,
     list_competitions_missing_geocodes,
     record_source_run,
+    update_competition_source_url,
     update_competition_geocode_fields,
     upsert_competition,
 )
@@ -346,6 +350,88 @@ def refresh_missing_geocodes(settings: Settings, *, limit: int = 50) -> int:
         updated_count += 1
         if updated_count >= limit:
             break
+
+    return updated_count
+
+
+def _normalize_anac_source_trace_url(
+    *,
+    official_notice_id: str | None,
+    source_url: str | None,
+    title: str | None,
+    notice_detail: dict[str, Any] | None = None,
+) -> str | None:
+    if not official_notice_id:
+        return None
+
+    normalized_notice_id = official_notice_id.strip()
+    if not normalized_notice_id:
+        return None
+
+    normalized_source_url = (source_url or "").strip().lower()
+    normalized_title = (title or "").strip().lower()
+    codice_scheda = str((notice_detail or {}).get("codiceScheda") or "").strip().lower()
+    tipo = str((notice_detail or {}).get("tipo") or "").strip().lower()
+    is_esiti = False
+
+    if codice_scheda.startswith("ad"):
+        is_esiti = True
+    elif tipo == "esito":
+        is_esiti = True
+    elif "/esiti/" in normalized_source_url:
+        is_esiti = True
+    elif "affidamento diretto" in normalized_title:
+        is_esiti = True
+
+    route = "esiti" if is_esiti else "bandi"
+    return (
+        f"https://pubblicitalegale.anticorruzione.it/{route}/"
+        f"{normalized_notice_id}?ricercaArchivio=true"
+    )
+
+
+def _fetch_anac_notice_detail(official_notice_id: str) -> dict[str, Any] | None:
+    try:
+        payload = fetch_json_get(
+            f"https://pubblicitalegale.anticorruzione.it/api/v0/avvisi/{official_notice_id}",
+            headers={
+                "Accept": "application/json",
+                "Referer": "https://pubblicitalegale.anticorruzione.it/",
+            },
+        )
+    except Exception:  # noqa: BLE001
+        return None
+
+    return payload if isinstance(payload, dict) else None
+
+
+def normalize_anac_source_traces(
+    settings: Settings,
+    *,
+    limit: int = 500,
+    fetch_notice_detail: Callable[[str], dict[str, Any] | None] | None = None,
+) -> int:
+    db_path = initialize_database(settings)
+    updated_count = 0
+    fetcher = fetch_notice_detail or _fetch_anac_notice_detail
+
+    for row in list_anac_source_trace_candidates(db_path, limit=limit):
+        notice_detail = fetcher(row["official_notice_id"])
+        normalized_url = _normalize_anac_source_trace_url(
+            official_notice_id=row["official_notice_id"],
+            source_url=row["source_url"],
+            title=row["title"],
+            notice_detail=notice_detail,
+        )
+        if not normalized_url or normalized_url == row["source_url"]:
+            continue
+
+        update_competition_source_url(
+            db_path,
+            competition_id=row["id"],
+            source_url=normalized_url,
+        )
+        updated_count += 1
 
     return updated_count
 

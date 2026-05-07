@@ -6,9 +6,11 @@ from arch_competition_ops.operations import run_doctor
 from arch_competition_ops.settings import Settings
 from arch_competition_ops.storage import (
     ensure_schema,
+    list_anac_source_trace_candidates,
     list_competitions,
     list_competitions_missing_geocodes,
     restore_legacy_competitions,
+    update_competition_source_url,
     update_competition_geocode_fields,
     upsert_competition,
 )
@@ -260,6 +262,56 @@ def test_update_geocode_fields_updates_only_location_columns(tmp_path) -> None:
     assert row["geo_source"] == "nominatim"
     assert row["geo_confidence"] == 0.91
     assert list_competitions_missing_geocodes(db_path, limit=5) == []
+
+
+def test_anac_source_trace_storage_helpers_list_and_update_candidates(tmp_path) -> None:
+    db_path = tmp_path / "competitions.sqlite"
+    competition_id = upsert_competition(
+        db_path,
+        CompetitionRecord(
+            title="Affidamento diretto dei servizi di progettazione per Villa Giulia",
+            organizer="ANAC BDNCP",
+            authority_name="MUSEO ETRUSCO DI VILLA GIULIA",
+            source_url="https://pubblicitalegale.anticorruzione.it/api/v0/avvisi/49320bc2-6c80-4bc7-80f0-1e6a7eaeea82",
+            official_url="https://www.museoetru.it/",
+            official_notice_id="49320bc2-6c80-4bc7-80f0-1e6a7eaeea82",
+            jurisdiction="italy",
+        ),
+    )
+    upsert_competition(
+        db_path,
+        CompetitionRecord(
+            competition_id="already-public-anac",
+            title="Servizi di architettura per la progettazione e direzione lavori di riqualificazione di Palazzo Trentini",
+            organizer="ANAC BDNCP",
+            authority_name="Provincia Autonoma di Trento",
+            source_url="https://pubblicitalegale.anticorruzione.it/bandi/114d92b2-b36d-4bce-8d68-3f0a97693a5f?ricercaArchivio=true",
+            official_url="https://example.it/gara/456",
+            official_notice_id="114d92b2-b36d-4bce-8d68-3f0a97693a5f",
+            jurisdiction="italy",
+        ),
+    )
+
+    candidates = list_anac_source_trace_candidates(db_path, limit=10)
+
+    assert [row["id"] for row in candidates] == [competition_id]
+
+    update_competition_source_url(
+        db_path,
+        competition_id=competition_id,
+        source_url="https://pubblicitalegale.anticorruzione.it/esiti/49320bc2-6c80-4bc7-80f0-1e6a7eaeea82?ricercaArchivio=true",
+    )
+
+    with sqlite3.connect(db_path) as connection:
+        row = connection.execute(
+            "SELECT source_url FROM competitions WHERE id = ?",
+            (competition_id,),
+        ).fetchone()
+
+    assert (
+        row[0]
+        == "https://pubblicitalegale.anticorruzione.it/esiti/49320bc2-6c80-4bc7-80f0-1e6a7eaeea82?ricercaArchivio=true"
+    )
 
 
 def test_missing_geocode_rows_prioritize_visible_upcoming_deadlines(tmp_path) -> None:

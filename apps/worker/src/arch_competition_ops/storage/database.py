@@ -590,6 +590,30 @@ def list_competitions_missing_geocodes(db_path: Path, limit: int = 50) -> list[s
     return rows
 
 
+def list_anac_source_trace_candidates(db_path: Path, limit: int = 500) -> list[sqlite3.Row]:
+    ensure_schema(db_path)
+    with connect(db_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT id, title, official_notice_id, source_url
+            FROM competitions
+            WHERE organizer = 'ANAC BDNCP'
+              AND official_notice_id IS NOT NULL
+              AND (
+                    source_url IS NULL
+                    OR (
+                        source_url NOT LIKE 'https://pubblicitalegale.anticorruzione.it/bandi/%'
+                        AND source_url NOT LIKE 'https://pubblicitalegale.anticorruzione.it/esiti/%'
+                    )
+              )
+            ORDER BY updated_at DESC, id ASC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+    return rows
+
+
 def update_competition_geocode_fields(
     db_path: Path,
     *,
@@ -619,6 +643,30 @@ def update_competition_geocode_fields(
                 geo_lng,
                 geo_source,
                 geo_confidence,
+                datetime.now(timezone.utc).isoformat(),
+                competition_id,
+            ),
+        )
+        connection.commit()
+
+
+def update_competition_source_url(
+    db_path: Path,
+    *,
+    competition_id: str,
+    source_url: str,
+) -> None:
+    ensure_schema(db_path)
+    with connect(db_path) as connection:
+        connection.execute(
+            """
+            UPDATE competitions
+            SET source_url = ?,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                source_url,
                 datetime.now(timezone.utc).isoformat(),
                 competition_id,
             ),

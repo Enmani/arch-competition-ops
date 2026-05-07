@@ -12,6 +12,7 @@ from arch_competition_ops import __version__
 from arch_competition_ops.operations import (
     ingest_source,
     initialize_database,
+    normalize_anac_source_traces,
     rebuild_review_queue,
     refresh_missing_geocodes,
     run_doctor,
@@ -53,6 +54,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="geocode stored opportunity locations and update coordinate fields",
     )
     geocode_parser.add_argument("--limit", type=int, default=50)
+    anac_parser = subparsers.add_parser(
+        "normalize-anac-source-traces",
+        help="rewrite stored ANAC source trace links to human-readable ANAC detail pages",
+    )
+    anac_parser.add_argument("--limit", type=int, default=500)
     subparsers.add_parser("show-sources", help="list enabled source definitions")
     subparsers.add_parser("show-country-coverage", help="summarize active and empty country pack files")
     ingest_parser = subparsers.add_parser(
@@ -108,6 +114,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "refresh-geocodes":
         updated_count = refresh_missing_geocodes(settings, limit=args.limit)
         _safe_print(f"Updated geocodes for {updated_count} records")
+        return 0
+
+    if args.command == "normalize-anac-source-traces":
+        updated_count = normalize_anac_source_traces(settings, limit=args.limit)
+        _safe_print(f"Updated ANAC source traces for {updated_count} records")
         return 0
 
     if args.command == "show-sources":
