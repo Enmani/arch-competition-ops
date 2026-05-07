@@ -56,6 +56,17 @@ RSS_BUILT_MARKERS = (
     "street",
     "camp",
 )
+RSS_PREANNOUNCEMENT_MARKERS = (
+    "advance notice",
+    "notice of information",
+    "advance notification to the market",
+    "early indication only",
+    "not the commencement of a tender process",
+    "will not form part of any future tender",
+    "intention to release a tender",
+    "future procurement opportunities",
+    "no information from suppliers is requested",
+)
 
 
 def _default_fetch_text(url: str) -> str:
@@ -107,6 +118,11 @@ def _is_relevant_rss_notice(title: str, summary: str, categories: list[str]) -> 
     return any(marker in normalized for marker in RSS_BUILT_MARKERS)
 
 
+def is_preannouncement_rss_notice(title: str, summary: str, categories: list[str]) -> bool:
+    normalized = normalize_text(f"{title} {summary} {' '.join(categories)}")
+    return any(marker in normalized for marker in RSS_PREANNOUNCEMENT_MARKERS)
+
+
 def _rss_relevance_score(title: str, summary: str, categories: list[str]) -> int:
     normalized = normalize_text(f"{title} {summary} {' '.join(categories)}")
 
@@ -152,6 +168,8 @@ def collect_generic_rss_documents(
         if not title or not link:
             continue
         if publication_date_from and published_at and published_at < publication_date_from:
+            continue
+        if is_preannouncement_rss_notice(title, summary, categories):
             continue
         if not _is_relevant_rss_notice(title, summary, categories):
             continue

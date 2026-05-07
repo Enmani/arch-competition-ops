@@ -14,6 +14,7 @@ from arch_competition_ops.operations import (
     initialize_database,
     normalize_anac_record_statuses,
     normalize_anac_source_traces,
+    normalize_gets_preannouncement_statuses,
     rebuild_review_queue,
     refresh_missing_geocodes,
     run_doctor,
@@ -65,6 +66,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="mark archived ANAC result notices as archived records",
     )
     anac_status_parser.add_argument("--limit", type=int, default=500)
+    gets_status_parser = subparsers.add_parser(
+        "normalize-gets-preannouncement-statuses",
+        help="discard GETS advance notices that are not yet open tenders",
+    )
+    gets_status_parser.add_argument("--limit", type=int, default=500)
     subparsers.add_parser("show-sources", help="list enabled source definitions")
     subparsers.add_parser("show-country-coverage", help="summarize active and empty country pack files")
     ingest_parser = subparsers.add_parser(
@@ -130,6 +136,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "normalize-anac-record-statuses":
         updated_count = normalize_anac_record_statuses(settings, limit=args.limit)
         _safe_print(f"Updated ANAC record statuses for {updated_count} records")
+        return 0
+
+    if args.command == "normalize-gets-preannouncement-statuses":
+        updated_count = normalize_gets_preannouncement_statuses(settings, limit=args.limit)
+        _safe_print(f"Updated GETS preannouncement statuses for {updated_count} records")
         return 0
 
     if args.command == "show-sources":

@@ -631,6 +631,23 @@ def list_anac_status_candidates(db_path: Path, limit: int = 500) -> list[sqlite3
     return rows
 
 
+def list_gets_preannouncement_candidates(db_path: Path, limit: int = 500) -> list[sqlite3.Row]:
+    ensure_schema(db_path)
+    with connect(db_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT id, title, authority_name, source_url, status, eligibility_summary
+            FROM competitions
+            WHERE organizer = 'GETS Open Tenders'
+              AND status NOT IN ('archived', 'discarded')
+            ORDER BY updated_at DESC, id ASC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+    return rows
+
+
 def update_competition_geocode_fields(
     db_path: Path,
     *,

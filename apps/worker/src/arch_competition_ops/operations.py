@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from arch_competition_ops.collectors import collect_source_documents
+from arch_competition_ops.collectors.generic_rss import is_preannouncement_rss_notice
 from arch_competition_ops.collectors.common import fetch_json_get
 from arch_competition_ops.config_loader import (
     load_source_catalog,
@@ -25,6 +26,7 @@ from arch_competition_ops.storage import (
     list_anac_status_candidates,
     list_anac_source_trace_candidates,
     list_competitions_missing_geocodes,
+    list_gets_preannouncement_candidates,
     record_source_run,
     update_competition_status,
     update_competition_source_url,
@@ -500,6 +502,54 @@ def normalize_anac_record_statuses(
             db_path,
             competition_id=row["id"],
             status=status,
+        )
+        updated_count += 1
+
+    return updated_count
+
+
+def _is_gets_preannouncement_record(
+    *,
+    title: str | None,
+    authority_name: str | None,
+    eligibility_summary: str | None,
+    source_url: str | None,
+) -> bool:
+    categories: list[str] = []
+    if authority_name and "historic" in authority_name.lower():
+        categories.append("historic")
+    if source_url and "historic" in source_url.lower():
+        categories.append("historic")
+    return is_preannouncement_rss_notice(
+        title or "",
+        eligibility_summary or "",
+        categories,
+    )
+
+
+def normalize_gets_preannouncement_statuses(
+    settings: Settings,
+    *,
+    limit: int = 500,
+) -> int:
+    db_path = initialize_database(settings)
+    updated_count = 0
+
+    for row in list_gets_preannouncement_candidates(db_path, limit=limit):
+        if not _is_gets_preannouncement_record(
+            title=row["title"],
+            authority_name=row["authority_name"],
+            eligibility_summary=row["eligibility_summary"],
+            source_url=row["source_url"],
+        ):
+            continue
+        if row["status"] == "discarded":
+            continue
+
+        update_competition_status(
+            db_path,
+            competition_id=row["id"],
+            status="discarded",
         )
         updated_count += 1
 

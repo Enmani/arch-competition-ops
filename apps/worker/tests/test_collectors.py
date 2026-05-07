@@ -304,6 +304,46 @@ def test_collect_generic_rss_documents_excludes_digital_and_maintenance_false_po
     assert documents == []
 
 
+def test_collect_generic_rss_documents_excludes_preannouncement_notices() -> None:
+    source = _build_source(
+        "gets_open_tenders",
+        name="GETS Open Tenders",
+        jurisdiction="new_zealand",
+        base_url="https://www.gets.govt.nz/ExternalRSSFeed.htm",
+        scan_method="rss",
+        extractor="generic_listing_html",
+        collector="generic_rss_feed",
+        regions=["oceania", "new_zealand"],
+    )
+    rss_feed = """
+<rss version="2.0">
+  <channel>
+    <item>
+      <title>14247 - Ashhurst Domain to Western Gateway Shared Use Path</title>
+      <link>https://www.gets.govt.nz/NZTAHNO/ExternalTenderDetails.htm?id=34033788</link>
+      <description><![CDATA[
+        <table>
+          <tr><td><b>RFx ID: </b></td><td>34033788</td></tr>
+          <tr><td><b>Organisation: </b></td><td>New Zealand Transport Agency (Waka Kotahi) - HISTORIC</td></tr>
+          <tr><td valign="top"><b>Categories: </b></td><td>81100000 - Professional engineering services<br>72100000 - Building and facility maintenance and repair services</td></tr>
+          <tr><td valign="top"><b>Overview: </b></td><td>This Notice of Information (NOI) – Advance Notice is to provide early information ahead of a future Request for Tenders. This notice is provided as an early indication only and is NOT the commencement of a tender process.</td></tr>
+        </table>
+      ]]></description>
+      <pubDate>Mon, 04 May 2026 18:00:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>
+""".strip()
+
+    documents = collect_generic_rss_documents(
+        source,
+        limit=5,
+        fetch_text=lambda _url: rss_feed,
+    )
+
+    assert documents == []
+
+
 def test_collect_canadabuys_documents_excludes_accommodation_services() -> None:
     source = _build_source(
         "canadabuys_tender_notices",
@@ -2032,6 +2072,74 @@ def test_normalize_anac_record_statuses_command_marks_archived_result_notices(
     assert rows[0]["status"] == "discovered"
     assert rows[1]["id"] == "villa-giulia-anac"
     assert rows[1]["status"] == "archived"
+
+
+def test_normalize_gets_preannouncement_statuses_command_discards_advance_notices(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "config").mkdir()
+    (tmp_path / "data").mkdir()
+    (tmp_path / "config" / "sources.yml").write_text("sources: []\n", encoding="utf-8")
+
+    settings = Settings(root=tmp_path)
+    db_path = settings.resolve_path(settings.db)
+    upsert_competition(
+        db_path,
+        CompetitionRecord(
+            competition_id="gets-advance-notice",
+            title="14247 - Ashhurst Domain to Western Gateway Shared Use Path",
+            organizer="GETS Open Tenders",
+            authority_name="New Zealand Transport Agency (Waka Kotahi) - HISTORIC",
+            source_url="https://www.gets.govt.nz/NZTAHNO/ExternalTenderDetails.htm?id=34033788",
+            official_url="https://www.gets.govt.nz/NZTAHNO/ExternalTenderDetails.htm?id=34033788",
+            jurisdiction="new_zealand",
+            status="discovered",
+            eligibility_summary=(
+                "This Notice of Information (NOI) – Advance Notice is to provide early information "
+                "ahead of a future Request for Tenders. This notice is provided as an early indication "
+                "only and is NOT the commencement of a tender process."
+            ),
+        ),
+    )
+    upsert_competition(
+        db_path,
+        CompetitionRecord(
+            competition_id="gets-live-rft",
+            title="SH29 Tauriko West Utilities Investigation",
+            organizer="GETS Open Tenders",
+            authority_name="New Zealand Transport Agency (Waka Kotahi) - HISTORIC",
+            source_url="https://www.gets.govt.nz/NZTAHNO/ExternalTenderDetails.htm?id=33961386",
+            official_url="https://www.gets.govt.nz/NZTAHNO/ExternalTenderDetails.htm?id=33961386",
+            jurisdiction="new_zealand",
+            status="discovered",
+            eligibility_summary=(
+                "This Request for Tender invites suitable qualified Utilities Location companies to "
+                "undertake utilities survey works. Electronic copies of the RFT documentation are attached."
+            ),
+        ),
+    )
+
+    exit_code = main(["normalize-gets-preannouncement-statuses", "--limit", "10"])
+
+    assert exit_code == 0
+
+    with sqlite3.connect(db_path) as connection:
+        connection.row_factory = sqlite3.Row
+        rows = connection.execute(
+            """
+            SELECT id, status
+            FROM competitions
+            WHERE id IN ('gets-advance-notice', 'gets-live-rft')
+            ORDER BY id
+            """
+        ).fetchall()
+
+    assert rows[0]["id"] == "gets-advance-notice"
+    assert rows[0]["status"] == "discarded"
+    assert rows[1]["id"] == "gets-live-rft"
+    assert rows[1]["status"] == "discovered"
 
 
 def test_ingest_source_records_source_health_with_parse_failures_and_duplicate_pressure(
