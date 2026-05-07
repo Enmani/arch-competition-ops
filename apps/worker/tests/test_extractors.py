@@ -310,6 +310,39 @@ def test_parse_bdncp_notice_payload() -> None:
         record.source_url
         == "https://pubblicitalegale.anticorruzione.it/api/v0/avvisi/fb7c96cb-1af5-4008-a0c4-2d4197479540"
     )
+    assert record.status == "discovered"
+
+
+def test_parse_bdncp_archived_notice_payload_marks_archived_status() -> None:
+    source = SourceDefinition(
+        source_id="anac_bdncp_contracts",
+        name="ANAC BDNCP",
+        kind="official_procurement",
+        jurisdiction="italy",
+        base_url="https://pubblicitalegale.anticorruzione.it/",
+        scan_method="html",
+        extractor="bdncp_notice_parser",
+        source_tier="primary",
+        enabled=True,
+        regions=["europe", "italy"],
+        languages=["it"],
+    )
+    payload = """
+    {
+      "officialNoticeId": "49320bc2-6c80-4bc7-80f0-1e6a7eaeea82",
+      "title": "Affidamento diretto dei servizi di progettazione per Villa Giulia",
+      "buyer": "MUSEO ETRUSCO DI VILLA GIULIA",
+      "procedureType": "AD3",
+      "summary": "Aggiudicazione per affidamento diretto dei servizi di architettura e ingegneria",
+      "sourcePublicUrl": "https://pubblicitalegale.anticorruzione.it/esiti/49320bc2-6c80-4bc7-80f0-1e6a7eaeea82?ricercaArchivio=true",
+      "officialUrl": "https://www.museoetru.it/"
+    }
+    """
+
+    record = parse_source_payload(source, payload)
+
+    assert record.procedure_type is None
+    assert record.status == "archived"
 
 
 def test_parse_generic_listing_payload() -> None:

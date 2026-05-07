@@ -1372,6 +1372,50 @@ test("storage reads legacy competition tables without geocode columns", async ()
   }
 });
 
+test("queryStoredOpportunityFeed excludes archived records by default but includes them when requested", async () => {
+  const { dbPath, cleanup } = createTempDb();
+  process.env.ARCH_COMPETITION_DB_PATH = dbPath;
+  process.env.ARCH_COMPETITION_TODAY = "2026-04-19";
+
+  const database = new Database(dbPath);
+  database
+    .prepare("UPDATE competitions SET status = ?, source_url = ?, procedure_type = ? WHERE id = ?")
+    .run(
+      "archived",
+      "https://pubblicitalegale.anticorruzione.it/esiti/49320bc2-6c80-4bc7-80f0-1e6a7eaeea82?ricercaArchivio=true",
+      null,
+      "italy-library",
+    );
+  database.close();
+
+  try {
+    const { getStoredOpportunityFeedItemBySlug, queryStoredOpportunityFeed } = await loadStorageModule();
+
+    const defaultFeed = queryStoredOpportunityFeed({
+      sort: "deadline",
+      limit: 20,
+    });
+    const includedFeed = queryStoredOpportunityFeed({
+      includeExpired: true,
+      sort: "deadline",
+      limit: 20,
+    });
+    const archivedDetail = getStoredOpportunityFeedItemBySlug("italy-library");
+
+    assert.ok(!defaultFeed.some((opportunity) => opportunity.id === "italy-library"));
+    assert.ok(includedFeed.some((opportunity) => opportunity.id === "italy-library"));
+    assert.equal(
+      includedFeed.find((opportunity) => opportunity.id === "italy-library")?.statusKey,
+      "archived",
+    );
+    assert.equal(archivedDetail?.statusKey, "archived");
+  } finally {
+    cleanup();
+    delete process.env.ARCH_COMPETITION_DB_PATH;
+    delete process.env.ARCH_COMPETITION_TODAY;
+  }
+});
+
 test("getStoredSourceHealth exposes source-level freshness and parser diagnostics", async () => {
   const { dbPath, cleanup } = createTempDb();
   process.env.ARCH_COMPETITION_DB_PATH = dbPath;

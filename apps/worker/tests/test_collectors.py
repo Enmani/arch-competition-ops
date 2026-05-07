@@ -1966,6 +1966,74 @@ def test_normalize_anac_source_traces_command_rewrites_machine_urls_to_public_pa
     )
 
 
+def test_normalize_anac_record_statuses_command_marks_archived_result_notices(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "config").mkdir()
+    (tmp_path / "data").mkdir()
+    (tmp_path / "config" / "sources.yml").write_text("sources: []\n", encoding="utf-8")
+
+    settings = Settings(root=tmp_path)
+    db_path = settings.resolve_path(settings.db)
+    upsert_competition(
+        db_path,
+        CompetitionRecord(
+            competition_id="villa-giulia-anac",
+            title="Affidamento diretto dei servizi di progettazione per Villa Giulia",
+            organizer="ANAC BDNCP",
+            authority_name="MUSEO ETRUSCO DI VILLA GIULIA",
+            source_url="https://pubblicitalegale.anticorruzione.it/esiti/49320bc2-6c80-4bc7-80f0-1e6a7eaeea82?ricercaArchivio=true",
+            official_url="https://www.museoetru.it/",
+            official_notice_id="49320bc2-6c80-4bc7-80f0-1e6a7eaeea82",
+            jurisdiction="italy",
+            status="discovered",
+        ),
+    )
+    upsert_competition(
+        db_path,
+        CompetitionRecord(
+            competition_id="school-campus-anac",
+            title="Servizi di progettazione per nuovo polo civico",
+            organizer="ANAC BDNCP",
+            authority_name="Comune di Ravenna",
+            source_url="https://pubblicitalegale.anticorruzione.it/bandi/fb7c96cb-1af5-4008-a0c4-2d4197479540?ricercaArchivio=true",
+            official_url="https://example.it/gara/123",
+            official_notice_id="fb7c96cb-1af5-4008-a0c4-2d4197479540",
+            jurisdiction="italy",
+            status="discovered",
+        ),
+    )
+    monkeypatch.setattr(
+        "arch_competition_ops.operations._fetch_anac_notice_detail",
+        lambda official_notice_id: {
+            "49320bc2-6c80-4bc7-80f0-1e6a7eaeea82": {"codiceScheda": "AD3", "tipo": "avviso"},
+            "fb7c96cb-1af5-4008-a0c4-2d4197479540": {"codiceScheda": "P1", "tipo": "avviso"},
+        }.get(official_notice_id),
+    )
+
+    exit_code = main(["normalize-anac-record-statuses", "--limit", "10"])
+
+    assert exit_code == 0
+
+    with sqlite3.connect(db_path) as connection:
+        connection.row_factory = sqlite3.Row
+        rows = connection.execute(
+            """
+            SELECT id, status
+            FROM competitions
+            WHERE id IN ('villa-giulia-anac', 'school-campus-anac')
+            ORDER BY id
+            """
+        ).fetchall()
+
+    assert rows[0]["id"] == "school-campus-anac"
+    assert rows[0]["status"] == "discovered"
+    assert rows[1]["id"] == "villa-giulia-anac"
+    assert rows[1]["status"] == "archived"
+
+
 def test_ingest_source_records_source_health_with_parse_failures_and_duplicate_pressure(
     tmp_path,
     monkeypatch,

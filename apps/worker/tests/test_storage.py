@@ -6,10 +6,12 @@ from arch_competition_ops.operations import run_doctor
 from arch_competition_ops.settings import Settings
 from arch_competition_ops.storage import (
     ensure_schema,
+    list_anac_status_candidates,
     list_anac_source_trace_candidates,
     list_competitions,
     list_competitions_missing_geocodes,
     restore_legacy_competitions,
+    update_competition_status,
     update_competition_source_url,
     update_competition_geocode_fields,
     upsert_competition,
@@ -312,6 +314,42 @@ def test_anac_source_trace_storage_helpers_list_and_update_candidates(tmp_path) 
         row[0]
         == "https://pubblicitalegale.anticorruzione.it/esiti/49320bc2-6c80-4bc7-80f0-1e6a7eaeea82?ricercaArchivio=true"
     )
+
+
+def test_anac_status_storage_helpers_list_and_update_candidates(tmp_path) -> None:
+    db_path = tmp_path / "competitions.sqlite"
+    competition_id = upsert_competition(
+        db_path,
+        CompetitionRecord(
+            title="Affidamento diretto dei servizi di progettazione per Villa Giulia",
+            organizer="ANAC BDNCP",
+            authority_name="MUSEO ETRUSCO DI VILLA GIULIA",
+            source_url="https://pubblicitalegale.anticorruzione.it/esiti/49320bc2-6c80-4bc7-80f0-1e6a7eaeea82?ricercaArchivio=true",
+            official_url="https://www.museoetru.it/",
+            official_notice_id="49320bc2-6c80-4bc7-80f0-1e6a7eaeea82",
+            jurisdiction="italy",
+            status="discovered",
+        ),
+    )
+
+    candidates = list_anac_status_candidates(db_path, limit=10)
+
+    assert [row["id"] for row in candidates] == [competition_id]
+    assert candidates[0]["status"] == "discovered"
+
+    update_competition_status(
+        db_path,
+        competition_id=competition_id,
+        status="archived",
+    )
+
+    with sqlite3.connect(db_path) as connection:
+        row = connection.execute(
+            "SELECT status FROM competitions WHERE id = ?",
+            (competition_id,),
+        ).fetchone()
+
+    assert row[0] == "archived"
 
 
 def test_missing_geocode_rows_prioritize_visible_upcoming_deadlines(tmp_path) -> None:

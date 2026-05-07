@@ -1081,6 +1081,11 @@ const buildOpportunityWhereClause = ({
     parameters.push(threshold);
   }
   if (includeExpired === true) {
+    conditions.push("status != 'discarded'");
+  } else {
+    conditions.push("status NOT IN ('archived', 'discarded')");
+  }
+  if (includeExpired === true) {
     if (normalizedDeadlineAfter) {
       conditions.push("deadline_at >= ?");
       parameters.push(normalizedDeadlineAfter);

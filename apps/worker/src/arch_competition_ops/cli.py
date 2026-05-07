@@ -12,6 +12,7 @@ from arch_competition_ops import __version__
 from arch_competition_ops.operations import (
     ingest_source,
     initialize_database,
+    normalize_anac_record_statuses,
     normalize_anac_source_traces,
     rebuild_review_queue,
     refresh_missing_geocodes,
@@ -59,6 +60,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="rewrite stored ANAC source trace links to human-readable ANAC detail pages",
     )
     anac_parser.add_argument("--limit", type=int, default=500)
+    anac_status_parser = subparsers.add_parser(
+        "normalize-anac-record-statuses",
+        help="mark archived ANAC result notices as archived records",
+    )
+    anac_status_parser.add_argument("--limit", type=int, default=500)
     subparsers.add_parser("show-sources", help="list enabled source definitions")
     subparsers.add_parser("show-country-coverage", help="summarize active and empty country pack files")
     ingest_parser = subparsers.add_parser(
@@ -119,6 +125,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "normalize-anac-source-traces":
         updated_count = normalize_anac_source_traces(settings, limit=args.limit)
         _safe_print(f"Updated ANAC source traces for {updated_count} records")
+        return 0
+
+    if args.command == "normalize-anac-record-statuses":
+        updated_count = normalize_anac_record_statuses(settings, limit=args.limit)
+        _safe_print(f"Updated ANAC record statuses for {updated_count} records")
         return 0
 
     if args.command == "show-sources":

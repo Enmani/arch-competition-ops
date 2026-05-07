@@ -22,9 +22,11 @@ from arch_competition_ops.settings import Settings
 from arch_competition_ops.storage import (
     ensure_schema,
     find_duplicate_records,
+    list_anac_status_candidates,
     list_anac_source_trace_candidates,
     list_competitions_missing_geocodes,
     record_source_run,
+    update_competition_status,
     update_competition_source_url,
     update_competition_geocode_fields,
     upsert_competition,
@@ -390,6 +392,35 @@ def _normalize_anac_source_trace_url(
     )
 
 
+def _resolve_anac_record_status(
+    *,
+    procedure_type: str | None,
+    source_url: str | None,
+    title: str | None,
+    notice_detail: dict[str, Any] | None = None,
+) -> str:
+    normalized_procedure_type = (procedure_type or "").strip().lower()
+    normalized_source_url = (source_url or "").strip().lower()
+    normalized_title = (title or "").strip().lower()
+    codice_scheda = str((notice_detail or {}).get("codiceScheda") or "").strip().lower()
+    tipo = str((notice_detail or {}).get("tipo") or "").strip().lower()
+    source_kind = str((notice_detail or {}).get("sourceKind") or "").strip().lower()
+
+    if codice_scheda.startswith("ad"):
+        return "archived"
+    if normalized_procedure_type.startswith("ad"):
+        return "archived"
+    if tipo == "esito":
+        return "archived"
+    if source_kind in {"aggiudicazione", "esito", "archived", "completed"}:
+        return "archived"
+    if "/esiti/" in normalized_source_url:
+        return "archived"
+    if "aggiudicazione" in normalized_title or "affidamento diretto" in normalized_title:
+        return "archived"
+    return "discovered"
+
+
 def _fetch_anac_notice_detail(official_notice_id: str) -> dict[str, Any] | None:
     try:
         payload = fetch_json_get(
@@ -430,6 +461,45 @@ def normalize_anac_source_traces(
             db_path,
             competition_id=row["id"],
             source_url=normalized_url,
+        )
+        updated_count += 1
+
+    return updated_count
+
+
+def normalize_anac_record_statuses(
+    settings: Settings,
+    *,
+    limit: int = 500,
+    fetch_notice_detail: Callable[[str], dict[str, Any] | None] | None = None,
+) -> int:
+    db_path = initialize_database(settings)
+    updated_count = 0
+    fetcher = fetch_notice_detail or _fetch_anac_notice_detail
+
+    for row in list_anac_status_candidates(db_path, limit=limit):
+        notice_detail = fetcher(row["official_notice_id"])
+        normalized_url = _normalize_anac_source_trace_url(
+            official_notice_id=row["official_notice_id"],
+            source_url=row["source_url"],
+            title=row["title"],
+            notice_detail=notice_detail,
+        )
+        status = _resolve_anac_record_status(
+            procedure_type=str((notice_detail or {}).get("codiceScheda") or ""),
+            source_url=normalized_url or row["source_url"],
+            title=row["title"],
+            notice_detail=notice_detail,
+        )
+        if status != "archived":
+            continue
+        if row["status"] == status:
+            continue
+
+        update_competition_status(
+            db_path,
+            competition_id=row["id"],
+            status=status,
         )
         updated_count += 1
 

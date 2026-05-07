@@ -11,6 +11,23 @@ from arch_competition_ops.extractors.common import (
 from arch_competition_ops.models import CompetitionRecord, SourceDefinition
 
 
+def _resolve_anac_record_status(data: dict[str, object]) -> str:
+    procedure_type = str(data.get("procedureType") or data.get("codiceScheda") or "").strip().lower()
+    source_public_url = str(data.get("sourcePublicUrl") or "").strip().lower()
+    summary = str(data.get("summary") or data.get("description") or "").strip().lower()
+    source_kind = str(data.get("sourceKind") or data.get("noticeKind") or "").strip().lower()
+
+    if procedure_type.startswith("ad"):
+        return "archived"
+    if source_kind in {"aggiudicazione", "esito", "archived", "completed"}:
+        return "archived"
+    if "/esiti/" in source_public_url:
+        return "archived"
+    if "aggiudicazione" in summary or "affidamento diretto" in summary:
+        return "archived"
+    return "discovered"
+
+
 def parse_bdncp_notice(payload: str, source: SourceDefinition, source_url: str) -> CompetitionRecord:
     data = try_load_json(payload)
     if not data:
@@ -41,4 +58,5 @@ def parse_bdncp_notice(payload: str, source: SourceDefinition, source_url: str) 
         official_url=pick_first_value(data, ["officialUrl", "url"]),
         estimated_contract_value_text=pick_first_value(data, ["estimatedValueText"]) or value_raw,
         location_label=pick_first_value(data, ["location", "place", "city", "municipality"]),
+        status=_resolve_anac_record_status(data),
     )

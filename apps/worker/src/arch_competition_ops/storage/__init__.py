@@ -1,6 +1,7 @@
 from .database import (
     ensure_schema,
     find_duplicate_records,
+    list_anac_status_candidates,
     list_anac_source_trace_candidates,
     list_competitions,
     list_competitions_missing_geocodes,
@@ -9,6 +10,7 @@ from .database import (
     restore_legacy_competitions,
     sync_review_queue_items,
     update_competition_geocode_fields,
+    update_competition_status,
     update_competition_source_url,
     upsert_competition,
 )
@@ -16,6 +18,7 @@ from .database import (
 __all__ = [
     "ensure_schema",
     "find_duplicate_records",
+    "list_anac_status_candidates",
     "list_anac_source_trace_candidates",
     "list_competitions",
     "list_competitions_missing_geocodes",
@@ -24,6 +27,7 @@ __all__ = [
     "restore_legacy_competitions",
     "sync_review_queue_items",
     "update_competition_geocode_fields",
+    "update_competition_status",
     "update_competition_source_url",
     "upsert_competition",
 ]

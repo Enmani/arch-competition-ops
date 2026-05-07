@@ -164,6 +164,7 @@ def build_base_record(
     documents_portal_url: str | None = None,
     estimated_contract_value_text: str | None = None,
     location_label: str | None = None,
+    status: str = "discovered",
 ) -> CompetitionRecord:
     normalized_title = normalize_whitespace(title) or title
     normalized_opportunity_type = (
@@ -182,7 +183,7 @@ def build_base_record(
         authority_name=normalize_whitespace(authority_name),
         official_url=official_url or source_url,
         source_url=source_url,
-        status="discovered",
+        status=status,
         opportunity_type=normalized_opportunity_type,
         jurisdiction=jurisdiction or source.jurisdiction,
         procedure_type=normalized_procedure_type,

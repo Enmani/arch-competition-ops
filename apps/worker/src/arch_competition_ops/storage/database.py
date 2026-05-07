@@ -614,6 +614,23 @@ def list_anac_source_trace_candidates(db_path: Path, limit: int = 500) -> list[s
     return rows
 
 
+def list_anac_status_candidates(db_path: Path, limit: int = 500) -> list[sqlite3.Row]:
+    ensure_schema(db_path)
+    with connect(db_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT id, title, official_notice_id, source_url, status
+            FROM competitions
+            WHERE organizer = 'ANAC BDNCP'
+              AND official_notice_id IS NOT NULL
+            ORDER BY updated_at DESC, id ASC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+    return rows
+
+
 def update_competition_geocode_fields(
     db_path: Path,
     *,
@@ -667,6 +684,30 @@ def update_competition_source_url(
             """,
             (
                 source_url,
+                datetime.now(timezone.utc).isoformat(),
+                competition_id,
+            ),
+        )
+        connection.commit()
+
+
+def update_competition_status(
+    db_path: Path,
+    *,
+    competition_id: str,
+    status: str,
+) -> None:
+    ensure_schema(db_path)
+    with connect(db_path) as connection:
+        connection.execute(
+            """
+            UPDATE competitions
+            SET status = ?,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                status,
                 datetime.now(timezone.utc).isoformat(),
                 competition_id,
             ),
