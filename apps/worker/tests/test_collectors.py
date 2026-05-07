@@ -1207,7 +1207,7 @@ def test_collect_anac_documents_transforms_public_api_items() -> None:
     assert len(documents) == 1
     assert (
         documents[0].source_url
-        == "https://pubblicitalegale.anticorruzione.it/api/v0/avvisi/fb7c96cb-1af5-4008-a0c4-2d4197479540"
+        == "https://pubblicitalegale.anticorruzione.it/bandi/fb7c96cb-1af5-4008-a0c4-2d4197479540?ricercaArchivio=true"
     )
 
     payload = json.loads(documents[0].payload)
@@ -1220,6 +1220,85 @@ def test_collect_anac_documents_transforms_public_api_items() -> None:
     assert (
         payload["sourceApiUrl"]
         == "https://pubblicitalegale.anticorruzione.it/api/v0/avvisi/fb7c96cb-1af5-4008-a0c4-2d4197479540"
+    )
+    assert (
+        payload["sourcePublicUrl"]
+        == "https://pubblicitalegale.anticorruzione.it/bandi/fb7c96cb-1af5-4008-a0c4-2d4197479540?ricercaArchivio=true"
+    )
+
+
+def test_collect_anac_documents_maps_direct_awards_to_public_esiti_pages() -> None:
+    from arch_competition_ops.collectors.anac import collect_anac_documents
+
+    source = _build_source(
+        "anac_bdncp_contracts",
+        name="ANAC BDNCP",
+        jurisdiction="italy",
+        base_url="https://pubblicitalegale.anticorruzione.it/",
+        scan_method="html",
+        extractor="bdncp_notice_parser",
+        languages=["it"],
+    )
+    response = {
+        "content": [
+            {
+                "idAvviso": "49320bc2-6c80-4bc7-80f0-1e6a7eaeea82",
+                "codiceScheda": "AD3",
+                "dataPubblicazione": "2026-04-30T06:00:00.578+00:00",
+                "template": [
+                    {
+                        "template": {
+                                "metadata": {
+                                    "descrizione": (
+                                        "Affidamento diretto dei servizi di progettazione esecutiva "
+                                        "per la stabilizzazione del Museo di Villa Giulia"
+                                    ),
+                                },
+                            "sections": [
+                                {
+                                    "name": "SEZ. A - Committente",
+                                    "fields": {
+                                        "soggetti_sa": [
+                                            {
+                                                "denominazione_amministrazione": "MUSEO ETRUSCO DI VILLA GIULIA",
+                                            }
+                                        ]
+                                    },
+                                },
+                                {
+                                    "name": "SEZ. B - Dati Generali",
+                                    "fields": {
+                                        "documenti_di_gara_link": "https://www.museoetru.it/",
+                                    },
+                                },
+                            ],
+                        }
+                    }
+                ],
+            }
+        ]
+    }
+
+    documents = collect_anac_documents(
+        source,
+        limit=1,
+        fetch_json=lambda _url: response,
+    )
+
+    assert len(documents) == 1
+    assert (
+        documents[0].source_url
+        == "https://pubblicitalegale.anticorruzione.it/esiti/49320bc2-6c80-4bc7-80f0-1e6a7eaeea82?ricercaArchivio=true"
+    )
+
+    payload = json.loads(documents[0].payload)
+    assert (
+        payload["sourcePublicUrl"]
+        == "https://pubblicitalegale.anticorruzione.it/esiti/49320bc2-6c80-4bc7-80f0-1e6a7eaeea82?ricercaArchivio=true"
+    )
+    assert (
+        payload["sourceApiUrl"]
+        == "https://pubblicitalegale.anticorruzione.it/api/v0/avvisi/49320bc2-6c80-4bc7-80f0-1e6a7eaeea82"
     )
 
 

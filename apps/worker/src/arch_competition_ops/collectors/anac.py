@@ -33,6 +33,16 @@ def _build_notice_detail_url(notice_id: str | None) -> str | None:
     return f"{ANAC_AVVISI_URL}/{notice_id.strip()}"
 
 
+def _build_notice_public_url(notice_id: str | None, procedure_type: str | None) -> str | None:
+    if not isinstance(notice_id, str) or not notice_id.strip():
+        return None
+
+    normalized_notice_id = notice_id.strip()
+    normalized_procedure_type = (procedure_type or "").strip().lower()
+    route = "esiti" if normalized_procedure_type.startswith("ad") else "bandi"
+    return f"https://pubblicitalegale.anticorruzione.it/{route}/{normalized_notice_id}?ricercaArchivio=true"
+
+
 def _extract_template(item: dict[str, Any]) -> dict[str, Any]:
     templates = item.get("template")
     if isinstance(templates, list) and templates:
@@ -152,14 +162,19 @@ def collect_anac_documents(
                 continue
 
             notice_id = item.get("idAvviso")
+            procedure_type = item.get("codiceScheda")
             document_link = _extract_document_link(template, flattened_items)
             detail_url = _build_notice_detail_url(str(notice_id) if notice_id is not None else None)
+            public_notice_url = _build_notice_public_url(
+                str(notice_id) if notice_id is not None else None,
+                str(procedure_type) if procedure_type is not None else None,
+            )
             payload = json.dumps(
                 {
                     "officialNoticeId": notice_id,
                     "title": title,
                     "buyer": _extract_authority_name(template),
-                    "procedureType": item.get("codiceScheda"),
+                    "procedureType": procedure_type,
                     "deadline": parse_date_string(str(item.get("dataScadenza") or "")),
                     "publicationDate": publication_date,
                     "estimatedValueEur": first_item.get("valore_affidamento"),
@@ -167,12 +182,13 @@ def collect_anac_documents(
                     "url": document_link or source.base_url,
                     "officialUrl": document_link or source.base_url,
                     "sourceApiUrl": detail_url,
+                    "sourcePublicUrl": public_notice_url,
                 },
                 ensure_ascii=False,
             )
             documents.append(
                 CollectedSourceDocument(
-                    source_url=detail_url or source.base_url,
+                    source_url=public_notice_url or detail_url or source.base_url,
                     payload=payload,
                 )
             )
