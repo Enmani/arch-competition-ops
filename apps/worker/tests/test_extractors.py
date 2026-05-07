@@ -288,11 +288,16 @@ def test_parse_bdncp_notice_payload() -> None:
       "deadline": "2026-05-22",
       "estimatedValueEur": 560000,
       "url": "https://example.it/gara/123",
+      "officialUrl": "https://example.it/gara/123",
       "summary": "Affidamento servizi di architettura e ingegneria"
     }
     """
 
-    record = parse_source_payload(source, payload)
+    record = parse_source_payload(
+        source,
+        payload,
+        source_url="https://pubblicitalegale.anticorruzione.it/api/v0/avvisi/fb7c96cb-1af5-4008-a0c4-2d4197479540",
+    )
 
     assert record.title == "Servizi di progettazione per nuovo polo civico"
     assert record.authority_name == "Comune di Ravenna"
@@ -300,6 +305,11 @@ def test_parse_bdncp_notice_payload() -> None:
     assert record.estimated_contract_value_eur == 560000
     assert record.licensed_architect_required is True
     assert record.procedure_type == "public_design_services_tender"
+    assert record.official_url == "https://example.it/gara/123"
+    assert (
+        record.source_url
+        == "https://pubblicitalegale.anticorruzione.it/api/v0/avvisi/fb7c96cb-1af5-4008-a0c4-2d4197479540"
+    )
 
 
 def test_parse_generic_listing_payload() -> None:

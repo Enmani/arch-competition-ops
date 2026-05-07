@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     filters_config: Path = Path("config") / "filters.yml"
     taxonomy_config: Path = Path("config") / "taxonomy.yml"
     browser_storage_dir: Path = Path("artifacts") / "crawlee"
+    geocode_cache: Path = Path("data") / "geocoding-cache.json"
 
     def resolve_path(self, path: Path) -> Path:
         if path.is_absolute():

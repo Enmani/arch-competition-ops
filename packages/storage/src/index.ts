@@ -34,6 +34,11 @@ type OpportunityRow = {
   estimated_contract_value_eur: number | null;
   estimated_contract_value_text: string | null;
   prize_summary: string | null;
+  location_label: string | null;
+  geo_lat: number | null;
+  geo_lng: number | null;
+  geo_source: string | null;
+  geo_confidence: number | null;
   deadline_at: string | null;
   eligibility_summary: string | null;
   brief_pdf_url: string | null;
@@ -125,10 +130,15 @@ export type StoredOpportunityFeedItem = ProfessionalOpportunity & {
   estimatedContractValueText: string | null;
   evidenceLevelKey: string;
   extractionConfidence: number;
+  geoConfidence: number | null;
+  geoLat: number | null;
+  geoLng: number | null;
+  geoSource: string | null;
   implementationPathKey: string | null;
   jurisdictionKey: string | null;
   languages: string[];
   licensedArchitectRequired: boolean | null;
+  locationLabel: string | null;
   localPartnerRequired: boolean | null;
   officialNoticeId: string | null;
   opportunityTypeKey: string;
@@ -858,10 +868,15 @@ const toOpportunityFeedItem = (row: OpportunityRow): StoredOpportunityFeedItem =
     estimatedContractValueText: row.estimated_contract_value_text,
     evidenceLevelKey: row.evidence_level,
     extractionConfidence: row.extraction_confidence,
+    geoConfidence: row.geo_confidence,
+    geoLat: row.geo_lat,
+    geoLng: row.geo_lng,
+    geoSource: row.geo_source,
     implementationPathKey: row.implementation_path,
     jurisdictionKey: row.jurisdiction,
     languages: safeJsonArray(row.languages),
     licensedArchitectRequired: toBoolean(row.licensed_architect_required),
+    locationLabel: row.location_label,
     localPartnerRequired: toBoolean(row.local_partner_required),
     officialNoticeId: row.official_notice_id,
     opportunityTypeKey: row.opportunity_type,
@@ -894,10 +909,15 @@ const toProfessionalOpportunity = ({
   estimatedContractValueText: _estimatedContractValueText,
   evidenceLevelKey: _evidenceLevelKey,
   extractionConfidence: _extractionConfidence,
+  geoConfidence: _geoConfidence,
+  geoLat: _geoLat,
+  geoLng: _geoLng,
+  geoSource: _geoSource,
   implementationPathKey: _implementationPathKey,
   jurisdictionKey: _jurisdictionKey,
   languages: _languages,
   licensedArchitectRequired: _licensedArchitectRequired,
+  locationLabel: _locationLabel,
   localPartnerRequired: _localPartnerRequired,
   officialNoticeId: _officialNoticeId,
   opportunityTypeKey: _opportunityTypeKey,
@@ -946,6 +966,16 @@ const readRow = <T>(statement: string, parameters: SqlParameter[] = []) => {
   }
 };
 
+const hasColumn = (tableName: string, columnName: string) => {
+  try {
+    return readRows<{ name: string }>(`PRAGMA table_info(${tableName})`).some(
+      (row) => row.name === columnName,
+    );
+  } catch {
+    return false;
+  }
+};
+
 const hasTable = (tableName: string) => {
   try {
     const row = readRow<{ name: string }>(
@@ -956,6 +986,21 @@ const hasTable = (tableName: string) => {
   } catch {
     return false;
   }
+};
+
+const buildOpportunitySelectList = () => {
+  if (hasColumn("competitions", "geo_lat")) {
+    return "*";
+  }
+
+  return `
+    *,
+    NULL AS location_label,
+    NULL AS geo_lat,
+    NULL AS geo_lng,
+    NULL AS geo_source,
+    NULL AS geo_confidence
+  `;
 };
 
 export const hasStoredOpportunities = () => {
@@ -1096,7 +1141,7 @@ const queryVisibleOpportunityRows = (
   const useSqlLimit = !hasDerivedFilters && sqlLimit !== undefined;
   const rows = readRows<OpportunityRow>(
     `
-      SELECT *
+      SELECT ${buildOpportunitySelectList()}
       FROM competitions
       ${whereClause}
       ORDER BY ${buildSortClause(sort)}
@@ -1133,7 +1178,10 @@ export const getStoredOpportunityFeedItemBySlug = (slug: string) => {
     return undefined;
   }
 
-  const row = readRow<OpportunityRow>("SELECT * FROM competitions WHERE id = ?", [slug]);
+  const row = readRow<OpportunityRow>(
+    `SELECT ${buildOpportunitySelectList()} FROM competitions WHERE id = ?`,
+    [slug],
+  );
   return row ? toOpportunityFeedItem(row) : undefined;
 };
 

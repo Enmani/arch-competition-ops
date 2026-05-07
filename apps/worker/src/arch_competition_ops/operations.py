@@ -12,6 +12,7 @@ from arch_competition_ops.config_loader import (
     load_taxonomy,
 )
 from arch_competition_ops.extractors import parse_source_payload
+from arch_competition_ops.geocoding import NominatimGeocoder, enrich_record_geocode
 from arch_competition_ops.models import CompetitionRecord
 from arch_competition_ops.normalizers import build_competition_key
 from arch_competition_ops.review_queue import refresh_review_queue
@@ -19,7 +20,9 @@ from arch_competition_ops.settings import Settings
 from arch_competition_ops.storage import (
     ensure_schema,
     find_duplicate_records,
+    list_competitions_missing_geocodes,
     record_source_run,
+    update_competition_geocode_fields,
     upsert_competition,
 )
 from arch_competition_ops.verifiers import VERIFIERS, verify_record
@@ -295,6 +298,58 @@ def rebuild_review_queue(settings: Settings) -> list[dict[str, object | None]]:
     return refresh_review_queue(db_path)
 
 
+def refresh_missing_geocodes(settings: Settings, *, limit: int = 50) -> int:
+    db_path = initialize_database(settings)
+    geocoder = NominatimGeocoder(
+        cache_path=settings.resolve_path(settings.geocode_cache),
+    )
+    updated_count = 0
+    scan_limit = max(limit * 6, limit)
+
+    for row in list_competitions_missing_geocodes(db_path, limit=scan_limit):
+        record = CompetitionRecord(
+            competition_id=row["id"],
+            title=row["title"],
+            organizer=row["organizer"],
+            authority_name=row["authority_name"],
+            source_url=row["source_url"],
+            jurisdiction=row["jurisdiction"],
+            location_label=row["location_label"],
+            geo_lat=row["geo_lat"],
+            geo_lng=row["geo_lng"],
+            geo_source=row["geo_source"],
+            geo_confidence=row["geo_confidence"],
+        )
+        enriched = enrich_record_geocode(
+            record,
+            cache_path=settings.resolve_path(settings.geocode_cache),
+            geocoder=geocoder,
+        )
+        if (
+            enriched.location_label == row["location_label"]
+            and enriched.geo_lat == row["geo_lat"]
+            and enriched.geo_lng == row["geo_lng"]
+            and enriched.geo_source == row["geo_source"]
+            and enriched.geo_confidence == row["geo_confidence"]
+        ):
+            continue
+
+        update_competition_geocode_fields(
+            db_path,
+            competition_id=row["id"],
+            location_label=enriched.location_label,
+            geo_lat=enriched.geo_lat,
+            geo_lng=enriched.geo_lng,
+            geo_source=enriched.geo_source,
+            geo_confidence=enriched.geo_confidence,
+        )
+        updated_count += 1
+        if updated_count >= limit:
+            break
+
+    return updated_count
+
+
 def ingest_source(
     settings: Settings,
     *,
@@ -324,6 +379,9 @@ def ingest_source(
         raise ValueError(f"Unknown source id: {source_id}")
 
     db_path = initialize_database(settings)
+    geocoder = NominatimGeocoder(
+        cache_path=settings.resolve_path(settings.geocode_cache),
+    )
     started_at = datetime.now(timezone.utc).isoformat()
     ingested_ids: list[str] = []
     dedup_keys: list[str] = []
@@ -351,6 +409,11 @@ def ingest_source(
                     payload=document.payload,
                     source_url=document.source_url,
                     record=record,
+                )
+                record = enrich_record_geocode(
+                    record,
+                    cache_path=settings.resolve_path(settings.geocode_cache),
+                    geocoder=geocoder,
                 )
             except Exception as exc:  # noqa: BLE001
                 parse_failure_count += 1

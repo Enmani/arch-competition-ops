@@ -13,6 +13,7 @@ from arch_competition_ops.operations import (
     ingest_source,
     initialize_database,
     rebuild_review_queue,
+    refresh_missing_geocodes,
     run_doctor,
     run_verify,
     seed_demo_records,
@@ -47,6 +48,11 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("verify", help="run repository integrity checks")
     subparsers.add_parser("seed-demo", help="insert demo competition records")
     subparsers.add_parser("refresh-review-queue", help="rebuild the operator review queue")
+    geocode_parser = subparsers.add_parser(
+        "refresh-geocodes",
+        help="geocode stored opportunity locations and update coordinate fields",
+    )
+    geocode_parser.add_argument("--limit", type=int, default=50)
     subparsers.add_parser("show-sources", help="list enabled source definitions")
     subparsers.add_parser("show-country-coverage", help="summarize active and empty country pack files")
     ingest_parser = subparsers.add_parser(
@@ -97,6 +103,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         _safe_print(f"Rebuilt {len(queue_items)} active review queue items")
         for item in queue_items[:20]:
             _safe_print(f"- {item['reason_code']} :: {item['queue_id']} :: {item['title']}")
+        return 0
+
+    if args.command == "refresh-geocodes":
+        updated_count = refresh_missing_geocodes(settings, limit=args.limit)
+        _safe_print(f"Updated geocodes for {updated_count} records")
         return 0
 
     if args.command == "show-sources":

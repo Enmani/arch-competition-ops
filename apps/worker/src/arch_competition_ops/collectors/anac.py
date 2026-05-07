@@ -27,6 +27,12 @@ def _default_fetch_json(url: str) -> Any:
     return fetch_json_get(url, headers=ANAC_HEADERS)
 
 
+def _build_notice_detail_url(notice_id: str | None) -> str | None:
+    if not isinstance(notice_id, str) or not notice_id.strip():
+        return None
+    return f"{ANAC_AVVISI_URL}/{notice_id.strip()}"
+
+
 def _extract_template(item: dict[str, Any]) -> dict[str, Any]:
     templates = item.get("template")
     if isinstance(templates, list) and templates:
@@ -145,10 +151,12 @@ def collect_anac_documents(
             if "aggiudicazione" in summary.lower() and not item.get("dataScadenza"):
                 continue
 
+            notice_id = item.get("idAvviso")
             document_link = _extract_document_link(template, flattened_items)
+            detail_url = _build_notice_detail_url(str(notice_id) if notice_id is not None else None)
             payload = json.dumps(
                 {
-                    "officialNoticeId": item.get("idAvviso"),
+                    "officialNoticeId": notice_id,
                     "title": title,
                     "buyer": _extract_authority_name(template),
                     "procedureType": item.get("codiceScheda"),
@@ -157,12 +165,14 @@ def collect_anac_documents(
                     "estimatedValueEur": first_item.get("valore_affidamento"),
                     "summary": summary,
                     "url": document_link or source.base_url,
+                    "officialUrl": document_link or source.base_url,
+                    "sourceApiUrl": detail_url,
                 },
                 ensure_ascii=False,
             )
             documents.append(
                 CollectedSourceDocument(
-                    source_url=document_link or source.base_url,
+                    source_url=detail_url or source.base_url,
                     payload=payload,
                 )
             )

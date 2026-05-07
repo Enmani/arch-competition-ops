@@ -10,7 +10,7 @@ import {
 
 type OpportunityPlaceholderInput = Pick<
   StoredOpportunityFeedItem,
-  "authorityName" | "jurisdictionKey" | "jurisdictionLabel" | "title"
+  "authorityName" | "geoLat" | "geoLng" | "jurisdictionKey" | "jurisdictionLabel" | "locationLabel" | "title"
 >;
 
 type CountryFeature = {
@@ -29,6 +29,7 @@ type CountryOutlineModel = {
   centroidX: number;
   centroidY: number;
   pathData: string;
+  project: (longitude: number, latitude: number) => [number, number] | null;
 };
 
 const atlasCountryNameByJurisdiction: Record<string, string> = {
@@ -169,6 +170,14 @@ const buildCountryOutlineModel = (jurisdictionKey: string): CountryOutlineModel 
     centroidX,
     centroidY,
     pathData,
+    project: (longitude: number, latitude: number) => {
+      const point = projection([longitude, latitude]);
+      if (!point || !point.every((value) => Number.isFinite(value))) {
+        return null;
+      }
+
+      return point as [number, number];
+    },
   };
 };
 
@@ -188,6 +197,41 @@ const resolveOutline = (opportunity: OpportunityPlaceholderInput | null | undefi
   return countryOutlineModelByJurisdiction.get(jurisdictionKey) ?? null;
 };
 
+const isProjectedPointInLocatorBounds = ([x, y]: [number, number]) =>
+  x >= 82 && x <= 638 && y >= 82 && y <= 566;
+
+const resolveLocationAnchor = (
+  outline: CountryOutlineModel | null,
+  opportunity: OpportunityPlaceholderInput | null | undefined,
+) => {
+  const fallback = {
+    isProjected: false,
+    x: outline?.centroidX ?? 470,
+    y: outline?.centroidY ?? 300,
+  };
+
+  if (
+    !outline ||
+    opportunity?.geoLat === null ||
+    opportunity?.geoLat === undefined ||
+    opportunity?.geoLng === null ||
+    opportunity?.geoLng === undefined
+  ) {
+    return fallback;
+  }
+
+  const projected = outline.project(opportunity.geoLng, opportunity.geoLat);
+  if (!projected || !isProjectedPointInLocatorBounds(projected)) {
+    return fallback;
+  }
+
+  return {
+    isProjected: true,
+    x: projected[0],
+    y: projected[1],
+  };
+};
+
 export const buildOpportunityLocatorPlaceholderSvg = (
   opportunity?: OpportunityPlaceholderInput | null,
 ) => {
@@ -198,11 +242,15 @@ export const buildOpportunityLocatorPlaceholderSvg = (
     jurisdictionLabel: opportunity?.jurisdictionLabel ?? null,
   });
   const countryLabel = clampLabel(opportunity?.jurisdictionLabel ?? null, 20);
-  const cityLabel = clampLabel(opportunity ? pickOpportunityExplicitCity(opportunity) : null, 24);
+  const cityLabel = clampLabel(
+    opportunity?.locationLabel ?? (opportunity ? pickOpportunityExplicitCity(opportunity) : null),
+    24,
+  );
   const markerLabelY = cityLabel ? 610 : 628;
   const labelConnectorY = markerLabelY - 28;
-  const anchorX = outline?.centroidX ?? 470;
-  const anchorY = outline?.centroidY ?? 300;
+  const anchor = resolveLocationAnchor(outline, opportunity);
+  const anchorX = anchor.x;
+  const anchorY = anchor.y;
   const gridCellOpacity = outline ? "0.038" : "0.09";
   const gridFrameOpacity = outline ? "0.1" : "0.18";
   const guideOpacity = outline ? "0.06" : "0.12";
@@ -245,7 +293,7 @@ export const buildOpportunityLocatorPlaceholderSvg = (
 
   ${outlineMarkup}
 
-  <g transform="translate(${anchorX} ${anchorY})">
+  <g transform="translate(${anchorX} ${anchorY})" data-marker-source="${anchor.isProjected ? "geo-coordinates" : "country-centroid"}">
     <rect x="-54" y="-54" width="108" height="108" fill="none" stroke="#285f47" stroke-opacity="0.34" stroke-width="2" />
     <circle r="44" fill="none" stroke="#285f47" stroke-opacity="0.34" stroke-width="2" />
     <circle r="11" fill="#285f47" />

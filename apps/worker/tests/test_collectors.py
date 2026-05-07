@@ -1066,6 +1066,7 @@ def test_collect_simap_documents_extracts_budget_text_from_order_description() -
         "L'objectif budgétaire de 16 millions de francs suisses pour la réalisation de "
         "l'ensemble du projet de construction doit être impérativement respecté."
     )
+    assert payload["officialUrl"] == "https://www.simap.ch/de/project-detail/maur-project"
     assert payload["prizeSummary"] == "Le montant total mis à disposition du jury est de CHF 130'000 hors TVA."
 
 
@@ -1204,7 +1205,10 @@ def test_collect_anac_documents_transforms_public_api_items() -> None:
     )
 
     assert len(documents) == 1
-    assert documents[0].source_url == "https://example.it/gara/123"
+    assert (
+        documents[0].source_url
+        == "https://pubblicitalegale.anticorruzione.it/api/v0/avvisi/fb7c96cb-1af5-4008-a0c4-2d4197479540"
+    )
 
     payload = json.loads(documents[0].payload)
     assert payload["title"] == "Servizi di progettazione per nuovo polo civico"
@@ -1212,6 +1216,11 @@ def test_collect_anac_documents_transforms_public_api_items() -> None:
     assert payload["officialNoticeId"] == "fb7c96cb-1af5-4008-a0c4-2d4197479540"
     assert payload["estimatedValueEur"] == 560000
     assert payload["deadline"] == "2026-05-22"
+    assert payload["officialUrl"] == "https://example.it/gara/123"
+    assert (
+        payload["sourceApiUrl"]
+        == "https://pubblicitalegale.anticorruzione.it/api/v0/avvisi/fb7c96cb-1af5-4008-a0c4-2d4197479540"
+    )
 
 
 def test_collect_competitions_archi_documents_uses_feed_entries_as_secondary_discovery() -> None:
@@ -1668,6 +1677,10 @@ sources:
         "arch_competition_ops.operations.collect_source_documents",
         fake_collect,
     )
+    monkeypatch.setattr(
+        "arch_competition_ops.operations.enrich_record_geocode",
+        lambda record, **_kwargs: record,
+    )
 
     exit_code = main(["ingest-source", "--source-id", "ted_design_notices", "--limit", "1"])
 
@@ -1676,6 +1689,130 @@ sources:
     rows = list_competitions(settings.resolve_path(settings.db), limit=5)
     assert len(rows) == 1
     assert rows[0]["title"] == "Municipal Waterfront Design Competition"
+
+
+def test_ingest_source_persists_geocoded_location_fields(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "config").mkdir()
+    (tmp_path / "data").mkdir()
+    (tmp_path / "config" / "sources.yml").write_text(
+        """
+sources:
+  - source_id: simap_public_design_notices
+    name: simap Swiss Public Procurement
+    kind: official_procurement
+    jurisdiction: switzerland
+    base_url: https://www.simap.ch/
+    scan_method: api
+    extractor: simap_notice_parser
+    source_tier: primary
+    enabled: true
+    regions: [europe, switzerland]
+    languages: [fr, de]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    payload = json.dumps(
+        {
+            "officialNoticeId": "34414-02",
+            "title": "Extension du complexe sportif et de loisirs Looren, 8124 Maur",
+            "buyer": "Gemeindeverwaltung Maur",
+            "location": "Maur",
+            "procedureType": "open",
+            "deadline": "2026-08-27",
+            "description": "Projet pour une extension sportive.",
+            "cpv": ["71200000"],
+        },
+        ensure_ascii=False,
+    )
+
+    def fake_collect(*_args, **_kwargs) -> list[CollectedSourceDocument]:
+        return [
+            CollectedSourceDocument(
+                source_url="https://www.simap.ch/example/34414-02",
+                payload=payload,
+            )
+        ]
+
+    def fake_enrich(record: CompetitionRecord, **_kwargs) -> CompetitionRecord:
+        assert record.location_label == "Maur"
+        record.geo_lat = 47.3407
+        record.geo_lng = 8.671
+        record.geo_source = "nominatim"
+        record.geo_confidence = 0.91
+        return record
+
+    monkeypatch.setattr(
+        "arch_competition_ops.operations.collect_source_documents",
+        fake_collect,
+    )
+    monkeypatch.setattr(
+        "arch_competition_ops.operations.enrich_record_geocode",
+        fake_enrich,
+    )
+
+    exit_code = main(["ingest-source", "--source-id", "simap_public_design_notices", "--limit", "1"])
+
+    assert exit_code == 0
+    settings = Settings(root=tmp_path)
+    with sqlite3.connect(settings.resolve_path(settings.db)) as connection:
+        connection.row_factory = sqlite3.Row
+        row = connection.execute(
+            "SELECT location_label, geo_lat, geo_lng, geo_source, geo_confidence FROM competitions LIMIT 1"
+        ).fetchone()
+
+    assert row["location_label"] == "Maur"
+    assert row["geo_lat"] == 47.3407
+    assert row["geo_lng"] == 8.671
+    assert row["geo_source"] == "nominatim"
+    assert row["geo_confidence"] == 0.91
+
+
+def test_refresh_geocodes_command_backfills_missing_coordinates(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "config").mkdir()
+    (tmp_path / "data").mkdir()
+    (tmp_path / "config" / "sources.yml").write_text("sources: []\n", encoding="utf-8")
+
+    settings = Settings(root=tmp_path)
+    upsert_competition(
+        settings.resolve_path(settings.db),
+        CompetitionRecord(
+            competition_id="maur-opportunity",
+            title="Extension du complexe sportif et de loisirs Looren, 8124 Maur",
+            organizer="SIMAP",
+            authority_name="Gemeindeverwaltung Maur",
+            source_url="https://www.simap.ch/example/maur",
+            jurisdiction="switzerland",
+        ),
+    )
+
+    def fake_enrich(record: CompetitionRecord, **_kwargs) -> CompetitionRecord:
+        record.location_label = "Maur"
+        record.geo_lat = 47.3407
+        record.geo_lng = 8.671
+        record.geo_source = "nominatim"
+        record.geo_confidence = 0.91
+        return record
+
+    monkeypatch.setattr(
+        "arch_competition_ops.operations.enrich_record_geocode",
+        fake_enrich,
+    )
+
+    exit_code = main(["refresh-geocodes", "--limit", "10"])
+
+    assert exit_code == 0
+    with sqlite3.connect(settings.resolve_path(settings.db)) as connection:
+        connection.row_factory = sqlite3.Row
+        row = connection.execute(
+            "SELECT location_label, geo_lat, geo_lng FROM competitions WHERE id = 'maur-opportunity'"
+        ).fetchone()
+
+    assert row["location_label"] == "Maur"
+    assert row["geo_lat"] == 47.3407
+    assert row["geo_lng"] == 8.671
 
 
 def test_ingest_source_records_source_health_with_parse_failures_and_duplicate_pressure(
@@ -1748,6 +1885,10 @@ sources:
     monkeypatch.setattr(
         "arch_competition_ops.operations.verify_record",
         lambda **kwargs: kwargs["record"],
+    )
+    monkeypatch.setattr(
+        "arch_competition_ops.operations.enrich_record_geocode",
+        lambda record, **_kwargs: record,
     )
 
     exit_code = main(["ingest-source", "--source-id", "ted_design_notices", "--limit", "3"])
@@ -1881,6 +2022,10 @@ sources:
     monkeypatch.setattr(
         "arch_competition_ops.operations.verify_record",
         lambda **kwargs: kwargs["record"],
+    )
+    monkeypatch.setattr(
+        "arch_competition_ops.operations.enrich_record_geocode",
+        lambda record, **_kwargs: record,
     )
 
     exit_code = main(["ingest-source", "--source-id", "ted_design_notices", "--limit", "1"])
@@ -2029,6 +2174,10 @@ sources:
         "arch_competition_ops.verifiers.simap._fetch_text",
         fake_fetch_text,
     )
+    monkeypatch.setattr(
+        "arch_competition_ops.operations.enrich_record_geocode",
+        lambda record, **_kwargs: record,
+    )
 
     exit_code = main(["ingest-source", "--source-id", "simap_public_design_notices", "--limit", "1"])
 
@@ -2171,6 +2320,10 @@ sources:
     monkeypatch.setattr(
         "arch_competition_ops.verifiers.simap.render_page",
         fake_render_page,
+    )
+    monkeypatch.setattr(
+        "arch_competition_ops.operations.enrich_record_geocode",
+        lambda record, **_kwargs: record,
     )
 
     exit_code = main(["ingest-source", "--source-id", "simap_public_design_notices", "--limit", "1"])

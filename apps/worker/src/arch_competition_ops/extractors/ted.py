@@ -54,6 +54,7 @@ def parse_ted_notice(payload: str, source: SourceDefinition, source_url: str) ->
 
     title = None
     authority_name = None
+    location_label = None
     official_notice_id = None
     procedure_type = None
     eligibility_summary = None
@@ -65,6 +66,7 @@ def parse_ted_notice(payload: str, source: SourceDefinition, source_url: str) ->
     if data:
         title = pick_first_value(data, ["title", "noticeTitle", "notice.title"])
         authority_name = pick_first_value(data, ["buyer", "authority", "contractingAuthority"])
+        location_label = pick_first_value(data, ["location", "place", "city", "municipality"])
         official_notice_id = pick_first_value(data, ["noticeId", "notice-id", "id"])
         procedure_type = pick_first_value(data, ["procedureType", "procedure-type"])
         eligibility_summary = pick_first_value(data, ["eligibility", "requirements"])
@@ -127,4 +129,5 @@ def parse_ted_notice(payload: str, source: SourceDefinition, source_url: str) ->
         evidence_note="Parsed from the TED Search API payload after architecture-focused filtering. Verify dossier attachments before publishing.",
         jurisdiction=_infer_ted_jurisdiction(title),
         estimated_contract_value_text=value_raw,
+        location_label=location_label,
     )

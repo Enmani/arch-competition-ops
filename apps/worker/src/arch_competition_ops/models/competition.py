@@ -30,6 +30,11 @@ class CompetitionRecord(BaseModel):
     estimated_contract_value_eur: float | None = None
     estimated_contract_value_text: str | None = None
     prize_summary: str | None = None
+    location_label: str | None = None
+    geo_lat: float | None = None
+    geo_lng: float | None = None
+    geo_source: str | None = None
+    geo_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     deadline_at: date | None = None
     eligibility_summary: str | None = None
     brief_pdf_url: str | None = None

@@ -29,8 +29,6 @@ export const SupportSurface = ({ dictionary, locale }: SupportSurfaceProps) => {
         </div>
 
         <aside className="support-principles">
-          <span className="section-kicker">{copy.principles.eyebrow}</span>
-          <h2>{copy.principles.title}</h2>
           <dl className="support-principle-list">
             {copy.principles.items.map((item) => (
               <div key={item.label} className="support-principle-item">

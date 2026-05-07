@@ -163,6 +163,7 @@ def build_base_record(
     brief_pdf_url: str | None = None,
     documents_portal_url: str | None = None,
     estimated_contract_value_text: str | None = None,
+    location_label: str | None = None,
 ) -> CompetitionRecord:
     normalized_title = normalize_whitespace(title) or title
     normalized_opportunity_type = (
@@ -207,6 +208,7 @@ def build_base_record(
         submission_fee_eur=0.0,
         estimated_contract_value_eur=estimated_contract_value_eur,
         estimated_contract_value_text=normalize_whitespace(estimated_contract_value_text),
+        location_label=normalize_whitespace(location_label),
         deadline_at=deadline_at,
         eligibility_summary=normalize_whitespace(eligibility_summary),
         brief_pdf_url=brief_pdf_url,

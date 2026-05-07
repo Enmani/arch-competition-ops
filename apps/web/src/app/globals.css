@@ -1532,7 +1532,7 @@ input[type="checkbox"] {
 
 .support-page {
   gap: var(--space-3xl);
-  padding: calc(var(--space-xl) + 0.35rem) 0 var(--space-3xl);
+  padding: 0.35rem 0 var(--space-3xl);
 }
 
 .support-stage {
@@ -1560,14 +1560,16 @@ input[type="checkbox"] {
 }
 
 .support-hero {
-  grid-template-columns: minmax(0, 1.35fr) minmax(18rem, 0.65fr);
+  grid-template-columns: minmax(0, 1.95fr) minmax(34rem, 0.8fr);
   gap: var(--space-2xl);
-  align-items: end;
-  min-height: calc(100svh - var(--shell-topbar-height) - 4.5rem);
+  align-items: stretch;
+  min-height: calc(100svh - var(--shell-topbar-height) - 2.2rem);
+  padding-top: clamp(3.4rem, 5.2svh, 5rem);
 }
 
 .support-hero-copy {
-  max-width: 52rem;
+  max-width: none;
+  align-self: start;
 }
 
 .support-hero-copy h1,
@@ -1580,8 +1582,10 @@ input[type="checkbox"] {
 }
 
 .support-hero-copy h1 {
-  font-size: clamp(3rem, 7vw, 7rem);
-  max-width: 12ch;
+  font-size: clamp(3rem, 5.8vw, 5.8rem);
+  max-width: none;
+  white-space: pre-line;
+  line-height: 1.02;
 }
 
 .support-section-head {
@@ -1616,14 +1620,11 @@ input[type="checkbox"] {
   padding: var(--space-lg);
   border: 1px solid var(--line-strong);
   background: color-mix(in oklch, var(--surface) 95%, var(--surface-alt) 5%);
-}
-
-.support-principles h2 {
-  margin: 0;
-  font-family: var(--font-display), sans-serif;
-  font-size: clamp(1.35rem, 2vw, 1.9rem);
-  text-transform: uppercase;
-  line-height: 0.95;
+  width: 100%;
+  max-width: 34rem;
+  justify-self: end;
+  align-self: end;
+  margin-top: auto;
 }
 
 .support-principle-list,
@@ -1634,8 +1635,8 @@ input[type="checkbox"] {
 
 .support-principle-item {
   gap: 0.25rem;
-  padding-top: var(--space-md);
-  border-top: 1px solid var(--line);
+  padding-top: 0;
+  border-top: 0;
 }
 
 .support-principle-item:first-child {
@@ -1648,6 +1649,11 @@ input[type="checkbox"] {
   font-size: 0.76rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.support-principle-item dd {
+  white-space: nowrap;
 }
 
 .support-rationale-grid {

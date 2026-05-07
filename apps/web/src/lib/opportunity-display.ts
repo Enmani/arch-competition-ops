@@ -20,6 +20,19 @@ const normalizeLooseText = (value: string) =>
     .replace(/\p{Diacritic}/gu, "")
     .toLowerCase();
 
+const isMachineReadableSourceUrl = (value: string | null | undefined) => {
+  if (!value) {
+    return false;
+  }
+
+  try {
+    const url = new URL(value);
+    return url.pathname.includes("/api/");
+  } catch {
+    return false;
+  }
+};
+
 export const joinValues = (
   values: string[],
   formatter: (value: string) => string = (value) => value,
@@ -143,18 +156,25 @@ export const getOpportunityDisplayMeta = (
         )}`
       : dictionary.common.seedSample;
   const explicitCity = pickOpportunityExplicitCity(opportunity);
+  const explicitLocation = opportunity.locationLabel;
   const locationLabel =
-    explicitCity && normalizeLooseText(explicitCity) !== normalizeLooseText(jurisdictionLabel)
+    explicitLocation && normalizeLooseText(explicitLocation) !== normalizeLooseText(jurisdictionLabel)
+      ? `${jurisdictionLabel} · ${explicitLocation}`
+      : explicitCity && normalizeLooseText(explicitCity) !== normalizeLooseText(jurisdictionLabel)
       ? `${jurisdictionLabel} · ${explicitCity}`
-      : jurisdictionLabel || explicitCity || dictionary.common.unknown;
+      : jurisdictionLabel || explicitLocation || explicitCity || dictionary.common.unknown;
   const documentsPortalLink =
     opportunity.documentsPortalUrl &&
     opportunity.documentsPortalUrl !== opportunity.officialUrl &&
     opportunity.documentsPortalUrl !== opportunity.briefPdfUrl
       ? opportunity.documentsPortalUrl
       : null;
+  const officialPageLink =
+    opportunity.officialUrl && !isMachineReadableSourceUrl(opportunity.officialUrl)
+      ? opportunity.officialUrl
+      : null;
   const sourceTraceLink =
-    opportunity.sourceUrl !== opportunity.officialUrl &&
+    opportunity.sourceUrl !== officialPageLink &&
     opportunity.sourceUrl !== documentsPortalLink &&
     opportunity.sourceUrl !== opportunity.briefPdfUrl
       ? opportunity.sourceUrl
@@ -176,6 +196,7 @@ export const getOpportunityDisplayMeta = (
     implementationPathLabel,
     jurisdictionLabel,
     locationLabel,
+    officialPageLink,
     opportunityTypeLabel,
     participationCostLabel,
     procedureLabel,

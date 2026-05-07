@@ -38,6 +38,11 @@ const createTempDb = () => {
       estimated_contract_value_eur REAL,
       estimated_contract_value_text TEXT,
       prize_summary TEXT,
+      location_label TEXT,
+      geo_lat REAL,
+      geo_lng REAL,
+      geo_source TEXT,
+      geo_confidence REAL,
       deadline_at TEXT,
       eligibility_summary TEXT,
       brief_pdf_url TEXT,
@@ -51,7 +56,6 @@ const createTempDb = () => {
       updated_at TEXT NOT NULL
     );
   `);
-
   database.exec(`
     CREATE TABLE source_runs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -124,11 +128,12 @@ const createTempDb = () => {
       opportunity_type, jurisdiction, procedure_type, official_notice_id, regions, languages,
       competition_types, audience, cpv_codes, implementation_path, licensed_architect_required,
       local_partner_required, registration_fee_eur, submission_fee_eur, estimated_contract_value_eur,
-      estimated_contract_value_text, prize_summary, deadline_at, eligibility_summary, brief_pdf_url,
+      estimated_contract_value_text, prize_summary, location_label, geo_lat, geo_lng, geo_source,
+      geo_confidence, deadline_at, eligibility_summary, brief_pdf_url,
       documents_portal_url, extraction_confidence, evidence_level, qualification_score, evidence_note,
       last_verified_at, discovered_at, updated_at
     ) VALUES (
-      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
     );
   `);
 
@@ -159,6 +164,11 @@ const createTempDb = () => {
     0,
     0,
     1850000,
+    null,
+    null,
+    null,
+    null,
+    null,
     null,
     null,
     "2026-06-30",
@@ -199,6 +209,11 @@ const createTempDb = () => {
     4200000,
     null,
     null,
+    null,
+    null,
+    null,
+    null,
+    null,
     "2026-07-15",
     "Healthcare references requested.",
     null,
@@ -237,6 +252,11 @@ const createTempDb = () => {
     980000,
     null,
     null,
+    null,
+    null,
+    null,
+    null,
+    null,
     "2026-05-12",
     "Architect qualification required.",
     "https://example.com/switzerland/brief.pdf",
@@ -273,6 +293,11 @@ const createTempDb = () => {
     0,
     0,
     650000,
+    null,
+    null,
+    null,
+    null,
+    null,
     null,
     null,
     "2026-04-10",
@@ -314,6 +339,11 @@ const createTempDb = () => {
     "GBP 1,000,000",
     null,
     null,
+    null,
+    null,
+    null,
+    null,
+    null,
     "Deadline not stated in source.",
     null,
     null,
@@ -349,6 +379,11 @@ const createTempDb = () => {
     0,
     0,
     2200000,
+    null,
+    null,
+    null,
+    null,
+    null,
     null,
     null,
     "2026-06-20",
@@ -389,6 +424,11 @@ const createTempDb = () => {
     890000,
     null,
     null,
+    null,
+    null,
+    null,
+    null,
+    null,
     "2026-08-01",
     "Landscape architecture and public realm design.",
     null,
@@ -425,6 +465,11 @@ const createTempDb = () => {
     0,
     0,
     2600000,
+    null,
+    null,
+    null,
+    null,
+    null,
     null,
     null,
     "2026-08-12",
@@ -465,6 +510,11 @@ const createTempDb = () => {
     1750000,
     null,
     null,
+    null,
+    null,
+    null,
+    null,
+    null,
     "2026-08-18",
     "Sports and leisure complex extension.",
     null,
@@ -503,6 +553,11 @@ const createTempDb = () => {
     1420000,
     null,
     null,
+    null,
+    null,
+    null,
+    null,
+    null,
     "2026-08-24",
     "Heritage restoration and interpretation scope.",
     null,
@@ -539,6 +594,11 @@ const createTempDb = () => {
     0,
     0,
     3300000,
+    null,
+    null,
+    null,
+    null,
+    null,
     null,
     null,
     "2026-08-30",
@@ -1150,6 +1210,13 @@ test("queryStoredOpportunityFeed can include expired notices when explicitly req
 
 test("getStoredOpportunityFeedItemBySlug returns localized-feed fields for detail pages", async () => {
   const { dbPath, cleanup } = createTempDb();
+  const database = new Database(dbPath);
+  database
+    .prepare(
+      "UPDATE competitions SET location_label = ?, geo_lat = ?, geo_lng = ?, geo_source = ?, geo_confidence = ? WHERE id = ?",
+    )
+    .run("Maur", 47.3407, 8.671, "nominatim", 0.91, "switzerland-campus");
+  database.close();
   process.env.ARCH_COMPETITION_DB_PATH = dbPath;
 
   try {
@@ -1164,6 +1231,11 @@ test("getStoredOpportunityFeedItemBySlug returns localized-feed fields for detai
     assert.deepEqual(opportunity?.buildingCategories, ["education"]);
     assert.equal(opportunity?.briefPdfUrl, "https://example.com/switzerland/brief.pdf");
     assert.equal(opportunity?.documentsPortalUrl, "https://example.com/switzerland/documents");
+    assert.equal(opportunity?.locationLabel, "Maur");
+    assert.equal(opportunity?.geoLat, 47.3407);
+    assert.equal(opportunity?.geoLng, 8.671);
+    assert.equal(opportunity?.geoSource, "nominatim");
+    assert.equal(opportunity?.geoConfidence, 0.91);
   } finally {
     delete process.env.ARCH_COMPETITION_DB_PATH;
     cleanup();
@@ -1185,6 +1257,118 @@ test("storage falls back to raw contract value text when eur normalization is un
   } finally {
     delete process.env.ARCH_COMPETITION_DB_PATH;
     cleanup();
+  }
+});
+
+test("storage reads legacy competition tables without geocode columns", async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "arch-competition-storage-legacy-geo-"));
+  const dbPath = path.join(directory, "competitions.sqlite");
+  const database = new Database(dbPath);
+  database.exec(`
+    CREATE TABLE competitions (
+      id TEXT PRIMARY KEY,
+      dedup_key TEXT NOT NULL,
+      title TEXT NOT NULL,
+      organizer TEXT NOT NULL,
+      authority_name TEXT,
+      official_url TEXT,
+      source_url TEXT NOT NULL,
+      status TEXT NOT NULL,
+      opportunity_type TEXT NOT NULL,
+      jurisdiction TEXT,
+      procedure_type TEXT,
+      official_notice_id TEXT,
+      regions TEXT NOT NULL,
+      languages TEXT NOT NULL,
+      competition_types TEXT NOT NULL,
+      audience TEXT NOT NULL,
+      cpv_codes TEXT NOT NULL,
+      implementation_path TEXT,
+      licensed_architect_required INTEGER,
+      local_partner_required INTEGER,
+      registration_fee_eur REAL,
+      submission_fee_eur REAL,
+      estimated_contract_value_eur REAL,
+      estimated_contract_value_text TEXT,
+      prize_summary TEXT,
+      deadline_at TEXT,
+      eligibility_summary TEXT,
+      brief_pdf_url TEXT,
+      documents_portal_url TEXT,
+      extraction_confidence REAL NOT NULL,
+      evidence_level TEXT NOT NULL,
+      qualification_score REAL,
+      evidence_note TEXT,
+      last_verified_at TEXT,
+      discovered_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+  `);
+  database
+    .prepare(`
+      INSERT INTO competitions (
+        id, dedup_key, title, organizer, authority_name, official_url, source_url, status,
+        opportunity_type, jurisdiction, procedure_type, official_notice_id, regions, languages,
+        competition_types, audience, cpv_codes, implementation_path, licensed_architect_required,
+        local_partner_required, registration_fee_eur, submission_fee_eur, estimated_contract_value_eur,
+        estimated_contract_value_text, prize_summary, deadline_at, eligibility_summary, brief_pdf_url,
+        documents_portal_url, extraction_confidence, evidence_level, qualification_score, evidence_note,
+        last_verified_at, discovered_at, updated_at
+      ) VALUES (
+        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      )
+    `)
+    .run(
+      "legacy-geo-row",
+      "legacy-geo-row",
+      "Legacy Competition Without Coordinates",
+      "TED",
+      "Comune Demo",
+      "https://example.com/official",
+      "https://example.com/source",
+      "verified",
+      "public_design_contest",
+      "italy",
+      "design_contest",
+      "TED-LEGACY",
+      "[]",
+      "[]",
+      "[]",
+      "[]",
+      "[]",
+      null,
+      1,
+      0,
+      0,
+      0,
+      null,
+      null,
+      null,
+      "2026-08-01",
+      null,
+      null,
+      null,
+      0.8,
+      "official_notice",
+      0.8,
+      null,
+      "2026-04-19T00:00:00+00:00",
+      "2026-04-19T00:00:00+00:00",
+      "2026-04-19T00:00:00+00:00",
+    );
+  database.close();
+  process.env.ARCH_COMPETITION_DB_PATH = dbPath;
+
+  try {
+    const { getStoredOpportunityFeedItemBySlug } = await loadStorageModule();
+    const opportunity = getStoredOpportunityFeedItemBySlug("legacy-geo-row");
+
+    assert.equal(opportunity?.geoLat, null);
+    assert.equal(opportunity?.geoLng, null);
+    assert.equal(opportunity?.locationLabel, null);
+  } finally {
+    delete process.env.ARCH_COMPETITION_DB_PATH;
+    rmSync(directory, { recursive: true, force: true });
   }
 });
 
@@ -1279,11 +1463,12 @@ test("getStoredDuplicatePressureSummary derives review pressure from canonical d
         opportunity_type, jurisdiction, procedure_type, official_notice_id, regions, languages,
         competition_types, audience, cpv_codes, implementation_path, licensed_architect_required,
         local_partner_required, registration_fee_eur, submission_fee_eur, estimated_contract_value_eur,
-        estimated_contract_value_text, prize_summary, deadline_at, eligibility_summary, brief_pdf_url,
+        estimated_contract_value_text, prize_summary, location_label, geo_lat, geo_lng, geo_source,
+        geo_confidence, deadline_at, eligibility_summary, brief_pdf_url,
         documents_portal_url, extraction_confidence, evidence_level, qualification_score, evidence_note,
         last_verified_at, discovered_at, updated_at
       ) VALUES (
-        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
       );
     `)
     .run(
@@ -1312,6 +1497,11 @@ test("getStoredDuplicatePressureSummary derives review pressure from canonical d
       500000,
       null,
       null,
+      null,
+      null,
+      null,
+      null,
+      null,
       "2026-10-01",
       null,
       null,
@@ -1331,11 +1521,12 @@ test("getStoredDuplicatePressureSummary derives review pressure from canonical d
         opportunity_type, jurisdiction, procedure_type, official_notice_id, regions, languages,
         competition_types, audience, cpv_codes, implementation_path, licensed_architect_required,
         local_partner_required, registration_fee_eur, submission_fee_eur, estimated_contract_value_eur,
-        estimated_contract_value_text, prize_summary, deadline_at, eligibility_summary, brief_pdf_url,
+        estimated_contract_value_text, prize_summary, location_label, geo_lat, geo_lng, geo_source,
+        geo_confidence, deadline_at, eligibility_summary, brief_pdf_url,
         documents_portal_url, extraction_confidence, evidence_level, qualification_score, evidence_note,
         last_verified_at, discovered_at, updated_at
       ) VALUES (
-        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
       );
     `)
     .run(
@@ -1362,6 +1553,11 @@ test("getStoredDuplicatePressureSummary derives review pressure from canonical d
       0,
       0,
       500000,
+      null,
+      null,
+      null,
+      null,
+      null,
       null,
       null,
       "2026-10-01",

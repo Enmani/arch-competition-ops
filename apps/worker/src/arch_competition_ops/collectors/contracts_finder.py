@@ -120,6 +120,22 @@ def _pick_estimated_value(tender: dict) -> tuple[float | None, str | None]:
     return None, None
 
 
+def _pick_delivery_location(tender: dict) -> str | None:
+    addresses = tender.get("deliveryAddresses")
+    if not isinstance(addresses, list):
+        return None
+
+    for address in addresses:
+        if not isinstance(address, dict):
+            continue
+        for key in ("locality", "region"):
+            value = address.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+
+    return None
+
+
 def collect_contracts_finder_documents(
     source: SourceDefinition,
     *,
@@ -166,6 +182,7 @@ def collect_contracts_finder_documents(
                 "deadline": tender.get("tenderPeriod", {}).get("endDate"),
                 "estimatedValueEur": estimated_value_eur,
                 "estimatedValueText": estimated_value_text,
+                "location": _pick_delivery_location(tender),
                 "summary": description,
                 "officialUrl": official_url,
                 "cpv": [cpv_code] if cpv_code else [],

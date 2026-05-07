@@ -16,7 +16,7 @@ type OpportunityStreamItemProps = {
   workspaceWritesEnabled: boolean;
 };
 
-const opportunityImageRevision = "20260420g";
+const opportunityImageRevision = "20260502geo";
 
 export const OpportunityStreamItem = ({
   dictionary,

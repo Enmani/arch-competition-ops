@@ -104,7 +104,9 @@ export const SiteShell = ({ authUserEmail, children, copy, locale }: SiteShellPr
             <Link className="brand-title" href={buildLocalePath(locale, "/discover")}>
               {copy.brandTitle}
             </Link>
-            {discoverSurface ? null : <span className="brand-caption">{describeSurface()}</span>}
+            {discoverSurface || supportSurface ? null : (
+              <span className="brand-caption">{describeSurface()}</span>
+            )}
           </div>
           <div className="nav-cluster">
             <nav className="nav-row" aria-label={copy.ariaLabels.primaryNav}>

@@ -109,6 +109,13 @@ export {
 };
 
 export const getCloudflareD1Database = async () => {
+  if (
+    process.env.NODE_ENV === "development" &&
+    process.env.ARCH_COMPETITION_USE_D1_IN_DEV !== "1"
+  ) {
+    return null;
+  }
+
   try {
     const { env } = await getCloudflareContext({ async: true });
     return env.DB ?? null;
@@ -117,17 +124,14 @@ export const getCloudflareD1Database = async () => {
   }
 };
 
-const getLocalStoragePackageName = () => {
+const loadLocalStorage = async () => {
   const configuredPackageName = process.env.ARCH_COMPETITION_LOCAL_STORAGE_PACKAGE;
   if (configuredPackageName) {
-    return configuredPackageName;
+    return import(/* webpackIgnore: true */ configuredPackageName) as Promise<LocalStorageModule>;
   }
 
-  return ["@arch-competition", "storage"].join("/");
+  return import("@arch-competition/storage") as Promise<LocalStorageModule>;
 };
-
-const loadLocalStorage = async () =>
-  import(/* webpackIgnore: true */ getLocalStoragePackageName()) as Promise<LocalStorageModule>;
 
 const withStorage = async <T>(
   handlers: {

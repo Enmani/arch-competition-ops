@@ -7,7 +7,9 @@ from arch_competition_ops.settings import Settings
 from arch_competition_ops.storage import (
     ensure_schema,
     list_competitions,
+    list_competitions_missing_geocodes,
     restore_legacy_competitions,
+    update_competition_geocode_fields,
     upsert_competition,
 )
 
@@ -139,6 +141,11 @@ def test_upsert_and_list_round_trip(tmp_path) -> None:
             official_url="https://example.com/official",
             estimated_contract_value_text="GBP 1,000,000",
             documents_portal_url="https://example.com/docs",
+            location_label="Maur",
+            geo_lat=47.3407,
+            geo_lng=8.671,
+            geo_source="nominatim",
+            geo_confidence=0.91,
             deadline_at=date(2026, 8, 1),
         ),
     )
@@ -151,11 +158,21 @@ def test_upsert_and_list_round_trip(tmp_path) -> None:
 
     with sqlite3.connect(db_path) as connection:
         row = connection.execute(
-            "SELECT estimated_contract_value_text FROM competitions WHERE id = ?",
+            """
+            SELECT estimated_contract_value_text, location_label, geo_lat, geo_lng, geo_source,
+                   geo_confidence
+            FROM competitions
+            WHERE id = ?
+            """,
             (competition_id,),
         ).fetchone()
 
     assert row[0] == "GBP 1,000,000"
+    assert row[1] == "Maur"
+    assert row[2] == 47.3407
+    assert row[3] == 8.671
+    assert row[4] == "nominatim"
+    assert row[5] == 0.91
 
 
 def test_ensure_schema_upgrades_legacy_table_in_place(tmp_path) -> None:
@@ -180,16 +197,106 @@ def test_ensure_schema_upgrades_legacy_table_in_place(tmp_path) -> None:
             "SELECT name FROM sqlite_master WHERE type='table' AND name='competitions_legacy'"
         ).fetchone()
         row = connection.execute(
-            "SELECT id, title, documents_portal_url FROM competitions WHERE id = ?",
+            "SELECT id, title, documents_portal_url, geo_lat FROM competitions WHERE id = ?",
             ("legacy-row",),
         ).fetchone()
 
     assert "documents_portal_url" in columns
     assert "estimated_contract_value_text" in columns
+    assert "location_label" in columns
+    assert "geo_lat" in columns
+    assert "geo_lng" in columns
+    assert "geo_source" in columns
+    assert "geo_confidence" in columns
     assert legacy_table is None
     assert row["id"] == "legacy-row"
     assert row["title"] == "Legacy Competition"
     assert row["documents_portal_url"] is None
+    assert row["geo_lat"] is None
+
+
+def test_update_geocode_fields_updates_only_location_columns(tmp_path) -> None:
+    db_path = tmp_path / "competitions.sqlite"
+    competition_id = upsert_competition(
+        db_path,
+        CompetitionRecord(
+            title="Extension du complexe sportif et de loisirs Looren, 8124 Maur",
+            organizer="SIMAP",
+            authority_name="Gemeindeverwaltung Maur",
+            source_url="https://example.com/maur",
+            jurisdiction="switzerland",
+            deadline_at=date(2026, 8, 1),
+        ),
+    )
+
+    missing_rows = list_competitions_missing_geocodes(db_path, limit=5)
+    assert [row["id"] for row in missing_rows] == [competition_id]
+
+    update_competition_geocode_fields(
+        db_path,
+        competition_id=competition_id,
+        location_label="Maur",
+        geo_lat=47.3407,
+        geo_lng=8.671,
+        geo_source="nominatim",
+        geo_confidence=0.91,
+    )
+
+    with sqlite3.connect(db_path) as connection:
+        connection.row_factory = sqlite3.Row
+        row = connection.execute(
+            """
+            SELECT title, location_label, geo_lat, geo_lng, geo_source, geo_confidence
+            FROM competitions
+            WHERE id = ?
+            """,
+            (competition_id,),
+        ).fetchone()
+
+    assert row["title"] == "Extension du complexe sportif et de loisirs Looren, 8124 Maur"
+    assert row["location_label"] == "Maur"
+    assert row["geo_lat"] == 47.3407
+    assert row["geo_lng"] == 8.671
+    assert row["geo_source"] == "nominatim"
+    assert row["geo_confidence"] == 0.91
+    assert list_competitions_missing_geocodes(db_path, limit=5) == []
+
+
+def test_missing_geocode_rows_prioritize_visible_upcoming_deadlines(tmp_path) -> None:
+    db_path = tmp_path / "competitions.sqlite"
+    undated_id = upsert_competition(
+        db_path,
+        CompetitionRecord(
+            title="Undated planning services",
+            organizer="TED",
+            source_url="https://example.com/undated",
+            jurisdiction="france",
+        ),
+    )
+    upcoming_id = upsert_competition(
+        db_path,
+        CompetitionRecord(
+            title="Proyecto y dirección de obra de Fuentespalda",
+            organizer="PCSP",
+            source_url="https://example.com/upcoming",
+            jurisdiction="spain",
+            deadline_at=date(2026, 5, 11),
+        ),
+    )
+    expired_id = upsert_competition(
+        db_path,
+        CompetitionRecord(
+            title="Expired planning services",
+            organizer="TED",
+            source_url="https://example.com/expired",
+            jurisdiction="italy",
+            deadline_at=date(2024, 4, 24),
+        ),
+    )
+
+    missing_rows = list_competitions_missing_geocodes(db_path, limit=3)
+
+    assert [row["id"] for row in missing_rows] == [upcoming_id, undated_id, expired_id]
 
 
 def test_ensure_schema_creates_source_diagnostics_tables(tmp_path) -> None:

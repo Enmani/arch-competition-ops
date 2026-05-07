@@ -24,6 +24,7 @@ SIMAP_PROJECT_HEADER_URL = "https://www.simap.ch/api/publications/v2/project/{pr
 SIMAP_PUBLICATION_DETAIL_URL = (
     "https://www.simap.ch/api/publications/v1/project/{project_id}/publication-details/{publication_id}"
 )
+SIMAP_PROJECT_DETAIL_URL = "https://www.simap.ch/de/project-detail/{project_id}"
 ALLOWED_PROJECT_SUBTYPES = (
     "project_competition",
     "overall_performance_competition",
@@ -32,6 +33,13 @@ ALLOWED_PROJECT_SUBTYPES = (
 
 def _default_fetch_json(url: str) -> Any:
     return fetch_json_get(url, headers={"Accept": "application/json", "User-Agent": "Mozilla/5.0"})
+
+
+def _build_simap_project_detail_url(project_id: str) -> str | None:
+    cleaned_project_id = project_id.strip()
+    if not cleaned_project_id:
+        return None
+    return SIMAP_PROJECT_DETAIL_URL.format(project_id=cleaned_project_id)
 
 
 def _pick_simap_official_url(detail: dict[str, Any]) -> str | None:
@@ -184,6 +192,9 @@ def collect_simap_documents(
             detail_procurement = detail.get("procurement", {}) if isinstance(detail, dict) else {}
             detail_dates = detail.get("dates", {}) if isinstance(detail, dict) else {}
             detail_base = detail.get("base", {}) if isinstance(detail, dict) else {}
+            proc_office_address = detail_project_info.get("procOfficeAddress", {})
+            if not isinstance(proc_office_address, dict):
+                proc_office_address = {}
 
             title = pick_localized_text(detail_project_info.get("title")) or pick_localized_text(latest_publication.get("title")) or pick_localized_text(
                 project.get("title")
@@ -203,8 +214,11 @@ def collect_simap_documents(
                     or project.get("publicationNumber")
                     or project.get("projectNumber"),
                     "title": title,
-                    "buyer": pick_localized_text(detail_project_info.get("procOfficeAddress", {}).get("name"))
+                    "buyer": pick_localized_text(proc_office_address.get("name"))
                     or pick_localized_text(project.get("procOfficeName")),
+                    "location": pick_localized_text(proc_office_address.get("city"))
+                    or pick_localized_text(proc_office_address.get("locality"))
+                    or pick_localized_text(proc_office_address.get("place")),
                     "procedureType": detail_base.get("processType") or project.get("processType"),
                     "projectSubType": detail_base.get("projectSubType") or project.get("projectSubType"),
                     "deadline": parse_date_string(
@@ -214,12 +228,14 @@ def collect_simap_documents(
                     "cpv": extract_cpv_codes(detail) if isinstance(detail, dict) else [],
                     "description": strip_html(pick_localized_text(detail_procurement.get("orderDescription"))),
                     "estimatedValueText": _pick_simap_estimated_value_text(detail) if isinstance(detail, dict) else None,
-                    "officialUrl": _pick_simap_official_url(detail) if isinstance(detail, dict) else None,
+                    "officialUrl": (
+                        _pick_simap_official_url(detail) or _build_simap_project_detail_url(project_id)
+                        if isinstance(detail, dict)
+                        else _build_simap_project_detail_url(project_id)
+                    ),
                     "documentsPortalUrl": _pick_simap_documents_portal_url(detail) if isinstance(detail, dict) else None,
                     "prizeSummary": _pick_simap_prize_summary(detail) if isinstance(detail, dict) else None,
-                    "authorityEmail": pick_localized_text(
-                        detail_project_info.get("procOfficeAddress", {}).get("email")
-                    ),
+                    "authorityEmail": pick_localized_text(proc_office_address.get("email")),
                     "url": detail_url or header_url,
                 },
                 ensure_ascii=False,

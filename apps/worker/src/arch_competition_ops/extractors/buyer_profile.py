@@ -190,6 +190,7 @@ def parse_buyer_profile_notice(
         value_raw = pick_first_value(data, ["estimatedValueEur", "estimatedValue"])
         procedure_type = pick_first_value(data, ["procedureType"])
         eligibility_summary = pick_first_value(data, ["summary", "description"])
+        location_label = pick_first_value(data, ["location", "place", "city", "municipality"])
         cpv_codes = pick_list_value(data, ["cpv", "cpvCodes"])
         detail_html = data.get("detailHtml") if isinstance(data.get("detailHtml"), str) else ""
         official_url = None
@@ -303,4 +304,5 @@ def parse_buyer_profile_notice(
         official_url=official_url,
         brief_pdf_url=brief_pdf_url,
         estimated_contract_value_text=value_raw,
+        location_label=location_label if data else None,
     )

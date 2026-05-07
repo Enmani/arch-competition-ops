@@ -867,7 +867,7 @@ export const dictionaries: Record<AppLocale, AppDictionary> = {
     },
     support: {
       heroEyebrow: "支持项目",
-      heroTitle: "支持建筑事务所的采购情报台",
+      heroTitle: "为建筑师/建筑事务所整理\n可参与的项目机会",
       heroIntro:
         "Arch Competition Ops 跟踪公共公告和官方采购页面，把它们整理成可追溯的机会情报，帮助事务所判断哪些机会值得投入。支持会先用在来源覆盖、资格判断和团队工作流上。",
       heroActions: {
@@ -879,16 +879,16 @@ export const dictionaries: Record<AppLocale, AppDictionary> = {
         title: "核心规则保持不变",
         items: [
           {
-            label: "官方优先",
-            value: "官方公告和发布机构页面始终高于聚合站与二次转载。",
+            label: "官方信息",
+            value: "收集政府发布的真实招标信息",
           },
           {
-            label: "采购优先",
-            value: "页面围绕筛选和投标决策组织信息。",
+            label: "灵活筛选",
+            value: "支持按时间、地区、价格等条件快速筛选",
           },
           {
-            label: "多语支持",
-            value: "产品文案按多语扩展维护，方便跨境团队协作。",
+            label: "每日更新",
+            value: "每天更新两次，及时获取新的项目机会",
           },
         ],
       },
@@ -1514,7 +1514,7 @@ export const dictionaries: Record<AppLocale, AppDictionary> = {
     },
     support: {
       heroEyebrow: "Support the project",
-      heroTitle: "Support a procurement desk for architecture firms",
+      heroTitle: "Organize project opportunities architects and practices can pursue",
       heroIntro:
         "Arch Competition Ops tracks public notices and authority pages, then turns them into traceable opportunity intelligence for architecture firms. Support goes first into source coverage, qualification review, and team workflows.",
       heroActions: {

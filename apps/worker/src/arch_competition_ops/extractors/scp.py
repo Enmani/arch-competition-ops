@@ -43,4 +43,5 @@ def parse_procurement_hub_notice(
             "Confirm the notice page before acting."
         ),
         estimated_contract_value_text=pick_first_value(data, ["estimatedValueText"]) or value_raw,
+        location_label=pick_first_value(data, ["location", "place", "city", "municipality"]),
     )

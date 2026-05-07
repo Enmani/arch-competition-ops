@@ -24,6 +24,7 @@ def parse_boamp_notice(payload: str, source: SourceDefinition, source_url: str) 
         eligibility_summary = pick_first_value(data, ["eligibility", "summary", "description"])
         cpv_codes = pick_list_value(data, ["cpv", "cpvCodes"])
         procedure_type = pick_first_value(data, ["procedureType", "noticeType"])
+        location_label = pick_first_value(data, ["location", "place", "city", "municipality"])
     else:
         title = pick_regex(
             payload,
@@ -61,6 +62,7 @@ def parse_boamp_notice(payload: str, source: SourceDefinition, source_url: str) 
             payload,
             [r"Type de procédure[^:]*:\s*([^<\n]+)", r"Procédure[^:]*:\s*([^<\n]+)"],
         )
+        location_label = None
 
     if not title:
         raise ValueError("BOAMP parser could not determine a title from the payload")
@@ -80,4 +82,5 @@ def parse_boamp_notice(payload: str, source: SourceDefinition, source_url: str) 
         cpv_codes=cpv_codes,
         evidence_note="Parsed from BOAMP notice payload. Verify full procurement dossier before publishing.",
         estimated_contract_value_text=value_raw,
+        location_label=location_label,
     )

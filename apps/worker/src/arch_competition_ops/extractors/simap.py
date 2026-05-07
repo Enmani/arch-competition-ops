@@ -17,6 +17,7 @@ def parse_simap_notice(payload: str, source: SourceDefinition, source_url: str) 
     official_url = None
     prize_summary = None
     documents_portal_url = None
+    location_label = None
 
     if data:
         title = pick_first_value(data, ["title", "noticeTitle", "summary"])
@@ -31,6 +32,7 @@ def parse_simap_notice(payload: str, source: SourceDefinition, source_url: str) 
         official_url = pick_first_value(data, ["officialUrl"])
         documents_portal_url = pick_first_value(data, ["documentsPortalUrl"])
         prize_summary = pick_first_value(data, ["prizeSummary", "compensationSummary"])
+        location_label = pick_first_value(data, ["location", "place", "city", "municipality"])
     else:
         title = pick_regex(payload, [r"<h1[^>]*>\s*([^<]+)</h1>", r"Titel[^:]*:\s*([^<\n]+)"])
         authority_name = pick_regex(
@@ -87,6 +89,7 @@ def parse_simap_notice(payload: str, source: SourceDefinition, source_url: str) 
         official_url=official_url,
         documents_portal_url=documents_portal_url,
         estimated_contract_value_text=value_text or value_raw,
+        location_label=location_label,
     )
     record.prize_summary = prize_summary
     return record

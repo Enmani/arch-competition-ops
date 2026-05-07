@@ -38,5 +38,7 @@ def parse_bdncp_notice(payload: str, source: SourceDefinition, source_url: str) 
             "Parsed from the public ANAC legal-publicity API. "
             "Use the linked procurement documents as the canonical dossier."
         ),
+        official_url=pick_first_value(data, ["officialUrl", "url"]),
         estimated_contract_value_text=pick_first_value(data, ["estimatedValueText"]) or value_raw,
+        location_label=pick_first_value(data, ["location", "place", "city", "municipality"]),
     )

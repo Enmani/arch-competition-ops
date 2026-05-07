@@ -36,6 +36,7 @@ export const OpportunityDetailSurface = ({
     evidenceLevelLabel,
     implementationPathLabel,
     locationLabel,
+    officialPageLink,
     opportunityTypeLabel,
     participationCostLabel,
     procedureLabel,
@@ -215,14 +216,16 @@ export const OpportunityDetailSurface = ({
               <article className="competition-card detail-note-card">
                 <span className="detail-label">{dictionary.detail.links}</span>
                 <div className="hero-actions">
-                  <a
-                    className="button primary"
-                    href={opportunity.officialUrl}
-                    rel="noreferrer"
-                    target="_blank"
-                  >
-                    {dictionary.common.officialPage}
-                  </a>
+                  {officialPageLink ? (
+                    <a
+                      className="button primary"
+                      href={officialPageLink}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      {dictionary.common.officialPage}
+                    </a>
+                  ) : null}
                   {opportunity.briefPdfUrl ? (
                     <a
                       className="button secondary"

@@ -49,6 +49,7 @@ def parse_generic_listing_notice(
             ["estimatedValueText", "estimatedValueDisplay"],
         )
         or value_raw,
+        location_label=pick_first_value(data, ["location", "place", "city", "municipality"]),
     )
     record.prize_summary = pick_first_value(data, ["prizeSummary", "compensationSummary"])
     return record

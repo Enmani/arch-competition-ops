@@ -45,6 +45,11 @@ type OpportunityRow = {
   estimated_contract_value_eur: number | null;
   estimated_contract_value_text: string | null;
   prize_summary: string | null;
+  location_label: string | null;
+  geo_lat: number | null;
+  geo_lng: number | null;
+  geo_source: string | null;
+  geo_confidence: number | null;
   deadline_at: string | null;
   eligibility_summary: string | null;
   brief_pdf_url: string | null;
@@ -135,10 +140,15 @@ export type StoredOpportunityFeedItem = ProfessionalOpportunity & {
   estimatedContractValueText: string | null;
   evidenceLevelKey: string;
   extractionConfidence: number;
+  geoConfidence: number | null;
+  geoLat: number | null;
+  geoLng: number | null;
+  geoSource: string | null;
   implementationPathKey: string | null;
   jurisdictionKey: string | null;
   languages: string[];
   licensedArchitectRequired: boolean | null;
+  locationLabel: string | null;
   localPartnerRequired: boolean | null;
   officialNoticeId: string | null;
   opportunityTypeKey: string;
@@ -862,10 +872,15 @@ const toOpportunityFeedItem = (row: OpportunityRow): StoredOpportunityFeedItem =
     estimatedContractValueText: row.estimated_contract_value_text,
     evidenceLevelKey: row.evidence_level,
     extractionConfidence: row.extraction_confidence,
+    geoConfidence: row.geo_confidence,
+    geoLat: row.geo_lat,
+    geoLng: row.geo_lng,
+    geoSource: row.geo_source,
     implementationPathKey: row.implementation_path,
     jurisdictionKey: row.jurisdiction,
     languages: safeJsonArray(row.languages),
     licensedArchitectRequired: toBoolean(row.licensed_architect_required),
+    locationLabel: row.location_label,
     localPartnerRequired: toBoolean(row.local_partner_required),
     officialNoticeId: row.official_notice_id,
     opportunityTypeKey: row.opportunity_type,
@@ -898,10 +913,15 @@ const toProfessionalOpportunity = ({
   estimatedContractValueText: _estimatedContractValueText,
   evidenceLevelKey: _evidenceLevelKey,
   extractionConfidence: _extractionConfidence,
+  geoConfidence: _geoConfidence,
+  geoLat: _geoLat,
+  geoLng: _geoLng,
+  geoSource: _geoSource,
   implementationPathKey: _implementationPathKey,
   jurisdictionKey: _jurisdictionKey,
   languages: _languages,
   licensedArchitectRequired: _licensedArchitectRequired,
+  locationLabel: _locationLabel,
   localPartnerRequired: _localPartnerRequired,
   officialNoticeId: _officialNoticeId,
   opportunityTypeKey: _opportunityTypeKey,
@@ -959,6 +979,30 @@ const hasTable = async (database: D1DatabaseLike, tableName: string) => {
   } catch {
     return false;
   }
+};
+
+const hasColumn = async (database: D1DatabaseLike, tableName: string, columnName: string) => {
+  try {
+    const rows = await readRows<{ name: string }>(database, `PRAGMA table_info(${tableName})`);
+    return rows.some((row) => row.name === columnName);
+  } catch {
+    return false;
+  }
+};
+
+const buildOpportunitySelectList = async (database: D1DatabaseLike) => {
+  if (await hasColumn(database, "competitions", "geo_lat")) {
+    return "*";
+  }
+
+  return `
+    *,
+    NULL AS location_label,
+    NULL AS geo_lat,
+    NULL AS geo_lng,
+    NULL AS geo_source,
+    NULL AS geo_confidence
+  `;
 };
 
 export const hasD1Opportunities = async (database: D1DatabaseLike) => {
@@ -1094,10 +1138,11 @@ const queryVisibleOpportunityRows = async (
     (filters.projectTypes?.length ?? 0) > 0 || (filters.buildingCategories?.length ?? 0) > 0,
   );
   const useSqlLimit = !hasDerivedFilters && sqlLimit !== undefined;
+  const selectList = await buildOpportunitySelectList(database);
   const rows = await readRows<OpportunityRow>(
     database,
     `
-      SELECT *
+      SELECT ${selectList}
       FROM competitions
       ${whereClause}
       ORDER BY ${buildSortClause(sort)}
@@ -1144,7 +1189,12 @@ export const getD1OpportunityFeedItemBySlug = async (
     return undefined;
   }
 
-  const row = await readRow<OpportunityRow>(database, "SELECT * FROM competitions WHERE id = ?", [slug]);
+  const selectList = await buildOpportunitySelectList(database);
+  const row = await readRow<OpportunityRow>(
+    database,
+    `SELECT ${selectList} FROM competitions WHERE id = ?`,
+    [slug],
+  );
   return row ? toOpportunityFeedItem(row) : undefined;
 };
 

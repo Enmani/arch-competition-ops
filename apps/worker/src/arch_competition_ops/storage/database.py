@@ -37,6 +37,11 @@ CREATE TABLE IF NOT EXISTS competitions (
     estimated_contract_value_eur REAL,
     estimated_contract_value_text TEXT,
     prize_summary TEXT,
+    location_label TEXT,
+    geo_lat REAL,
+    geo_lng REAL,
+    geo_source TEXT,
+    geo_confidence REAL,
     deadline_at TEXT,
     eligibility_summary TEXT,
     brief_pdf_url TEXT,
@@ -190,6 +195,11 @@ REQUIRED_COLUMN_ORDER = (
     "estimated_contract_value_eur",
     "estimated_contract_value_text",
     "prize_summary",
+    "location_label",
+    "geo_lat",
+    "geo_lng",
+    "geo_source",
+    "geo_confidence",
     "deadline_at",
     "eligibility_summary",
     "brief_pdf_url",
@@ -217,6 +227,11 @@ SAFE_ADD_COLUMN_DEFINITIONS = {
     "estimated_contract_value_eur": "REAL",
     "estimated_contract_value_text": "TEXT",
     "prize_summary": "TEXT",
+    "location_label": "TEXT",
+    "geo_lat": "REAL",
+    "geo_lng": "REAL",
+    "geo_source": "TEXT",
+    "geo_confidence": "REAL",
     "deadline_at": "TEXT",
     "eligibility_summary": "TEXT",
     "brief_pdf_url": "TEXT",
@@ -447,6 +462,11 @@ def upsert_competition(db_path: Path, record: CompetitionRecord) -> str:
         "estimated_contract_value_eur": record.estimated_contract_value_eur,
         "estimated_contract_value_text": record.estimated_contract_value_text,
         "prize_summary": record.prize_summary,
+        "location_label": record.location_label,
+        "geo_lat": record.geo_lat,
+        "geo_lng": record.geo_lng,
+        "geo_source": record.geo_source,
+        "geo_confidence": record.geo_confidence,
         "deadline_at": record.deadline_at.isoformat() if record.deadline_at else None,
         "eligibility_summary": record.eligibility_summary,
         "brief_pdf_url": record.brief_pdf_url,
@@ -469,7 +489,7 @@ def upsert_competition(db_path: Path, record: CompetitionRecord) -> str:
                 languages, competition_types, audience, cpv_codes, implementation_path,
                 licensed_architect_required, local_partner_required, registration_fee_eur,
                 submission_fee_eur, estimated_contract_value_eur, estimated_contract_value_text,
-                prize_summary, deadline_at,
+                prize_summary, location_label, geo_lat, geo_lng, geo_source, geo_confidence, deadline_at,
                 eligibility_summary, brief_pdf_url, documents_portal_url, extraction_confidence, evidence_level,
                 qualification_score, evidence_note, last_verified_at, discovered_at, updated_at
             ) VALUES (
@@ -478,7 +498,8 @@ def upsert_competition(db_path: Path, record: CompetitionRecord) -> str:
                 :regions, :languages, :competition_types, :audience, :cpv_codes,
                 :implementation_path, :licensed_architect_required, :local_partner_required,
                 :registration_fee_eur, :submission_fee_eur, :estimated_contract_value_eur,
-                :estimated_contract_value_text, :prize_summary, :deadline_at, :eligibility_summary,
+                :estimated_contract_value_text, :prize_summary, :location_label, :geo_lat, :geo_lng,
+                :geo_source, :geo_confidence, :deadline_at, :eligibility_summary,
                 :brief_pdf_url, :documents_portal_url,
                 :extraction_confidence, :evidence_level, :qualification_score, :evidence_note,
                 :last_verified_at, :discovered_at, :updated_at
@@ -505,6 +526,11 @@ def upsert_competition(db_path: Path, record: CompetitionRecord) -> str:
                 estimated_contract_value_eur = excluded.estimated_contract_value_eur,
                 estimated_contract_value_text = excluded.estimated_contract_value_text,
                 prize_summary = excluded.prize_summary,
+                location_label = excluded.location_label,
+                geo_lat = excluded.geo_lat,
+                geo_lng = excluded.geo_lng,
+                geo_source = excluded.geo_source,
+                geo_confidence = excluded.geo_confidence,
                 deadline_at = excluded.deadline_at,
                 eligibility_summary = excluded.eligibility_summary,
                 brief_pdf_url = excluded.brief_pdf_url,
@@ -537,6 +563,67 @@ def list_competitions(db_path: Path, limit: int = 20) -> list[sqlite3.Row]:
             (limit,),
         ).fetchall()
     return rows
+
+
+def list_competitions_missing_geocodes(db_path: Path, limit: int = 50) -> list[sqlite3.Row]:
+    ensure_schema(db_path)
+    with connect(db_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT id, title, organizer, authority_name, source_url, jurisdiction, location_label,
+                   geo_lat, geo_lng, geo_source, geo_confidence
+            FROM competitions
+            WHERE geo_lat IS NULL OR geo_lng IS NULL
+            ORDER BY
+                CASE
+                    WHEN deadline_at IS NOT NULL AND deadline_at < date('now') THEN 2
+                    WHEN deadline_at IS NULL THEN 1
+                    ELSE 0
+                END ASC,
+                COALESCE(deadline_at, '9999-12-31') ASC,
+                updated_at DESC,
+                id ASC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+    return rows
+
+
+def update_competition_geocode_fields(
+    db_path: Path,
+    *,
+    competition_id: str,
+    location_label: str | None,
+    geo_lat: float | None,
+    geo_lng: float | None,
+    geo_source: str | None,
+    geo_confidence: float | None,
+) -> None:
+    ensure_schema(db_path)
+    with connect(db_path) as connection:
+        connection.execute(
+            """
+            UPDATE competitions
+            SET location_label = ?,
+                geo_lat = ?,
+                geo_lng = ?,
+                geo_source = ?,
+                geo_confidence = ?,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                location_label,
+                geo_lat,
+                geo_lng,
+                geo_source,
+                geo_confidence,
+                datetime.now(timezone.utc).isoformat(),
+                competition_id,
+            ),
+        )
+        connection.commit()
 
 
 def find_duplicate_records(db_path: Path) -> list[sqlite3.Row]:
