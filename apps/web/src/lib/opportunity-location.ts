@@ -27,7 +27,7 @@ const isUsefulLocationCandidate = (value: string) => {
 
 export const pickOpportunityExplicitCity = (opportunity: OpportunityLocationInput) => {
   const postalCodeTailMatch = opportunity.title.match(
-    /,\s*(?:\d{4,5}\s+)?([\p{Lu}][\p{L}\p{M}'’.\-]*(?:[\s-][\p{Lu}][\p{L}\p{M}'’.\-]*){0,3})\s*$/u,
+    /,\s*(?:\d{4,5}\s+)?([^,\d.;][^,.;]{1,79})\s*$/u,
   );
   if (postalCodeTailMatch && isUsefulLocationCandidate(postalCodeTailMatch[1])) {
     return trimLocationCandidate(postalCodeTailMatch[1]);
