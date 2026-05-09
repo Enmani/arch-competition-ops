@@ -59,6 +59,7 @@ type OpportunityRow = {
 };
 
 type SqlParameter = string | number | bigint | Uint8Array | null;
+const combiningDiacriticPattern = /[\u0300-\u036f]/g;
 export type StoredProjectType =
   | "urban_regeneration"
   | "environment_design"
@@ -281,7 +282,7 @@ const safeJsonArray = (payload: string | null) => {
 const normalizeMatchText = (value: string | null | undefined) =>
   (value ?? "")
     .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
+    .replace(combiningDiacriticPattern, "")
     .toLowerCase();
 
 const compactText = (value: string | null | undefined) => {
@@ -301,7 +302,7 @@ const normalizeLookupKey = (value: string | null | undefined) => {
 
   return compacted
     .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
+    .replace(combiningDiacriticPattern, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "");

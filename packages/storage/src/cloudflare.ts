@@ -20,6 +20,8 @@ export type D1DatabaseLike = {
   prepare(statement: string): D1StatementLike;
 };
 
+const combiningDiacriticPattern = /[\u0300-\u036f]/g;
+
 type OpportunityRow = {
   id: string;
   title: string;
@@ -272,7 +274,7 @@ const safeJsonArray = (payload: string | null) => {
 const normalizeMatchText = (value: string | null | undefined) =>
   (value ?? "")
     .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
+    .replace(combiningDiacriticPattern, "")
     .toLowerCase();
 
 const compactText = (value: string | null | undefined) => {
@@ -292,7 +294,7 @@ const normalizeLookupKey = (value: string | null | undefined) => {
 
   return compacted
     .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
+    .replace(combiningDiacriticPattern, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "");

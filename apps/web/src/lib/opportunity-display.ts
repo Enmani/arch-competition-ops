@@ -14,10 +14,12 @@ import {
 import { formatTokenLabel } from "@/lib/discover";
 import { pickOpportunityExplicitCity } from "@/lib/opportunity-location";
 
+const combiningDiacriticPattern = /[\u0300-\u036f]/g;
+
 const normalizeLooseText = (value: string) =>
   value
     .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
+    .replace(combiningDiacriticPattern, "")
     .toLowerCase();
 
 const isMachineReadableSourceUrl = (value: string | null | undefined) => {
