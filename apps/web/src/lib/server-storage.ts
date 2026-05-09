@@ -108,12 +108,12 @@ export {
   type StoredWatchlistEntry,
 };
 
-const isLocalDevelopment = process.env.NODE_ENV === "development";
-const useD1InLocalDevelopment =
-  process.env.ARCH_COMPETITION_USE_D1 === "1" ||
-  process.env.ARCH_COMPETITION_USE_D1_IN_DEV === "1";
-
 export const getCloudflareD1Database = async () => {
+  const isLocalDevelopment = process.env.NODE_ENV === "development";
+  const useD1InLocalDevelopment =
+    process.env.ARCH_COMPETITION_USE_D1 === "1" ||
+    process.env.ARCH_COMPETITION_USE_D1_IN_DEV === "1";
+
   if (isLocalDevelopment && !useD1InLocalDevelopment) {
     return null;
   }
@@ -147,6 +147,7 @@ const withStorage = async <T>(
     return handlers.d1(database);
   }
 
+  const isLocalDevelopment = process.env.NODE_ENV === "development";
   if (!isLocalDevelopment) {
     throw new Error("Local SQLite storage fallback is only available during development.");
   }
