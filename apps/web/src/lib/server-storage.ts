@@ -108,29 +108,32 @@ export {
   type StoredWatchlistEntry,
 };
 
+const isLocalDevelopment = process.env.NODE_ENV === "development";
+const useD1InLocalDevelopment =
+  process.env.ARCH_COMPETITION_USE_D1 === "1" ||
+  process.env.ARCH_COMPETITION_USE_D1_IN_DEV === "1";
+
 export const getCloudflareD1Database = async () => {
-  if (
-    process.env.NODE_ENV === "development" &&
-    process.env.ARCH_COMPETITION_USE_D1_IN_DEV !== "1"
-  ) {
+  if (isLocalDevelopment && !useD1InLocalDevelopment) {
     return null;
   }
 
-  try {
-    const { env } = await getCloudflareContext({ async: true });
-    return env.DB ?? null;
-  } catch {
-    return null;
+  const cloudflareContext = isLocalDevelopment
+    ? await getCloudflareContext({ async: true })
+    : getCloudflareContext();
+  const database = cloudflareContext.env.DB ?? null;
+
+  if (!database && !isLocalDevelopment) {
+    throw new Error("Cloudflare D1 binding `DB` is unavailable in the production runtime.");
   }
+
+  return database;
 };
 
 const loadLocalStorage = async () => {
-  const configuredPackageName = process.env.ARCH_COMPETITION_LOCAL_STORAGE_PACKAGE;
-  if (configuredPackageName) {
-    return import(/* webpackIgnore: true */ configuredPackageName) as Promise<LocalStorageModule>;
-  }
-
-  return import("@arch-competition/storage") as Promise<LocalStorageModule>;
+  const localStoragePackageName =
+    process.env.ARCH_COMPETITION_LOCAL_STORAGE_PACKAGE ?? "@arch-competition/storage";
+  return import(/* webpackIgnore: true */ localStoragePackageName) as Promise<LocalStorageModule>;
 };
 
 const withStorage = async <T>(
@@ -142,6 +145,10 @@ const withStorage = async <T>(
   const database = await getCloudflareD1Database();
   if (database) {
     return handlers.d1(database);
+  }
+
+  if (!isLocalDevelopment) {
+    throw new Error("Local SQLite storage fallback is only available during development.");
   }
 
   const storage = await loadLocalStorage();
