@@ -118,13 +118,42 @@ def infer_competition_types(*chunks: str | None) -> list[str]:
     haystack = " ".join(chunk for chunk in chunks if chunk).lower()
     inferred: list[str] = []
     keyword_map = {
-        "public_building": ["library", "civic", "public building"],
-        "urban_design": ["square", "urban", "public space", "masterplan"],
-        "healthcare": ["hospital", "healthcare", "clinic"],
-        "education": ["school", "campus", "education"],
-        "adaptive_reuse": ["adaptive reuse", "reuse", "conversion"],
-        "masterplan": ["masterplan", "planning"],
-        "architecture": ["design", "architecture", "architect"],
+        "public_building": [
+            "library",
+            "civic",
+            "public building",
+            "公共建筑",
+            "图书馆",
+            "文化中心",
+            "办公楼",
+            "综合体",
+            "景区",
+        ],
+        "urban_design": [
+            "square",
+            "urban",
+            "public space",
+            "masterplan",
+            "城市设计",
+            "公共空间",
+        ],
+        "landscape": ["landscape", "park", "garden", "plaza", "景观", "园林"],
+        "healthcare": ["hospital", "healthcare", "clinic", "医院", "医疗", "卫生院"],
+        "education": ["school", "campus", "education", "学校", "教学楼", "校园", "幼儿园"],
+        "housing": ["housing", "residential", "老旧小区", "住宅", "小区", "安置房", "安置片区"],
+        "interior": ["interior", "interiors", "室内", "精装修", "公区精装"],
+        "adaptive_reuse": ["adaptive reuse", "reuse", "conversion", "城市更新", "更新改造", "老旧小区改造", "旧改"],
+        "masterplan": ["masterplan", "planning", "规划", "修建性详细规划", "总体规划"],
+        "architecture": [
+            "design",
+            "architecture",
+            "architect",
+            "建筑设计",
+            "设计服务",
+            "方案设计",
+            "初步设计",
+            "建筑方案",
+        ],
     }
 
     for category, keywords in keyword_map.items():
@@ -132,6 +161,51 @@ def infer_competition_types(*chunks: str | None) -> list[str]:
             inferred.append(category)
 
     return inferred or ["architecture"]
+
+
+def infer_project_types(
+    competition_types: list[str],
+    *,
+    project_types: list[str] | None = None,
+) -> list[str]:
+    if project_types:
+        return project_types
+
+    inferred: list[str] = []
+    type_set = set(competition_types)
+    if "adaptive_reuse" in type_set:
+        inferred.append("urban_regeneration")
+    if "landscape" in type_set:
+        inferred.append("environment_design")
+    if "masterplan" in type_set or "urban_design" in type_set:
+        inferred.append("urban_planning")
+    if "interior" in type_set:
+        inferred.append("interior_project")
+    if any(marker in type_set for marker in ("architecture", "public_building", "healthcare", "education", "housing")):
+        inferred.append("building_project")
+    return inferred
+
+
+def infer_building_categories(
+    competition_types: list[str],
+    *,
+    building_categories: list[str] | None = None,
+) -> list[str]:
+    if building_categories:
+        return building_categories
+
+    inferred: list[str] = []
+    type_set = set(competition_types)
+    mapping = (
+        ("healthcare", "healthcare"),
+        ("education", "education"),
+        ("housing", "housing"),
+        ("public_building", "civic_public"),
+    )
+    for competition_type, building_category in mapping:
+        if competition_type in type_set:
+            inferred.append(building_category)
+    return inferred
 
 
 def infer_licensed_architect_required(*chunks: str | None) -> bool | None:
@@ -164,6 +238,12 @@ def build_base_record(
     documents_portal_url: str | None = None,
     estimated_contract_value_text: str | None = None,
     location_label: str | None = None,
+    project_types: list[str] | None = None,
+    building_categories: list[str] | None = None,
+    official_sectors: list[str] | None = None,
+    built_asset_types: list[str] | None = None,
+    design_scopes: list[str] | None = None,
+    project_modes: list[str] | None = None,
     status: str = "discovered",
 ) -> CompetitionRecord:
     normalized_title = normalize_whitespace(title) or title
@@ -176,6 +256,12 @@ def build_base_record(
     normalized_implementation_path = normalize_implementation_path(
         implementation_path,
         opportunity_type=normalized_opportunity_type,
+    )
+    inferred_competition_types = infer_competition_types(
+        normalized_title,
+        eligibility_summary,
+        normalized_implementation_path,
+        normalized_procedure_type,
     )
     record = CompetitionRecord(
         title=normalized_title,
@@ -190,12 +276,19 @@ def build_base_record(
         official_notice_id=normalize_official_notice_id(official_notice_id),
         regions=source.regions,
         languages=source.languages,
-        competition_types=infer_competition_types(
-            normalized_title,
-            eligibility_summary,
-            normalized_implementation_path,
-            normalized_procedure_type,
+        competition_types=inferred_competition_types,
+        project_types=infer_project_types(
+            inferred_competition_types,
+            project_types=project_types,
         ),
+        building_categories=infer_building_categories(
+            inferred_competition_types,
+            building_categories=building_categories,
+        ),
+        official_sectors=official_sectors or [],
+        built_asset_types=built_asset_types or [],
+        design_scopes=design_scopes or [],
+        project_modes=project_modes or [],
         audience=["professionals", "multidisciplinary"],
         cpv_codes=cpv_codes,
         implementation_path=normalized_implementation_path,

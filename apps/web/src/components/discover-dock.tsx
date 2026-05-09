@@ -218,6 +218,56 @@ export const DiscoverDock = ({
                 </div>
               </fieldset>
 
+              <fieldset className="filter-collection">
+                <legend className="filter-collection-label">
+                  {dictionary.discover.filterLabels.designScope}
+                </legend>
+                <div className="filter-chip-grid">
+                  {filterOptions.designScopes.map((designScope) => (
+                    <label className="filter-chip-option" key={designScope}>
+                      <input
+                        defaultChecked={isChecked(filters.designScopes, designScope)}
+                        name="designScope"
+                        type="checkbox"
+                        value={designScope}
+                      />
+                      <span>
+                        {translateMappedValue(
+                          designScope,
+                          dictionary.taxonomy.designScopes,
+                          formatTokenLabel(designScope),
+                        )}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+
+              <fieldset className="filter-collection">
+                <legend className="filter-collection-label">
+                  {dictionary.discover.filterLabels.projectMode}
+                </legend>
+                <div className="filter-chip-grid">
+                  {filterOptions.projectModes.map((projectMode) => (
+                    <label className="filter-chip-option" key={projectMode}>
+                      <input
+                        defaultChecked={isChecked(filters.projectModes, projectMode)}
+                        name="projectMode"
+                        type="checkbox"
+                        value={projectMode}
+                      />
+                      <span>
+                        {translateMappedValue(
+                          projectMode,
+                          dictionary.taxonomy.projectModes,
+                          formatTokenLabel(projectMode),
+                        )}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+
               <label className="field-stack">
                 <span className="sr-only">{dictionary.discover.filterLabels.deadlineAfter}</span>
                 <input

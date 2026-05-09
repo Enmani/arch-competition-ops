@@ -85,6 +85,8 @@ export type AppDictionary = {
       sort: string;
       projectType: string;
       buildingCategory: string;
+      designScope: string;
+      projectMode: string;
       deadlineAfter: string;
       maxValue: string;
       qualificationGate: string;
@@ -170,6 +172,11 @@ export type AppDictionary = {
       qualification: string;
       eligibility: string;
       commercialSignal: string;
+      projectCategory: string;
+      officialSectors: string;
+      builtAssetTypes: string;
+      designScopes: string;
+      projectModes: string;
     };
   };
   dashboard: {
@@ -402,6 +409,16 @@ export type AppDictionary = {
       primary: string;
       secondary: string;
     };
+    contact: {
+      eyebrow: string;
+      title: string;
+      body: string;
+      items: Array<{
+        label: string;
+        value: string;
+        href: string;
+      }>;
+    };
     principles: {
       eyebrow: string;
       title: string;
@@ -455,6 +472,10 @@ export type AppDictionary = {
     evidenceLevels: ValueMap;
     projectTypes: ValueMap;
     buildingCategories: ValueMap;
+    designScopes: ValueMap;
+    projectModes: ValueMap;
+    officialSectors: ValueMap;
+    builtAssetTypes: ValueMap;
     competitionTags: ValueMap;
     audiences: ValueMap;
   };
@@ -551,6 +572,8 @@ export const dictionaries: Record<AppLocale, AppDictionary> = {
         sort: "排序",
         projectType: "项目类型",
         buildingCategory: "建筑项目类别",
+        designScope: "设计阶段",
+        projectMode: "建设方式",
         deadlineAfter: "截止日期晚于",
         maxValue: "最高金额 EUR",
         qualificationGate: "资格门槛",
@@ -636,6 +659,11 @@ export const dictionaries: Record<AppLocale, AppDictionary> = {
         qualification: "资格",
         eligibility: "资格要求",
         commercialSignal: "金额",
+        projectCategory: "项目归类",
+        officialSectors: "官方分类",
+        builtAssetTypes: "建筑对象",
+        designScopes: "设计阶段",
+        projectModes: "建设方式",
       },
     },
     dashboard: {
@@ -874,6 +902,24 @@ export const dictionaries: Record<AppLocale, AppDictionary> = {
         primary: "查看支持方式",
         secondary: "浏览机会雷达",
       },
+      contact: {
+        eyebrow: "联系与仓库",
+        title: "支持、合作或反馈，都可以从这里开始",
+        body:
+          "如果你想交流支持方式、提出改进建议，或先看项目当前进展，可以直接发邮件，或者查看公开仓库。",
+        items: [
+          {
+            label: "个人邮箱",
+            value: "fangxiaoyandi@gmail.com",
+            href: "mailto:fangxiaoyandi@gmail.com",
+          },
+          {
+            label: "仓库目录",
+            value: "github.com/Enmani/arch-competition-ops",
+            href: "https://github.com/Enmani/arch-competition-ops",
+          },
+        ],
+      },
       principles: {
         eyebrow: "立场",
         title: "核心规则保持不变",
@@ -983,10 +1029,12 @@ export const dictionaries: Record<AppLocale, AppDictionary> = {
       jurisdictions: {
         global: "全球",
         eu: "欧盟",
+        asia: "亚洲",
         north_america: "北美",
         oceania: "大洋洲",
         australia: "澳大利亚",
         canada: "加拿大",
+        china: "中国",
         italy: "意大利",
         france: "法国",
         switzerland: "瑞士",
@@ -1012,10 +1060,12 @@ export const dictionaries: Record<AppLocale, AppDictionary> = {
       regions: {
         global: "全球",
         europe: "欧洲",
+        asia: "亚洲",
         north_america: "北美",
         oceania: "大洋洲",
         australia: "澳大利亚",
         canada: "加拿大",
+        china: "中国",
         germany: "德国",
         italy: "意大利",
         france: "法国",
@@ -1068,6 +1118,7 @@ export const dictionaries: Record<AppLocale, AppDictionary> = {
         urban_regeneration: "城市更新",
         environment_design: "环境设计",
         urban_planning: "城市规划",
+        interior_project: "室内项目",
         building_project: "建筑项目",
       },
       buildingCategories: {
@@ -1078,6 +1129,36 @@ export const dictionaries: Record<AppLocale, AppDictionary> = {
         sport_leisure: "体育与休闲",
         culture_heritage: "文化与遗产",
         transport_infrastructure: "交通与基础设施",
+      },
+      designScopes: {
+        interior_design: "室内设计",
+        architectural_design: "建筑设计",
+        scheme: "方案设计",
+        preliminary: "初步设计",
+        construction_docs: "施工图设计",
+        planning: "详细规划",
+        design_service: "设计服务",
+      },
+      projectModes: {
+        new_build: "新建",
+        renovation: "改造",
+        extension: "扩建",
+      },
+      officialSectors: {
+        building_construction: "房屋建筑",
+        design_consulting: "勘察设计",
+      },
+      builtAssetTypes: {
+        interior: "室内",
+        healthcare: "医疗",
+        education: "教育",
+        housing: "住宅",
+        office_research: "办公与研发",
+        civic_culture: "公共文化",
+        welfare: "福利养老",
+        hospitality_commercial: "酒店商业",
+        land_use_planning: "用地规划",
+        urban_renewal: "城市更新",
       },
       competitionTags: {
         architecture: "建筑",
@@ -1195,6 +1276,8 @@ export const dictionaries: Record<AppLocale, AppDictionary> = {
         sort: "Sort",
         projectType: "Project type",
         buildingCategory: "Building category",
+        designScope: "Design scope",
+        projectMode: "Project mode",
         deadlineAfter: "Deadline after",
         maxValue: "Max value EUR",
         qualificationGate: "Qualification gate",
@@ -1280,6 +1363,11 @@ export const dictionaries: Record<AppLocale, AppDictionary> = {
         qualification: "Qualification",
         eligibility: "Eligibility",
         commercialSignal: "Value",
+        projectCategory: "Project classification",
+        officialSectors: "Official sectors",
+        builtAssetTypes: "Built asset types",
+        designScopes: "Design scopes",
+        projectModes: "Project modes",
       },
     },
     dashboard: {
@@ -1521,6 +1609,24 @@ export const dictionaries: Record<AppLocale, AppDictionary> = {
         primary: "See support options",
         secondary: "Browse the radar",
       },
+      contact: {
+        eyebrow: "Contact and repo",
+        title: "Support, collaboration, or feedback can start here",
+        body:
+          "If you want to discuss support, suggest improvements, or review current progress first, send an email or open the public repository.",
+        items: [
+          {
+            label: "Email",
+            value: "fangxiaoyandi@gmail.com",
+            href: "mailto:fangxiaoyandi@gmail.com",
+          },
+          {
+            label: "Repository",
+            value: "github.com/Enmani/arch-competition-ops",
+            href: "https://github.com/Enmani/arch-competition-ops",
+          },
+        ],
+      },
       principles: {
         eyebrow: "Position",
         title: "Core rules stay fixed",
@@ -1630,10 +1736,12 @@ export const dictionaries: Record<AppLocale, AppDictionary> = {
       jurisdictions: {
         global: "Global",
         eu: "EU",
+        asia: "Asia",
         north_america: "North America",
         oceania: "Oceania",
         australia: "Australia",
         canada: "Canada",
+        china: "China",
         italy: "Italy",
         france: "France",
         switzerland: "Switzerland",
@@ -1659,10 +1767,12 @@ export const dictionaries: Record<AppLocale, AppDictionary> = {
       regions: {
         global: "Global",
         europe: "Europe",
+        asia: "Asia",
         north_america: "North America",
         oceania: "Oceania",
         australia: "Australia",
         canada: "Canada",
+        china: "China",
         germany: "Germany",
         italy: "Italy",
         france: "France",
@@ -1716,6 +1826,7 @@ export const dictionaries: Record<AppLocale, AppDictionary> = {
         urban_regeneration: "Urban regeneration",
         environment_design: "Environmental design",
         urban_planning: "Urban planning",
+        interior_project: "Interior project",
         building_project: "Building project",
       },
       buildingCategories: {
@@ -1726,6 +1837,36 @@ export const dictionaries: Record<AppLocale, AppDictionary> = {
         sport_leisure: "Sports and leisure",
         culture_heritage: "Culture and heritage",
         transport_infrastructure: "Transport infrastructure",
+      },
+      designScopes: {
+        interior_design: "Interior design",
+        architectural_design: "Architectural design",
+        scheme: "Scheme design",
+        preliminary: "Preliminary design",
+        construction_docs: "Construction documents",
+        planning: "Detailed planning",
+        design_service: "Design services",
+      },
+      projectModes: {
+        new_build: "New build",
+        renovation: "Renovation",
+        extension: "Extension",
+      },
+      officialSectors: {
+        building_construction: "Building construction",
+        design_consulting: "Design consulting",
+      },
+      builtAssetTypes: {
+        interior: "Interior",
+        healthcare: "Healthcare",
+        education: "Education",
+        housing: "Housing",
+        office_research: "Office and research",
+        civic_culture: "Civic and culture",
+        welfare: "Welfare and elderly care",
+        hospitality_commercial: "Hospitality and commercial",
+        land_use_planning: "Land-use planning",
+        urban_renewal: "Urban renewal",
       },
       competitionTags: {
         architecture: "Architecture",

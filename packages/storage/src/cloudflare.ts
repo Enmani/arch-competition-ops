@@ -35,6 +35,12 @@ type OpportunityRow = {
   regions: string;
   languages: string;
   competition_types: string;
+  project_types: string | null;
+  building_categories: string | null;
+  official_sectors: string | null;
+  built_asset_types: string | null;
+  design_scopes: string | null;
+  project_modes: string | null;
   audience: string;
   cpv_codes: string;
   implementation_path: string | null;
@@ -67,6 +73,7 @@ export type StoredProjectType =
   | "urban_regeneration"
   | "environment_design"
   | "urban_planning"
+  | "interior_project"
   | "building_project";
 export type StoredBuildingCategory =
   | "healthcare"
@@ -76,8 +83,18 @@ export type StoredBuildingCategory =
   | "sport_leisure"
   | "culture_heritage"
   | "transport_infrastructure";
+export type StoredDesignScope =
+  | "interior_design"
+  | "architectural_design"
+  | "scheme"
+  | "preliminary"
+  | "construction_docs"
+  | "planning"
+  | "design_service";
+export type StoredProjectMode = "new_build" | "renovation" | "extension";
 export type StoredOpportunityQuery = {
   buildingCategories?: StoredBuildingCategory[];
+  designScopes?: StoredDesignScope[];
   includeExpired?: boolean;
   deadlineAfter?: string;
   deadlineBefore?: string;
@@ -90,14 +107,17 @@ export type StoredOpportunityQuery = {
   minQualificationScore?: number;
   publishedWithinDays?: number;
   projectTypes?: StoredProjectType[];
+  projectModes?: StoredProjectMode[];
   procedureType?: string;
   search?: string;
   sort?: "deadline" | "highest_value" | "latest";
 };
 export type StoredFilterOptions = {
   buildingCategories: StoredBuildingCategory[];
+  designScopes: StoredDesignScope[];
   implementationPaths: string[];
   jurisdictions: string[];
+  projectModes: StoredProjectMode[];
   projectTypes: StoredProjectType[];
   procedureTypes: string[];
 };
@@ -151,6 +171,10 @@ export type StoredOpportunityFeedItem = ProfessionalOpportunity & {
   locationLabel: string | null;
   localPartnerRequired: boolean | null;
   officialNoticeId: string | null;
+  officialSectors: string[];
+  builtAssetTypes: string[];
+  designScopes: string[];
+  projectModes: string[];
   opportunityTypeKey: string;
   organizerName: string;
   prizeSummary: string | null;
@@ -171,6 +195,7 @@ const projectTypeOrder: StoredProjectType[] = [
   "urban_regeneration",
   "environment_design",
   "urban_planning",
+  "interior_project",
   "building_project",
 ];
 const buildingCategoryOrder: StoredBuildingCategory[] = [
@@ -182,6 +207,16 @@ const buildingCategoryOrder: StoredBuildingCategory[] = [
   "culture_heritage",
   "transport_infrastructure",
 ];
+const designScopeOrder: StoredDesignScope[] = [
+  "interior_design",
+  "architectural_design",
+  "scheme",
+  "preliminary",
+  "construction_docs",
+  "planning",
+  "design_service",
+];
+const projectModeOrder: StoredProjectMode[] = ["new_build", "renovation", "extension"];
 const procedureAliasGroups: Record<string, readonly string[]> = {
   design_contest: ["design_contest", "project_competition"],
   planning_competition: ["planning_competition"],
@@ -457,10 +492,20 @@ const normalizeIsoDate = (value: string | undefined) => {
 
 type OpportunityClassification = {
   buildingCategories: StoredBuildingCategory[];
-  projectType: StoredProjectType | null;
+  designScopes: StoredDesignScope[];
+  projectTypes: StoredProjectType[];
+  projectModes: StoredProjectMode[];
 };
 
 const detectBuildingCategories = (row: OpportunityRow) => {
+  const explicitCategories = safeJsonArray(row.building_categories).filter(
+    (item): item is StoredBuildingCategory =>
+      buildingCategoryOrder.includes(item as StoredBuildingCategory),
+  );
+  if (explicitCategories.length > 0) {
+    return buildingCategoryOrder.filter((category) => explicitCategories.includes(category));
+  }
+
   const competitionTypes = new Set(safeJsonArray(row.competition_types).map(normalizeMatchText));
   const haystack = normalizeMatchText(
     [row.title, row.eligibility_summary, row.authority_name, row.organizer].filter(Boolean).join(" "),
@@ -565,6 +610,24 @@ const detectBuildingCategories = (row: OpportunityRow) => {
 };
 
 const classifyOpportunity = (row: OpportunityRow): OpportunityClassification => {
+  const explicitDesignScopes = safeJsonArray(row.design_scopes).filter(
+    (item): item is StoredDesignScope => designScopeOrder.includes(item as StoredDesignScope),
+  );
+  const explicitProjectModes = safeJsonArray(row.project_modes).filter(
+    (item): item is StoredProjectMode => projectModeOrder.includes(item as StoredProjectMode),
+  );
+  const explicitProjectTypes = safeJsonArray(row.project_types).filter(
+    (item): item is StoredProjectType => projectTypeOrder.includes(item as StoredProjectType),
+  );
+  if (explicitProjectTypes.length > 0) {
+    return {
+      buildingCategories: detectBuildingCategories(row),
+      designScopes: explicitDesignScopes,
+      projectTypes: projectTypeOrder.filter((projectType) => explicitProjectTypes.includes(projectType)),
+      projectModes: explicitProjectModes,
+    };
+  }
+
   const competitionTypes = new Set(safeJsonArray(row.competition_types).map(normalizeMatchText));
   const haystack = normalizeMatchText(
     [row.title, row.eligibility_summary, row.procedure_type, row.implementation_path].filter(Boolean).join(" "),
@@ -585,7 +648,9 @@ const classifyOpportunity = (row: OpportunityRow): OpportunityClassification => 
   if (isUrbanRegeneration) {
     return {
       buildingCategories,
-      projectType: "urban_regeneration",
+      designScopes: explicitDesignScopes,
+      projectTypes: ["urban_regeneration"],
+      projectModes: explicitProjectModes,
     };
   }
 
@@ -598,7 +663,9 @@ const classifyOpportunity = (row: OpportunityRow): OpportunityClassification => 
   if (isEnvironmentDesign) {
     return {
       buildingCategories,
-      projectType: "environment_design",
+      designScopes: explicitDesignScopes,
+      projectTypes: ["environment_design"],
+      projectModes: explicitProjectModes,
     };
   }
 
@@ -618,7 +685,32 @@ const classifyOpportunity = (row: OpportunityRow): OpportunityClassification => 
   if (isUrbanPlanning) {
     return {
       buildingCategories,
-      projectType: "urban_planning",
+      designScopes: explicitDesignScopes,
+      projectTypes: ["urban_planning"],
+      projectModes: explicitProjectModes,
+    };
+  }
+
+  const isInteriorProject =
+    competitionTypes.has("interior") ||
+    [
+      "interior",
+      "interiors",
+      "fit out",
+      "fit-out",
+      "refit",
+      "室内",
+      "精装修",
+      "公区",
+      "软装",
+    ].some((keyword) => haystack.includes(keyword));
+
+  if (isInteriorProject) {
+    return {
+      buildingCategories,
+      designScopes: explicitDesignScopes,
+      projectTypes: ["interior_project"],
+      projectModes: explicitProjectModes,
     };
   }
 
@@ -637,22 +729,31 @@ const classifyOpportunity = (row: OpportunityRow): OpportunityClassification => 
 
   return {
     buildingCategories,
-    projectType: isBuildingProject ? "building_project" : null,
+    designScopes: explicitDesignScopes,
+    projectTypes: isBuildingProject ? ["building_project"] : [],
+    projectModes: explicitProjectModes,
   };
 };
 
 const matchesDerivedFilters = (row: OpportunityRow, filters: StoredOpportunityQuery) => {
   const requestedProjectTypes = filters.projectTypes ?? [];
   const requestedBuildingCategories = filters.buildingCategories ?? [];
+  const requestedDesignScopes = filters.designScopes ?? [];
+  const requestedProjectModes = filters.projectModes ?? [];
 
-  if (requestedProjectTypes.length === 0 && requestedBuildingCategories.length === 0) {
+  if (
+    requestedProjectTypes.length === 0 &&
+    requestedBuildingCategories.length === 0 &&
+    requestedDesignScopes.length === 0 &&
+    requestedProjectModes.length === 0
+  ) {
     return true;
   }
 
   const classification = classifyOpportunity(row);
   if (
     requestedProjectTypes.length > 0 &&
-    (!classification.projectType || !requestedProjectTypes.includes(classification.projectType))
+    !requestedProjectTypes.some((projectType) => classification.projectTypes.includes(projectType))
   ) {
     return false;
   }
@@ -661,6 +762,18 @@ const matchesDerivedFilters = (row: OpportunityRow, filters: StoredOpportunityQu
     !requestedBuildingCategories.some((buildingCategory) =>
       classification.buildingCategories.includes(buildingCategory),
     )
+  ) {
+    return false;
+  }
+  if (
+    requestedDesignScopes.length > 0 &&
+    !requestedDesignScopes.some((designScope) => classification.designScopes.includes(designScope))
+  ) {
+    return false;
+  }
+  if (
+    requestedProjectModes.length > 0 &&
+    !requestedProjectModes.some((projectMode) => classification.projectModes.includes(projectMode))
   ) {
     return false;
   }
@@ -674,9 +787,11 @@ const buildScopedFilterOptions = (
 ): StoredFilterOptions => {
   const projectTypes = new Set<StoredProjectType>(filters.projectTypes ?? []);
   const buildingCategories = new Set<StoredBuildingCategory>(filters.buildingCategories ?? []);
+  const designScopes = new Set<StoredDesignScope>(filters.designScopes ?? []);
   const jurisdictions = new Set<string>();
   const procedureTypes = new Set<string>();
   const implementationPaths = new Set<string>();
+  const projectModes = new Set<StoredProjectMode>(filters.projectModes ?? []);
 
   if (filters.jurisdiction) {
     jurisdictions.add(filters.jurisdiction);
@@ -693,11 +808,17 @@ const buildScopedFilterOptions = (
 
   for (const row of rows) {
     const classification = classifyOpportunity(row);
-    if (classification.projectType) {
-      projectTypes.add(classification.projectType);
+    for (const projectType of classification.projectTypes) {
+      projectTypes.add(projectType);
     }
     for (const category of classification.buildingCategories) {
       buildingCategories.add(category);
+    }
+    for (const designScope of classification.designScopes) {
+      designScopes.add(designScope);
+    }
+    for (const projectMode of classification.projectModes) {
+      projectModes.add(projectMode);
     }
 
     const jurisdiction = compactText(row.jurisdiction);
@@ -718,7 +839,9 @@ const buildScopedFilterOptions = (
 
   return {
     buildingCategories: buildingCategoryOrder.filter((category) => buildingCategories.has(category)),
+    designScopes: designScopeOrder.filter((designScope) => designScopes.has(designScope)),
     jurisdictions: [...jurisdictions].sort((left, right) => left.localeCompare(right)),
+    projectModes: projectModeOrder.filter((projectMode) => projectModes.has(projectMode)),
     projectTypes: projectTypeOrder.filter((projectType) => projectTypes.has(projectType)),
     procedureTypes: [...procedureTypes].sort((left, right) => left.localeCompare(right)),
     implementationPaths: [...implementationPaths].sort((left, right) => left.localeCompare(right)),
@@ -883,10 +1006,14 @@ const toOpportunityFeedItem = (row: OpportunityRow): StoredOpportunityFeedItem =
     locationLabel: row.location_label,
     localPartnerRequired: toBoolean(row.local_partner_required),
     officialNoticeId: row.official_notice_id,
+    officialSectors: safeJsonArray(row.official_sectors),
+    builtAssetTypes: safeJsonArray(row.built_asset_types),
+    designScopes: classification.designScopes,
+    projectModes: classification.projectModes,
     opportunityTypeKey: row.opportunity_type,
     organizerName: row.organizer ?? "Unknown organizer",
     prizeSummary: row.prize_summary,
-    projectTypeKey: classification.projectType,
+    projectTypeKey: classification.projectTypes[0] ?? null,
     procedureTypeKey: procedure.key,
     qualificationScore: row.qualification_score,
     regions: safeJsonArray(row.regions),
@@ -924,6 +1051,10 @@ const toProfessionalOpportunity = ({
   locationLabel: _locationLabel,
   localPartnerRequired: _localPartnerRequired,
   officialNoticeId: _officialNoticeId,
+  officialSectors: _officialSectors,
+  builtAssetTypes: _builtAssetTypes,
+  designScopes: _designScopes,
+  projectModes: _projectModes,
   opportunityTypeKey: _opportunityTypeKey,
   organizerName: _organizerName,
   prizeSummary: _prizeSummary,
@@ -991,17 +1122,26 @@ const hasColumn = async (database: D1DatabaseLike, tableName: string, columnName
 };
 
 const buildOpportunitySelectList = async (database: D1DatabaseLike) => {
-  if (await hasColumn(database, "competitions", "geo_lat")) {
+  const hasGeoColumns = await hasColumn(database, "competitions", "geo_lat");
+  const hasClassificationColumns = await hasColumn(database, "competitions", "project_types");
+
+  if (hasGeoColumns && hasClassificationColumns) {
     return "*";
   }
 
   return `
     *,
-    NULL AS location_label,
-    NULL AS geo_lat,
-    NULL AS geo_lng,
-    NULL AS geo_source,
-    NULL AS geo_confidence
+    ${hasClassificationColumns ? "project_types" : "NULL AS project_types"},
+    ${hasClassificationColumns ? "building_categories" : "NULL AS building_categories"},
+    ${hasClassificationColumns ? "official_sectors" : "NULL AS official_sectors"},
+    ${hasClassificationColumns ? "built_asset_types" : "NULL AS built_asset_types"},
+    ${hasClassificationColumns ? "design_scopes" : "NULL AS design_scopes"},
+    ${hasClassificationColumns ? "project_modes" : "NULL AS project_modes"},
+    ${hasGeoColumns ? "location_label" : "NULL AS location_label"},
+    ${hasGeoColumns ? "geo_lat" : "NULL AS geo_lat"},
+    ${hasGeoColumns ? "geo_lng" : "NULL AS geo_lng"},
+    ${hasGeoColumns ? "geo_source" : "NULL AS geo_source"},
+    ${hasGeoColumns ? "geo_confidence" : "NULL AS geo_confidence"}
   `;
 };
 
@@ -1140,7 +1280,10 @@ const queryVisibleOpportunityRows = async (
 
   const { parameters, whereClause } = buildOpportunityWhereClause(filters);
   const hasDerivedFilters = Boolean(
-    (filters.projectTypes?.length ?? 0) > 0 || (filters.buildingCategories?.length ?? 0) > 0,
+    (filters.projectTypes?.length ?? 0) > 0 ||
+      (filters.buildingCategories?.length ?? 0) > 0 ||
+      (filters.designScopes?.length ?? 0) > 0 ||
+      (filters.projectModes?.length ?? 0) > 0,
   );
   const useSqlLimit = !hasDerivedFilters && sqlLimit !== undefined;
   const selectList = await buildOpportunitySelectList(database);
@@ -1351,7 +1494,9 @@ export const getD1DuplicatePressureSummary = async (
 
 const emptyFilterOptions = (): StoredFilterOptions => ({
   buildingCategories: [],
+  designScopes: [],
   jurisdictions: [],
+  projectModes: [],
   projectTypes: [],
   procedureTypes: [],
   implementationPaths: [],
@@ -1447,6 +1592,16 @@ const storedBuildingCategories = new Set<StoredBuildingCategory>([
   "culture_heritage",
   "transport_infrastructure",
 ]);
+const storedDesignScopes = new Set<StoredDesignScope>([
+  "interior_design",
+  "architectural_design",
+  "scheme",
+  "preliminary",
+  "construction_docs",
+  "planning",
+  "design_service",
+]);
+const storedProjectModes = new Set<StoredProjectMode>(["new_build", "renovation", "extension"]);
 const storedSortValues = new Set<NonNullable<StoredOpportunityQuery["sort"]>>([
   "deadline",
   "highest_value",
@@ -1485,11 +1640,27 @@ const normalizeStoredFilters = (value: unknown): StoredOpportunityQuery => {
         ),
       )
     : [];
+  const designScopes = Array.isArray(source.designScopes)
+    ? toUniqueArray(
+        source.designScopes.filter(
+          (item): item is StoredDesignScope =>
+            typeof item === "string" && storedDesignScopes.has(item as StoredDesignScope),
+        ),
+      )
+    : [];
   const projectTypes = Array.isArray(source.projectTypes)
     ? toUniqueArray(
         source.projectTypes.filter(
           (item): item is StoredProjectType =>
             typeof item === "string" && storedProjectTypes.has(item as StoredProjectType),
+        ),
+      )
+    : [];
+  const projectModes = Array.isArray(source.projectModes)
+    ? toUniqueArray(
+        source.projectModes.filter(
+          (item): item is StoredProjectMode =>
+            typeof item === "string" && storedProjectModes.has(item as StoredProjectMode),
         ),
       )
     : [];
@@ -1506,6 +1677,7 @@ const normalizeStoredFilters = (value: unknown): StoredOpportunityQuery => {
   const normalizedFilters: StoredOpportunityQuery = {};
 
   if (buildingCategories.length > 0) normalizedFilters.buildingCategories = buildingCategories;
+  if (designScopes.length > 0) normalizedFilters.designScopes = designScopes;
   const deadlineAfter = normalizeText(typeof source.deadlineAfter === "string" ? source.deadlineAfter : undefined);
   if (deadlineAfter) normalizedFilters.deadlineAfter = deadlineAfter;
   const deadlineBefore = normalizeText(typeof source.deadlineBefore === "string" ? source.deadlineBefore : undefined);
@@ -1525,6 +1697,7 @@ const normalizeStoredFilters = (value: unknown): StoredOpportunityQuery => {
   const procedureType = normalizeText(typeof source.procedureType === "string" ? source.procedureType : undefined);
   if (procedureType) normalizedFilters.procedureType = procedureType;
   if (projectTypes.length > 0) normalizedFilters.projectTypes = projectTypes;
+  if (projectModes.length > 0) normalizedFilters.projectModes = projectModes;
   const publishedWithinDays = normalizeNumber(source.publishedWithinDays);
   if (publishedWithinDays !== undefined) normalizedFilters.publishedWithinDays = publishedWithinDays;
   const search = normalizeText(typeof source.search === "string" ? source.search : undefined);

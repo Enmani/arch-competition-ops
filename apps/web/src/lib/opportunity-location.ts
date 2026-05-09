@@ -54,6 +54,7 @@ const countryCodeMap: Record<string, string> = {
   austria: "AT",
   belgium: "BE",
   canada: "CA",
+  china: "CN",
   croatia: "HR",
   czechia: "CZ",
   denmark: "DK",

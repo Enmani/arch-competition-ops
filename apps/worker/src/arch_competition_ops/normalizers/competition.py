@@ -195,6 +195,13 @@ def infer_licensed_architect_required(*chunks: str | None) -> bool | None:
         "iscritto",
         "qualification required",
         "general planners",
+        "注册建筑师",
+        "一级注册建筑师",
+        "设计资质",
+        "建筑行业",
+        "建筑工程",
+        "工程设计综合甲级",
+        "建筑装饰工程设计专项甲级",
     ]
     if any(signal in haystack for signal in positive_signals):
         return True

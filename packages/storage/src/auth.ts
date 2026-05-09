@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -73,7 +73,25 @@ export type StoredAuthSessionCreateInput = {
 };
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(currentDirectory, "../../..");
+const resolveRepoRoot = () => {
+  const cwd = process.cwd();
+  const candidates = [
+    cwd,
+    path.resolve(cwd, ".."),
+    path.resolve(cwd, "../.."),
+    path.resolve(cwd, "../../.."),
+    path.resolve(currentDirectory, "../../.."),
+  ];
+
+  for (const candidate of candidates) {
+    if (existsSync(path.join(candidate, "AGENTS.md")) && existsSync(path.join(candidate, "data"))) {
+      return candidate;
+    }
+  }
+
+  return path.resolve(currentDirectory, "../../..");
+};
+const repoRoot = resolveRepoRoot();
 const authSessionDurationMs = 30 * 24 * 60 * 60 * 1000;
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const passwordMinLength = 8;

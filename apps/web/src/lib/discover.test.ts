@@ -5,14 +5,18 @@ import { countActiveDiscoverFilters, readDiscoverFilters } from "./discover";
 
 test("readDiscoverFilters keeps repeated project and building filter params as arrays", () => {
   const filters = readDiscoverFilters({
-    projectType: ["urban_planning", "environment_design", "invalid_value"],
+    projectType: ["urban_planning", "environment_design", "interior_project", "invalid_value"],
     buildingCategory: ["education", "healthcare"],
+    designScope: ["scheme", "construction_docs", "invalid_value"],
+    projectMode: ["renovation", "new_build", "invalid_value"],
     includeExpired: "true",
     search: " school ",
   });
 
-  assert.deepEqual(filters.projectTypes, ["urban_planning", "environment_design"]);
+  assert.deepEqual(filters.projectTypes, ["urban_planning", "environment_design", "interior_project"]);
   assert.deepEqual(filters.buildingCategories, ["education", "healthcare"]);
+  assert.deepEqual(filters.designScopes, ["scheme", "construction_docs"]);
+  assert.deepEqual(filters.projectModes, ["renovation", "new_build"]);
   assert.equal(filters.includeExpired, true);
   assert.equal(filters.search, "school");
 });
@@ -34,9 +38,11 @@ test("countActiveDiscoverFilters counts multi-select values individually", () =>
   const total = countActiveDiscoverFilters({
     projectTypes: ["urban_planning", "environment_design"],
     buildingCategories: ["education", "healthcare", "housing"],
+    designScopes: ["scheme", "preliminary"],
+    projectModes: ["renovation"],
     includeExpired: true,
     sort: "latest",
   });
 
-  assert.equal(total, 7);
+  assert.equal(total, 10);
 });

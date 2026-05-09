@@ -749,3 +749,120 @@ def test_parse_simap_notice_payload_keeps_native_currency_value_text() -> None:
 
     assert record.estimated_contract_value_eur is None
     assert record.estimated_contract_value_text == "CHF 2500000"
+
+
+def test_parse_generic_listing_payload_infers_chinese_interior_and_housing_signals() -> None:
+    source = SourceDefinition(
+        source_id="ggzy_public_notices",
+        name="National Public Resources Trading Platform",
+        kind="official_procurement",
+        jurisdiction="china",
+        base_url="https://www.ggzy.gov.cn/deal/dealList.html",
+        scan_method="api",
+        extractor="generic_listing_html",
+        source_tier="primary",
+        enabled=True,
+        regions=["asia", "china"],
+        languages=["zh"],
+    )
+    payload = """
+    {
+      "title": "遂川县恒福庄园片区2026年老旧小区改造项目设计服务",
+      "buyer": "遂川县住房和城乡建设局",
+      "noticeId": "遂投采字2026SCX072号",
+      "deadline": "2026-05-21",
+      "summary": "项目概况：老旧小区改造项目设计服务，预算金额 330000.00 元。",
+      "officialUrl": "https://example.cn/original/housing",
+      "opportunityType": "public_design_services_procurement",
+      "procedureType": "public_design_services_tender",
+      "implementationPath": "service_contract_award_after_competitive_selection",
+      "evidenceLevel": "official_notice"
+    }
+    """
+
+    record = parse_source_payload(source, payload)
+
+    assert "architecture" in record.competition_types
+    assert "housing" in record.competition_types
+    assert "adaptive_reuse" in record.competition_types
+
+
+def test_parse_generic_listing_payload_infers_chinese_interior_signal() -> None:
+    source = SourceDefinition(
+        source_id="ggzy_public_notices",
+        name="National Public Resources Trading Platform",
+        kind="official_procurement",
+        jurisdiction="china",
+        base_url="https://www.ggzy.gov.cn/deal/dealList.html",
+        scan_method="api",
+        extractor="generic_listing_html",
+        source_tier="primary",
+        enabled=True,
+        regions=["asia", "china"],
+        languages=["zh"],
+    )
+    payload = """
+    {
+      "title": "琶洲会展大厦项目酒店改造工程室内设计及服务",
+      "buyer": "广州会展建设发展有限公司",
+      "noticeId": "PZ-INTERIOR-2026-009",
+      "deadline": "2026-06-03",
+      "summary": "酒店改造工程室内设计及精装修设计服务。",
+      "officialUrl": "https://example.cn/original/interior",
+      "opportunityType": "public_design_services_procurement",
+      "procedureType": "open",
+      "implementationPath": "service_contract_award_after_competitive_selection",
+      "evidenceLevel": "official_notice"
+    }
+    """
+
+    record = parse_source_payload(source, payload)
+
+    assert "architecture" in record.competition_types
+    assert "interior" in record.competition_types
+
+
+def test_parse_generic_listing_payload_preserves_explicit_china_classification_fields() -> None:
+    source = SourceDefinition(
+        source_id="ggzy_public_notices",
+        name="National Public Resources Trading Platform",
+        kind="official_procurement",
+        jurisdiction="china",
+        base_url="https://www.ggzy.gov.cn/deal/dealList.html",
+        scan_method="api",
+        extractor="generic_listing_html",
+        source_tier="primary",
+        enabled=True,
+        regions=["asia", "china"],
+        languages=["zh"],
+    )
+    payload = """
+    {
+      "title": "某医学创新中心项目方案设计、初步设计招标公告",
+      "buyer": "某市卫生健康委员会",
+      "noticeId": "CN-MED-2026-001",
+      "deadline": "2026-06-08",
+      "summary": "新建医学创新中心及配套公共服务空间。",
+      "officialUrl": "https://example.cn/original/medical-innovation",
+      "opportunityType": "public_design_services_procurement",
+      "procedureType": "open",
+      "implementationPath": "service_contract_award_after_competitive_selection",
+      "competitionTypes": ["architecture", "healthcare", "public_building"],
+      "projectTypes": ["building_project"],
+      "buildingCategories": ["healthcare", "civic_public"],
+      "officialSectors": ["building_construction", "design_consulting"],
+      "builtAssetTypes": ["healthcare", "office_research"],
+      "designScopes": ["scheme", "preliminary"],
+      "projectModes": ["new_build"],
+      "evidenceLevel": "official_notice"
+    }
+    """
+
+    record = parse_source_payload(source, payload)
+
+    assert record.project_types == ["building_project"]
+    assert record.building_categories == ["healthcare", "civic_public"]
+    assert record.official_sectors == ["building_construction", "design_consulting"]
+    assert record.built_asset_types == ["healthcare", "office_research"]
+    assert record.design_scopes == ["scheme", "preliminary"]
+    assert record.project_modes == ["new_build"]

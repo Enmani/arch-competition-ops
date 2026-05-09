@@ -6,7 +6,9 @@ import Database from "better-sqlite3";
 
 import type {
   StoredBuildingCategory,
+  StoredDesignScope,
   StoredOpportunityQuery,
+  StoredProjectMode,
   StoredProjectType,
 } from "./index";
 
@@ -30,12 +32,31 @@ type WatchlistEntryRow = {
 };
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(currentDirectory, "../../..");
+const resolveRepoRoot = () => {
+  const cwd = process.cwd();
+  const candidates = [
+    cwd,
+    path.resolve(cwd, ".."),
+    path.resolve(cwd, "../.."),
+    path.resolve(cwd, "../../.."),
+    path.resolve(currentDirectory, "../../.."),
+  ];
+
+  for (const candidate of candidates) {
+    if (existsSync(path.join(candidate, "AGENTS.md")) && existsSync(path.join(candidate, "data"))) {
+      return candidate;
+    }
+  }
+
+  return path.resolve(currentDirectory, "../../..");
+};
+const repoRoot = resolveRepoRoot();
 
 const storedProjectTypes = new Set<StoredProjectType>([
   "urban_regeneration",
   "environment_design",
   "urban_planning",
+  "interior_project",
   "building_project",
 ]);
 const storedBuildingCategories = new Set<StoredBuildingCategory>([
@@ -47,6 +68,16 @@ const storedBuildingCategories = new Set<StoredBuildingCategory>([
   "culture_heritage",
   "transport_infrastructure",
 ]);
+const storedDesignScopes = new Set<StoredDesignScope>([
+  "interior_design",
+  "architectural_design",
+  "scheme",
+  "preliminary",
+  "construction_docs",
+  "planning",
+  "design_service",
+]);
+const storedProjectModes = new Set<StoredProjectMode>(["new_build", "renovation", "extension"]);
 const storedSortValues = new Set<NonNullable<StoredOpportunityQuery["sort"]>>([
   "deadline",
   "highest_value",
@@ -203,11 +234,27 @@ const normalizeStoredFilters = (value: unknown): StoredOpportunityQuery => {
         ),
       )
     : [];
+  const designScopes = Array.isArray(source.designScopes)
+    ? toUniqueArray(
+        source.designScopes.filter(
+          (item): item is StoredDesignScope =>
+            typeof item === "string" && storedDesignScopes.has(item as StoredDesignScope),
+        ),
+      )
+    : [];
   const projectTypes = Array.isArray(source.projectTypes)
     ? toUniqueArray(
         source.projectTypes.filter(
           (item): item is StoredProjectType =>
             typeof item === "string" && storedProjectTypes.has(item as StoredProjectType),
+        ),
+      )
+    : [];
+  const projectModes = Array.isArray(source.projectModes)
+    ? toUniqueArray(
+        source.projectModes.filter(
+          (item): item is StoredProjectMode =>
+            typeof item === "string" && storedProjectModes.has(item as StoredProjectMode),
         ),
       )
     : [];
@@ -225,6 +272,9 @@ const normalizeStoredFilters = (value: unknown): StoredOpportunityQuery => {
 
   if (buildingCategories.length > 0) {
     normalizedFilters.buildingCategories = buildingCategories;
+  }
+  if (designScopes.length > 0) {
+    normalizedFilters.designScopes = designScopes;
   }
 
   const deadlineAfter = normalizeText(
@@ -287,6 +337,9 @@ const normalizeStoredFilters = (value: unknown): StoredOpportunityQuery => {
 
   if (projectTypes.length > 0) {
     normalizedFilters.projectTypes = projectTypes;
+  }
+  if (projectModes.length > 0) {
+    normalizedFilters.projectModes = projectModes;
   }
 
   const publishedWithinDays = normalizeNumber(source.publishedWithinDays);

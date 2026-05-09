@@ -70,3 +70,5 @@ class Taxonomy(BaseModel):
     implementation_paths: list[str] = Field(default_factory=list)
     evidence_levels: list[str] = Field(default_factory=list)
     audience: list[str] = Field(default_factory=list)
+    project_types: list[str] = Field(default_factory=list)
+    building_categories: list[str] = Field(default_factory=list)

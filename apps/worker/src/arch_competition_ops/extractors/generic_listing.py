@@ -50,6 +50,12 @@ def parse_generic_listing_notice(
         )
         or value_raw,
         location_label=pick_first_value(data, ["location", "place", "city", "municipality"]),
+        project_types=pick_list_value(data, ["projectTypes"]),
+        building_categories=pick_list_value(data, ["buildingCategories"]),
+        official_sectors=pick_list_value(data, ["officialSectors"]),
+        built_asset_types=pick_list_value(data, ["builtAssetTypes"]),
+        design_scopes=pick_list_value(data, ["designScopes"]),
+        project_modes=pick_list_value(data, ["projectModes"]),
     )
     record.prize_summary = pick_first_value(data, ["prizeSummary", "compensationSummary"])
     return record

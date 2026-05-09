@@ -20,6 +20,12 @@ class CompetitionRecord(BaseModel):
     regions: list[str] = Field(default_factory=list)
     languages: list[str] = Field(default_factory=list)
     competition_types: list[str] = Field(default_factory=list)
+    project_types: list[str] = Field(default_factory=list)
+    building_categories: list[str] = Field(default_factory=list)
+    official_sectors: list[str] = Field(default_factory=list)
+    built_asset_types: list[str] = Field(default_factory=list)
+    design_scopes: list[str] = Field(default_factory=list)
+    project_modes: list[str] = Field(default_factory=list)
     audience: list[str] = Field(default_factory=list)
     cpv_codes: list[str] = Field(default_factory=list)
     implementation_path: str | None = None

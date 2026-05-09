@@ -10,6 +10,7 @@ from arch_competition_ops.collectors.competitions_archi import collect_competiti
 from arch_competition_ops.collectors.contracts_finder import collect_contracts_finder_documents
 from arch_competition_ops.collectors.doffin import collect_doffin_documents
 from arch_competition_ops.collectors.generic_rss import collect_generic_rss_documents
+from arch_competition_ops.collectors.ggzy import collect_ggzy_documents
 from arch_competition_ops.collectors.municipal import collect_municipal_buyer_profile_documents
 from arch_competition_ops.collectors.pcsp import collect_pcsp_documents
 from arch_competition_ops.collectors.scaffold import collect_scaffold_only_documents
@@ -37,6 +38,7 @@ COLLECTORS: dict[str, Collector] = {
     "canadabuys_csv": collect_canadabuys_documents,
     "contracts_finder_ocds": collect_contracts_finder_documents,
     "doffin_search_api": collect_doffin_documents,
+    "ggzy_public_notices": collect_ggzy_documents,
     "pcsp_atom_feed": collect_pcsp_documents,
     "disabled_scaffold": collect_scaffold_only_documents,
     "tenderned_publications_api": collect_tenderned_documents,

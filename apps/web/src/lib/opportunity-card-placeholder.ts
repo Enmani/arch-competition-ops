@@ -35,6 +35,7 @@ type CountryOutlineModel = {
 const atlasCountryNameByJurisdiction: Record<string, string> = {
   bulgaria: "Bulgaria",
   canada: "Canada",
+  china: "China",
   france: "France",
   germany: "Germany",
   italy: "Italy",

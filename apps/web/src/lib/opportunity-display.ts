@@ -250,3 +250,63 @@ export const formatCompetitionTagsLabel = (
       ),
     dictionary.common.unstated,
   );
+
+export const formatOfficialSectorsLabel = (
+  dictionary: AppDictionary,
+  opportunity: StoredOpportunityFeedItem,
+) =>
+  joinValues(
+    opportunity.officialSectors,
+    (value) =>
+      translateMappedValue(
+        value,
+        dictionary.taxonomy.officialSectors,
+        formatTokenLabel(value),
+      ),
+    dictionary.common.unstated,
+  );
+
+export const formatBuiltAssetTypesLabel = (
+  dictionary: AppDictionary,
+  opportunity: StoredOpportunityFeedItem,
+) =>
+  joinValues(
+    opportunity.builtAssetTypes,
+    (value) =>
+      translateMappedValue(
+        value,
+        dictionary.taxonomy.builtAssetTypes,
+        formatTokenLabel(value),
+      ),
+    dictionary.common.unstated,
+  );
+
+export const formatDesignScopesLabel = (
+  dictionary: AppDictionary,
+  opportunity: StoredOpportunityFeedItem,
+) =>
+  joinValues(
+    opportunity.designScopes,
+    (value) =>
+      translateMappedValue(
+        value,
+        dictionary.taxonomy.designScopes,
+        formatTokenLabel(value),
+      ),
+    dictionary.common.unstated,
+  );
+
+export const formatProjectModesLabel = (
+  dictionary: AppDictionary,
+  opportunity: StoredOpportunityFeedItem,
+) =>
+  joinValues(
+    opportunity.projectModes,
+    (value) =>
+      translateMappedValue(
+        value,
+        dictionary.taxonomy.projectModes,
+        formatTokenLabel(value),
+      ),
+    dictionary.common.unstated,
+  );

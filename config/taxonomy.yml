@@ -1,10 +1,12 @@
 regions:
   - global
   - europe
+  - asia
   - north_america
   - oceania
   - australia
   - canada
+  - china
   - italy
   - france
   - germany
@@ -90,6 +92,7 @@ project_types:
   - urban_regeneration
   - environment_design
   - urban_planning
+  - interior_project
   - building_project
 
 building_categories:

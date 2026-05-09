@@ -7,7 +7,11 @@ import { buildLocalePath, type AppLocale } from "@/i18n/config";
 import type { AppDictionary } from "@/i18n/dictionaries";
 import {
   formatAudienceLabel,
+  formatBuiltAssetTypesLabel,
   formatCompetitionTagsLabel,
+  formatDesignScopesLabel,
+  formatOfficialSectorsLabel,
+  formatProjectModesLabel,
   formatRegionsLabel,
   getOpportunityDisplayMeta,
   joinValues,
@@ -40,6 +44,7 @@ export const OpportunityDetailSurface = ({
     opportunityTypeLabel,
     participationCostLabel,
     procedureLabel,
+    cardCategoryLabel,
     sourceTraceLink,
     statusLabel,
     valueLabel,
@@ -93,6 +98,10 @@ export const OpportunityDetailSurface = ({
               <div className="detail-item">
                 <span className="detail-label">{dictionary.detail.fields.opportunityType}</span>
                 <span>{opportunityTypeLabel}</span>
+              </div>
+              <div className="detail-item">
+                <span className="detail-label">{dictionary.detail.fields.projectCategory}</span>
+                <span>{cardCategoryLabel}</span>
               </div>
               <div className="detail-item">
                 <span className="detail-label">{dictionary.detail.fields.procedure}</span>
@@ -198,6 +207,22 @@ export const OpportunityDetailSurface = ({
               <div className="detail-item">
                 <span className="detail-label">{dictionary.feed.fields.competitionTags}</span>
                 <span>{formatCompetitionTagsLabel(dictionary, opportunity)}</span>
+              </div>
+              <div className="detail-item">
+                <span className="detail-label">{dictionary.detail.fields.officialSectors}</span>
+                <span>{formatOfficialSectorsLabel(dictionary, opportunity)}</span>
+              </div>
+              <div className="detail-item">
+                <span className="detail-label">{dictionary.detail.fields.builtAssetTypes}</span>
+                <span>{formatBuiltAssetTypesLabel(dictionary, opportunity)}</span>
+              </div>
+              <div className="detail-item">
+                <span className="detail-label">{dictionary.detail.fields.designScopes}</span>
+                <span>{formatDesignScopesLabel(dictionary, opportunity)}</span>
+              </div>
+              <div className="detail-item">
+                <span className="detail-label">{dictionary.detail.fields.projectModes}</span>
+                <span>{formatProjectModesLabel(dictionary, opportunity)}</span>
               </div>
               <div className="detail-item">
                 <span className="detail-label">{dictionary.feed.fields.cpv}</span>

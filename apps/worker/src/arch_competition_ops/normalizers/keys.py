@@ -5,9 +5,10 @@ import re
 
 def normalize_fragment(value: str) -> str:
     lowered = value.strip().lower()
-    normalized = re.sub(r"[^a-z0-9]+", "-", lowered)
+    normalized = re.sub(r"[^\w]+", "-", lowered, flags=re.UNICODE)
     normalized = re.sub(r"-{2,}", "-", normalized)
-    return normalized.strip("-") or "unknown"
+    normalized = normalized.strip("-_")
+    return normalized or "unknown"
 
 
 def build_competition_key(title: str, organizer: str, deadline: str) -> str:

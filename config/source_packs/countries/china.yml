@@ -1,0 +1,22 @@
+# AI maintenance note:
+# - Phase 1 China coverage starts with the nationwide public resources trading platform.
+# - The collector keeps architecture, building, and interior-design opportunities only.
+# - Roads, bridges, underground utilities, municipal civil works, and EPC-heavy infrastructure noise are filtered out upstream.
+sources:
+  - source_id: ggzy_public_notices
+    name: National Public Resources Trading Platform
+    kind: official_procurement
+    jurisdiction: china
+    base_url: https://www.ggzy.gov.cn/deal/dealList.html
+    collector: ggzy_public_notices
+    scan_method: api
+    extractor: generic_listing_html
+    source_tier: primary
+    priority: 0.9
+    enabled: true
+    regions:
+      - asia
+      - china
+    languages:
+      - zh
+    notes: Official nationwide China public resources trading platform. Collector keeps architecture, building, planning, and interior-design procurement notices and excludes roads, civil engineering, underground works, and other infrastructure-heavy tenders.

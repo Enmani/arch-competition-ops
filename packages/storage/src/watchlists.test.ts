@@ -148,8 +148,10 @@ test("saved searches persist canonical filters and can be deleted", async () => 
       name: "Italy education watch",
       filters: {
         search: "  italy  ",
-        projectTypes: ["building_project", "building_project"],
+        projectTypes: ["interior_project", "interior_project"],
         buildingCategories: ["education", "education"],
+        designScopes: ["scheme", "scheme", "invalid_value" as never],
+        projectModes: ["renovation", "renovation", "invalid_value" as never],
         sort: "latest",
         limit: 999,
       },
@@ -159,8 +161,10 @@ test("saved searches persist canonical filters and can be deleted", async () => 
     assert.equal(savedSearch.name, "Italy education watch");
     assert.deepEqual(savedSearch.filters, {
       search: "italy",
-      projectTypes: ["building_project"],
+      projectTypes: ["interior_project"],
       buildingCategories: ["education"],
+      designScopes: ["scheme"],
+      projectModes: ["renovation"],
       sort: "latest",
     });
 

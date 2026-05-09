@@ -1,6 +1,8 @@
 import type {
   StoredBuildingCategory,
+  StoredDesignScope,
   StoredOpportunityQuery,
+  StoredProjectMode,
   StoredProjectType,
 } from "@arch-competition/storage/cloudflare";
 
@@ -42,6 +44,7 @@ const isProjectTypeValue = (value: string | undefined): value is StoredProjectTy
   value === "urban_regeneration" ||
   value === "environment_design" ||
   value === "urban_planning" ||
+  value === "interior_project" ||
   value === "building_project";
 const isBuildingCategoryValue = (value: string | undefined): value is StoredBuildingCategory =>
   value === "healthcare" ||
@@ -51,6 +54,16 @@ const isBuildingCategoryValue = (value: string | undefined): value is StoredBuil
   value === "sport_leisure" ||
   value === "culture_heritage" ||
   value === "transport_infrastructure";
+const isDesignScopeValue = (value: string | undefined): value is StoredDesignScope =>
+  value === "interior_design" ||
+  value === "architectural_design" ||
+  value === "scheme" ||
+  value === "preliminary" ||
+  value === "construction_docs" ||
+  value === "planning" ||
+  value === "design_service";
+const isProjectModeValue = (value: string | undefined): value is StoredProjectMode =>
+  value === "new_build" || value === "renovation" || value === "extension";
 
 export const formatTokenLabel = (value: string) =>
   value
@@ -101,6 +114,12 @@ export const buildDiscoverSearchParams = (
   if (filters.buildingCategories && filters.buildingCategories.length > 0) {
     searchParams.buildingCategory = toUniqueArray(filters.buildingCategories);
   }
+  if (filters.designScopes && filters.designScopes.length > 0) {
+    searchParams.designScope = toUniqueArray(filters.designScopes);
+  }
+  if (filters.projectModes && filters.projectModes.length > 0) {
+    searchParams.projectMode = toUniqueArray(filters.projectModes);
+  }
   if (filters.minEstimatedValueEur !== undefined) {
     searchParams.minEstimatedValueEur = filters.minEstimatedValueEur.toString();
   }
@@ -139,9 +158,16 @@ export const readDiscoverFilters = (
   const buildingCategoryValues = toUniqueArray(
     readMultiValue(searchParams.buildingCategory).filter(isBuildingCategoryValue),
   );
+  const designScopeValues = toUniqueArray(
+    readMultiValue(searchParams.designScope).filter(isDesignScopeValue),
+  );
+  const projectModeValues = toUniqueArray(
+    readMultiValue(searchParams.projectMode).filter(isProjectModeValue),
+  );
 
   return {
     buildingCategories: buildingCategoryValues.length > 0 ? buildingCategoryValues : undefined,
+    designScopes: designScopeValues.length > 0 ? designScopeValues : undefined,
     deadlineAfter: readSingleValue(searchParams.deadlineAfter) || undefined,
     deadlineBefore: readSingleValue(searchParams.deadlineBefore) || undefined,
     includeExpired: readSingleValue(searchParams.includeExpired) === "true" ? true : undefined,
@@ -154,6 +180,7 @@ export const readDiscoverFilters = (
     minEstimatedValueEur: readNumberValue(searchParams.minEstimatedValueEur),
     minQualificationScore: readNumberValue(searchParams.minQualificationScore),
     publishedWithinDays: readNumberValue(searchParams.publishedWithinDays),
+    projectModes: projectModeValues.length > 0 ? projectModeValues : undefined,
     procedureType: readSingleValue(searchParams.procedureType) || undefined,
     projectTypes: projectTypeValues.length > 0 ? projectTypeValues : undefined,
     search: readSingleValue(searchParams.search)?.trim() || undefined,
@@ -172,6 +199,8 @@ export const countActiveDiscoverFilters = (filters: StoredOpportunityQuery) => {
   if (filters.includeExpired === true) total += 1;
   if (filters.projectTypes) total += filters.projectTypes.length;
   if (filters.buildingCategories) total += filters.buildingCategories.length;
+  if (filters.designScopes) total += filters.designScopes.length;
+  if (filters.projectModes) total += filters.projectModes.length;
   if (filters.minEstimatedValueEur !== undefined) total += 1;
   if (filters.maxEstimatedValueEur !== undefined) total += 1;
   if (filters.minQualificationScore !== undefined) total += 1;

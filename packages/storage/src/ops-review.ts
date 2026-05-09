@@ -31,7 +31,25 @@ type OpsReviewQueueRow = {
 };
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(currentDirectory, "../../..");
+const resolveRepoRoot = () => {
+  const cwd = process.cwd();
+  const candidates = [
+    cwd,
+    path.resolve(cwd, ".."),
+    path.resolve(cwd, "../.."),
+    path.resolve(cwd, "../../.."),
+    path.resolve(currentDirectory, "../../.."),
+  ];
+
+  for (const candidate of candidates) {
+    if (existsSync(path.join(candidate, "AGENTS.md")) && existsSync(path.join(candidate, "data"))) {
+      return candidate;
+    }
+  }
+
+  return path.resolve(currentDirectory, "../../..");
+};
+const repoRoot = resolveRepoRoot();
 
 export const STORED_OPS_REVIEW_STATUSES = [
   "pending",

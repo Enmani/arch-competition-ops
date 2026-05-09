@@ -109,10 +109,13 @@ export {
 };
 
 export const getCloudflareD1Database = async () => {
-  if (
-    process.env.NODE_ENV === "development" &&
-    process.env.ARCH_COMPETITION_USE_D1_IN_DEV !== "1"
-  ) {
+  const isLocalNodeRuntime =
+    typeof process !== "undefined" && Boolean(process.versions?.node);
+  const useD1InLocalNode =
+    process.env.ARCH_COMPETITION_USE_D1 === "1" ||
+    process.env.ARCH_COMPETITION_USE_D1_IN_DEV === "1";
+
+  if (isLocalNodeRuntime && !useD1InLocalNode) {
     return null;
   }
 

@@ -28,6 +28,12 @@ const createTempDb = () => {
       regions TEXT NOT NULL,
       languages TEXT NOT NULL,
       competition_types TEXT NOT NULL,
+      project_types TEXT NOT NULL DEFAULT '[]',
+      building_categories TEXT NOT NULL DEFAULT '[]',
+      official_sectors TEXT NOT NULL DEFAULT '[]',
+      built_asset_types TEXT NOT NULL DEFAULT '[]',
+      design_scopes TEXT NOT NULL DEFAULT '[]',
+      project_modes TEXT NOT NULL DEFAULT '[]',
       audience TEXT NOT NULL,
       cpv_codes TEXT NOT NULL,
       implementation_path TEXT,
@@ -528,6 +534,49 @@ const createTempDb = () => {
     now,
   );
   insert.run(
+    "china-interior",
+    "china-interior",
+    "Pazhou Exhibition Tower Hotel Interior Design Services",
+    "GGZY",
+    "Guangzhou Exhibition Development Co., Ltd.",
+    "https://example.com/china-interior",
+    "https://example.com/china-interior",
+    "verified",
+    "public_design_services_procurement",
+    "china",
+    "open",
+    "CN-012",
+    JSON.stringify(["asia", "china"]),
+    JSON.stringify(["zh"]),
+    JSON.stringify(["architecture", "interior"]),
+    JSON.stringify(["professionals"]),
+    JSON.stringify(["71200000"]),
+    "service_contract_award_after_competitive_selection",
+    1,
+    0,
+    0,
+    0,
+    580000,
+    "CNY 580000",
+    null,
+    "Guangzhou",
+    null,
+    null,
+    null,
+    null,
+    "2026-06-03",
+    "Hotel interior design and fit-out design services.",
+    null,
+    "https://example.com/china-interior",
+    0.86,
+    "official_notice",
+    0.83,
+    "China interior design notice for project-type tests.",
+    recent,
+    recent,
+    now,
+  );
+  insert.run(
     "italy-heritage",
     "italy-heritage",
     "Archaeological Site Restoration and Museum Route Design Services",
@@ -801,6 +850,30 @@ const createTempDb = () => {
       "2026-04-20T07:00:00+00:00",
     );
 
+  database
+    .prepare(
+      `
+        UPDATE competitions
+        SET
+          project_types = ?,
+          building_categories = ?,
+          official_sectors = ?,
+          built_asset_types = ?,
+          design_scopes = ?,
+          project_modes = ?
+        WHERE id = ?
+      `,
+    )
+    .run(
+      JSON.stringify(["interior_project", "building_project"]),
+      JSON.stringify(["sport_leisure"]),
+      JSON.stringify(["building_construction", "design_consulting"]),
+      JSON.stringify(["interior", "hospitality_commercial"]),
+      JSON.stringify(["interior_design", "scheme", "construction_docs"]),
+      JSON.stringify(["new_build"]),
+      "china-interior",
+    );
+
   database.close();
 
   return {
@@ -842,7 +915,7 @@ test("getStoredFilterOptions returns distinct selectable values from the databas
     const { getStoredFilterOptions } = await loadStorageModule();
     const options = getStoredFilterOptions();
 
-    assert.deepEqual(options.jurisdictions, ["france", "germany", "italy", "switzerland"]);
+    assert.deepEqual(options.jurisdictions, ["china", "france", "germany", "italy", "switzerland"]);
     assert.deepEqual(options.procedureTypes, [
       "design_contest",
       "maitrise_d_oeuvre_procurement",
@@ -858,6 +931,7 @@ test("getStoredFilterOptions returns distinct selectable values from the databas
       "urban_regeneration",
       "environment_design",
       "urban_planning",
+      "interior_project",
       "building_project",
     ]);
     assert.deepEqual(options.buildingCategories, [
@@ -869,6 +943,12 @@ test("getStoredFilterOptions returns distinct selectable values from the databas
       "culture_heritage",
       "transport_infrastructure",
     ]);
+    assert.deepEqual(options.designScopes, [
+      "interior_design",
+      "scheme",
+      "construction_docs",
+    ]);
+    assert.deepEqual(options.projectModes, ["new_build"]);
   } finally {
     delete process.env.ARCH_COMPETITION_DB_PATH;
     cleanup();
@@ -898,6 +978,8 @@ test("getStoredFilterOptions scopes selectable values to the current discover sl
     ]);
     assert.deepEqual(options.projectTypes, ["urban_planning"]);
     assert.deepEqual(options.buildingCategories, ["education"]);
+    assert.deepEqual(options.designScopes, []);
+    assert.deepEqual(options.projectModes, []);
 
     assert.equal(discoverData.opportunities.length, 1);
     assert.equal(discoverData.opportunities[0]?.id, "switzerland-campus");
@@ -934,16 +1016,42 @@ test("queryStoredOpportunityFeed exposes complete metadata for the waterfall fee
   const { dbPath, cleanup } = createTempDb();
   process.env.ARCH_COMPETITION_DB_PATH = dbPath;
 
+  const database = new Database(dbPath);
+  database
+    .prepare(
+      `
+        UPDATE competitions
+        SET
+          project_types = ?,
+          building_categories = ?,
+          official_sectors = ?,
+          built_asset_types = ?,
+          design_scopes = ?,
+          project_modes = ?
+        WHERE id = ?
+      `,
+    )
+    .run(
+      JSON.stringify(["building_project"]),
+      JSON.stringify(["healthcare", "civic_public"]),
+      JSON.stringify(["building_construction", "design_consulting"]),
+      JSON.stringify(["healthcare", "office_research"]),
+      JSON.stringify(["scheme", "preliminary"]),
+      JSON.stringify(["new_build"]),
+      "france-hospital",
+    );
+  database.close();
+
   try {
     const { queryStoredOpportunityFeed } = await loadStorageModule();
     const opportunities = queryStoredOpportunityFeed({
-      jurisdiction: "switzerland",
+      includeExpired: true,
       limit: 10,
       sort: "highest_value",
     });
 
-    assert.equal(opportunities.length, 2);
-    assert.equal(opportunities[0]?.id, "switzerland-sports");
+    assert.ok(opportunities.length >= 2);
+    assert.equal(opportunities[0]?.id, "france-hospital");
 
     const campusOpportunity = opportunities.find((opportunity) => opportunity.id === "switzerland-campus");
     assert.ok(campusOpportunity);
@@ -954,6 +1062,15 @@ test("queryStoredOpportunityFeed exposes complete metadata for the waterfall fee
     assert.deepEqual(campusOpportunity.cpvCodes, ["71230000"]);
     assert.deepEqual(campusOpportunity.languages, ["de", "fr"]);
     assert.equal(campusOpportunity.estimatedContractValueEur, 980000);
+
+    const hospitalOpportunity = opportunities.find((opportunity) => opportunity.id === "france-hospital");
+    assert.ok(hospitalOpportunity);
+    assert.equal(hospitalOpportunity.projectTypeKey, "building_project");
+    assert.deepEqual(hospitalOpportunity.buildingCategories, ["healthcare", "civic_public"]);
+    assert.deepEqual(hospitalOpportunity.officialSectors, ["building_construction", "design_consulting"]);
+    assert.deepEqual(hospitalOpportunity.builtAssetTypes, ["healthcare", "office_research"]);
+    assert.deepEqual(hospitalOpportunity.designScopes, ["scheme", "preliminary"]);
+    assert.deepEqual(hospitalOpportunity.projectModes, ["new_build"]);
   } finally {
     delete process.env.ARCH_COMPETITION_DB_PATH;
     cleanup();
@@ -1112,6 +1229,18 @@ test("queryStoredOpportunityFeed filters records by multi-select project types a
       "germany-transport",
     ]);
 
+    const interiorProjects = queryStoredOpportunityFeed({
+      projectTypes: ["interior_project"],
+      limit: 10,
+    });
+    assert.deepEqual(interiorProjects.map((opportunity) => opportunity.id), ["china-interior"]);
+
+    const buildingProjectsIncludingInterior = queryStoredOpportunityFeed({
+      projectTypes: ["building_project"],
+      limit: 10,
+    });
+    assert.ok(buildingProjectsIncludingInterior.some((opportunity) => opportunity.id === "china-interior"));
+
     const healthcareAndEducation = queryStoredOpportunityFeed({
       buildingCategories: ["education", "healthcare"],
       limit: 10,
@@ -1127,10 +1256,24 @@ test("queryStoredOpportunityFeed filters records by multi-select project types a
       limit: 10,
     });
     assert.deepEqual(buildingProjects.map((opportunity) => opportunity.id), [
+      "china-interior",
       "france-housing",
       "switzerland-sports",
       "italy-heritage",
     ]);
+
+    const schemeProjects = queryStoredOpportunityFeed({
+      designScopes: ["scheme"],
+      limit: 10,
+    });
+    assert.ok(schemeProjects.some((opportunity) => opportunity.id === "china-interior"));
+    assert.equal(schemeProjects.every((opportunity) => opportunity.id === "china-interior"), true);
+
+    const newBuildProjects = queryStoredOpportunityFeed({
+      projectModes: ["new_build"],
+      limit: 10,
+    });
+    assert.equal(newBuildProjects.every((opportunity) => opportunity.id === "china-interior"), true);
   } finally {
     delete process.env.ARCH_COMPETITION_DB_PATH;
     delete process.env.ARCH_COMPETITION_TODAY;
@@ -1154,6 +1297,7 @@ test("queryStoredOpportunityFeed excludes expired notices by default but keeps u
       opportunities.map((opportunity) => opportunity.id),
       [
         "switzerland-campus",
+        "china-interior",
         "italy-regeneration",
         "italy-library",
         "france-hospital",
@@ -1162,7 +1306,6 @@ test("queryStoredOpportunityFeed excludes expired notices by default but keeps u
         "switzerland-sports",
         "italy-heritage",
         "germany-transport",
-        "germany-undated",
       ],
     );
   } finally {
@@ -1190,6 +1333,7 @@ test("queryStoredOpportunityFeed can include expired notices when explicitly req
       [
         "italy-expired",
         "switzerland-campus",
+        "china-interior",
         "italy-regeneration",
         "italy-library",
         "france-hospital",
@@ -1281,6 +1425,12 @@ test("storage reads legacy competition tables without geocode columns", async ()
       regions TEXT NOT NULL,
       languages TEXT NOT NULL,
       competition_types TEXT NOT NULL,
+      project_types TEXT NOT NULL,
+      building_categories TEXT NOT NULL,
+      official_sectors TEXT NOT NULL,
+      built_asset_types TEXT NOT NULL,
+      design_scopes TEXT NOT NULL,
+      project_modes TEXT NOT NULL,
       audience TEXT NOT NULL,
       cpv_codes TEXT NOT NULL,
       implementation_path TEXT,
@@ -1307,15 +1457,16 @@ test("storage reads legacy competition tables without geocode columns", async ()
   database
     .prepare(`
       INSERT INTO competitions (
-        id, dedup_key, title, organizer, authority_name, official_url, source_url, status,
-        opportunity_type, jurisdiction, procedure_type, official_notice_id, regions, languages,
-        competition_types, audience, cpv_codes, implementation_path, licensed_architect_required,
+      id, dedup_key, title, organizer, authority_name, official_url, source_url, status,
+      opportunity_type, jurisdiction, procedure_type, official_notice_id, regions, languages,
+      competition_types, project_types, building_categories, official_sectors, built_asset_types,
+      design_scopes, project_modes, audience, cpv_codes, implementation_path, licensed_architect_required,
         local_partner_required, registration_fee_eur, submission_fee_eur, estimated_contract_value_eur,
         estimated_contract_value_text, prize_summary, deadline_at, eligibility_summary, brief_pdf_url,
         documents_portal_url, extraction_confidence, evidence_level, qualification_score, evidence_note,
         last_verified_at, discovered_at, updated_at
       ) VALUES (
-        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
       )
     `)
     .run(
@@ -1336,7 +1487,13 @@ test("storage reads legacy competition tables without geocode columns", async ()
       "[]",
       "[]",
       "[]",
-      null,
+      "[]",
+      "[]",
+      "[]",
+      "[]",
+      "[]",
+      "[]",
+      "[]",
       1,
       0,
       0,

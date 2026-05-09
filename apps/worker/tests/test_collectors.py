@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from http.client import IncompleteRead
 from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
@@ -12,6 +13,7 @@ from arch_competition_ops.collectors.canadabuys import collect_canadabuys_docume
 from arch_competition_ops.collectors.contracts_finder import collect_contracts_finder_documents
 from arch_competition_ops.collectors.doffin import collect_doffin_documents
 from arch_competition_ops.collectors.generic_rss import collect_generic_rss_documents
+from arch_competition_ops.collectors.ggzy import collect_ggzy_documents
 from arch_competition_ops.collectors.pcsp import collect_pcsp_documents
 from arch_competition_ops.collectors.registry import COLLECTORS
 from arch_competition_ops.collectors.scaffold import collect_scaffold_only_documents
@@ -473,6 +475,1301 @@ def test_collect_contracts_finder_documents_caps_live_query_limit_to_100() -> No
 
     assert documents == []
     assert "limit=100" in captured["url"]
+
+
+def test_collect_ggzy_documents_keeps_building_and_interior_design_notices_only() -> None:
+    source = _build_source(
+        "ggzy_public_notices",
+        name="National Public Resources Trading Platform",
+        jurisdiction="china",
+        base_url="https://www.ggzy.gov.cn/deal/dealList.html",
+        scan_method="api",
+        extractor="generic_listing_html",
+        collector="ggzy_public_notices",
+        regions=["asia", "china"],
+        languages=["zh"],
+    )
+
+    list_payload = {
+        "code": 200,
+        "message": "success",
+        "data": {
+            "records": [
+                {
+                    "id": "keep-001",
+                    "publishTime": "2026-05-07",
+                    "businessTypeText": "工程建设",
+                    "informationType": "0101",
+                    "informationTypeText": "招标/资审公告",
+                    "provinceText": "贵州省",
+                    "title": "贵阳观城运小龙滩地产项目会所室内设计招标公告",
+                    "url": "/information/deal/html/a/520000/0101/20260507/keep-001.html",
+                },
+                {
+                    "id": "drop-001",
+                    "publishTime": "2026-05-09",
+                    "businessTypeText": "工程建设",
+                    "informationType": "0101",
+                    "informationTypeText": "招标/资审公告",
+                    "provinceText": "河北省",
+                    "title": "冀南新区庭院小区地下管网改造工程设计施工工程总承包（EPC）",
+                    "url": "/information/deal/html/a/130000/0101/20260509/drop-001.html",
+                },
+            ]
+        },
+    }
+
+    detail_html = """
+<!doctype html>
+<html>
+  <body>
+    <div class="detail">
+      <h4 class="h4_o">贵阳观城运小龙滩地产项目会所室内设计招标公告</h4>
+      <p class="p_o">
+        <span>发布时间：2026-05-07 00:00</span>
+        <span class='detail_url'>
+          <a target="_blank" href="https://example.cn/original/interior" >原文链接地址</a>
+        </span>
+      </p>
+      <div id="mycontent">
+        <div class="detail_content">
+          <p>招标人：贵阳观城运地产开发有限公司</p>
+          <p>项目编号：GY-INTERIOR-2026-001</p>
+          <p>投标文件递交截止时间：2026年05月21日 09时30分</p>
+          <p>招标控制价：580000 元</p>
+          <p>项目规模：会所室内设计及精装修设计服务。</p>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
+""".strip()
+
+    def fake_fetch_list(_url: str, data: dict[str, str]) -> str:
+        assert data["SOURCE_TYPE"] == "1"
+        assert data["PAGENUMBER"] == "1"
+        return json.dumps(list_payload, ensure_ascii=False)
+
+    def fake_fetch_detail(url: str) -> str:
+        assert "keep-001" in url
+        return detail_html
+
+    documents = collect_ggzy_documents(
+        source,
+        limit=5,
+        publication_date_from="2026-05-01",
+        fetch_list=fake_fetch_list,
+        fetch_detail=fake_fetch_detail,
+        today=date(2026, 5, 8),
+    )
+
+    assert len(documents) == 1
+    document = documents[0]
+    assert document.source_url.endswith("/html/b/520000/0101/20260507/keep-001.html")
+
+    payload = json.loads(document.payload)
+    assert payload["title"] == "贵阳观城运小龙滩地产项目会所室内设计招标公告"
+    assert payload["buyer"] == "贵阳观城运地产开发有限公司"
+    assert payload["noticeId"] == "GY-INTERIOR-2026-001"
+    assert payload["deadline"] == "2026-05-21"
+    assert payload["officialUrl"] == "https://example.cn/original/interior"
+    assert payload["estimatedValueText"] == "CNY 580000"
+    assert payload["procedureType"] == "open"
+    assert payload["evidenceLevel"] == "official_notice"
+    assert "interior_project" in payload["projectTypes"]
+    assert payload["buildingCategories"] == ["sport_leisure"]
+    assert "architecture" in payload["competitionTypes"]
+    assert "interior" in payload["competitionTypes"]
+    assert "interior" in payload["builtAssetTypes"]
+    assert "interior_design" in payload["designScopes"]
+    assert "室内设计" in payload["summary"]
+
+
+def test_collect_ggzy_documents_excludes_hard_negative_domain_notices_after_detail_validation() -> None:
+    source = _build_source(
+        "ggzy_public_notices",
+        name="National Public Resources Trading Platform",
+        jurisdiction="china",
+        base_url="https://www.ggzy.gov.cn/deal/dealList.html",
+        scan_method="api",
+        extractor="generic_listing_html",
+        collector="ggzy_public_notices",
+        regions=["asia", "china"],
+        languages=["zh"],
+    )
+
+    list_payload = {
+        "code": 200,
+        "message": "success",
+        "data": {
+            "records": [
+                {
+                    "id": "oil-001",
+                    "publishTime": "2026-05-08",
+                    "businessTypeText": "政府采购",
+                    "informationType": "0201",
+                    "informationTypeText": "采购/资审公告",
+                    "provinceText": "新疆维吾尔自治区",
+                    "title": "新疆伊宁凹陷曲鲁海次凹油气资源调查评价钻探地质工程方案设计综合研究技术服务公开招标公告",
+                    "url": "/information/deal/html/a/650000/0201/20260508/oil-001.html",
+                }
+            ]
+        },
+    }
+
+    detail_html = """
+<!doctype html>
+<html>
+  <body>
+    <div class="detail">
+      <h4 class="h4_o">新疆伊宁凹陷曲鲁海次凹油气资源调查评价钻探地质工程方案设计综合研究技术服务公开招标公告</h4>
+      <div id="mycontent">
+        <div class="detail_content">
+          <p>采购方式：公开招标</p>
+          <p>预算金额：800000 元</p>
+          <p>简要规格描述：油气资源调查评价钻探地质工程方案设计综合研究技术服务。</p>
+          <p>合同履约期限：完成井位设计、钻井地质设计、钻井工程设计。</p>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
+""".strip()
+
+    documents = collect_ggzy_documents(
+        source,
+        limit=5,
+        publication_date_from="2026-05-01",
+        fetch_list=lambda _url, _data: json.dumps(list_payload, ensure_ascii=False),
+        fetch_detail=lambda _url: detail_html,
+        today=date(2026, 5, 8),
+    )
+
+    assert documents == []
+
+
+def test_collect_ggzy_documents_excludes_soft_negative_rural_notices_without_strong_built_signals() -> None:
+    source = _build_source(
+        "ggzy_public_notices",
+        name="National Public Resources Trading Platform",
+        jurisdiction="china",
+        base_url="https://www.ggzy.gov.cn/deal/dealList.html",
+        scan_method="api",
+        extractor="generic_listing_html",
+        collector="ggzy_public_notices",
+        regions=["asia", "china"],
+        languages=["zh"],
+    )
+
+    list_payload = {
+        "code": 200,
+        "message": "success",
+        "data": {
+            "records": [
+                {
+                    "id": "rural-001",
+                    "publishTime": "2026-05-09",
+                    "businessTypeText": "政府采购",
+                    "informationType": "0201",
+                    "informationTypeText": "采购/资审公告",
+                    "provinceText": "江西省",
+                    "title": "遂川县2026年和美乡村建设项目初步设计服务（第2次）",
+                    "url": "/information/deal/html/a/360000/0201/20260509/rural-001.html",
+                }
+            ]
+        },
+    }
+
+    detail_html = """
+<!doctype html>
+<html>
+  <body>
+    <div class="detail">
+      <h4 class="h4_o">遂川县2026年和美乡村建设项目初步设计服务（第2次）</h4>
+      <div id="mycontent">
+        <div class="detail_content">
+          <p>项目名称：遂川县2026年和美乡村建设项目初步设计服务（第2次）</p>
+          <p>采购方式：竞争性磋商</p>
+          <p>采购人信息 名称：遂川县农业农村局</p>
+          <p>项目内容：农村人居环境整治、村庄基础设施完善等前期设计服务。</p>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
+""".strip()
+
+    documents = collect_ggzy_documents(
+        source,
+        limit=5,
+        publication_date_from="2026-05-01",
+        fetch_list=lambda _url, _data: json.dumps(list_payload, ensure_ascii=False),
+        fetch_detail=lambda _url: detail_html,
+        today=date(2026, 5, 8),
+    )
+
+    assert documents == []
+
+
+def test_collect_ggzy_documents_excludes_tourism_mining_notices_without_primary_building_focus() -> None:
+    source = _build_source(
+        "ggzy_public_notices",
+        name="National Public Resources Trading Platform",
+        jurisdiction="china",
+        base_url="https://www.ggzy.gov.cn/deal/dealList.html",
+        scan_method="api",
+        extractor="generic_listing_html",
+        collector="ggzy_public_notices",
+        regions=["asia", "china"],
+        languages=["zh"],
+    )
+
+    list_payload = {
+        "code": 200,
+        "message": "success",
+        "data": {
+            "records": [
+                {
+                    "id": "tourism-001",
+                    "publishTime": "2026-05-08",
+                    "businessTypeText": "工程建设",
+                    "informationType": "0101",
+                    "informationTypeText": "招标/资审公告",
+                    "provinceText": "广东省",
+                    "title": "龙江镇矿山遗址生态旅游融合项目方案设计及初步设计（第二次招标）【设计】招标公告",
+                    "url": "/information/deal/html/a/440000/0101/20260508/tourism-001.html",
+                }
+            ]
+        },
+    }
+
+    detail_html = """
+<!doctype html>
+<html>
+  <body>
+    <div class="detail">
+      <h4 class="h4_o">龙江镇矿山遗址生态旅游融合项目方案设计及初步设计（第二次招标）【设计】招标公告</h4>
+      <div id="mycontent">
+        <div class="detail_content">
+          <p>招标项目名称：龙江镇矿山遗址生态旅游融合项目方案设计及初步设计（第二次招标）</p>
+          <p>招标内容：包括但不限于方案设计、方案修改、初步设计（含方案深化等）、概算编制工作等。</p>
+          <p>主要建设内容包括工业遗存改造11001平方米，新建游客服务中心800平方米，新建一级运动服务中心600平方米，二级运动服务中心300平方米，配套建设停车场13500平方米，以及公共厕所、园区道路工程、大门、攀岩体验设施、矿坑周边地块绿化等基础配套设施。</p>
+          <p>投标人须具有工程设计综合甲级资质或建筑行业乙级及以上资质，设计项目负责人具有一级注册建筑师执业资格。</p>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
+""".strip()
+
+    documents = collect_ggzy_documents(
+        source,
+        limit=5,
+        publication_date_from="2026-05-01",
+        fetch_list=lambda _url, _data: json.dumps(list_payload, ensure_ascii=False),
+        fetch_detail=lambda _url: detail_html,
+        today=date(2026, 5, 8),
+    )
+
+    assert documents == []
+
+
+def test_collect_ggzy_documents_extracts_deadline_from_iso_style_beijing_notice() -> None:
+    source = _build_source(
+        "ggzy_public_notices",
+        name="National Public Resources Trading Platform",
+        jurisdiction="china",
+        base_url="https://www.ggzy.gov.cn/deal/dealList.html",
+        scan_method="api",
+        extractor="generic_listing_html",
+        collector="ggzy_public_notices",
+        regions=["asia", "china"],
+        languages=["zh"],
+    )
+
+    list_payload = {
+        "code": 200,
+        "message": "success",
+        "data": {
+            "records": [
+                {
+                    "id": "bj-001",
+                    "publishTime": "2026-05-07",
+                    "businessTypeText": "工程建设",
+                    "informationType": "0101",
+                    "informationTypeText": "招标/资审公告",
+                    "provinceText": "北京市",
+                    "title": "十一学校延庆校区项目（方案设计、初步设计）招标公告",
+                    "url": "/information/deal/html/a/110000/0101/20260507/bj-001.html",
+                }
+            ]
+        },
+    }
+
+    detail_html = """
+<!doctype html>
+<html>
+  <body>
+    <div class="detail">
+      <h4 class="h4_o">十一学校延庆校区项目（方案设计、初步设计）招标公告</h4>
+      <div id="mycontent">
+        <div class="detail_content">
+          <h3>六、投标文件的递交</h3>
+          <div>递交截止时间：2026-05-28 10:30:00</div>
+          <div>递交方式：现场递交文件</div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
+""".strip()
+
+    documents = collect_ggzy_documents(
+        source,
+        limit=5,
+        publication_date_from="2026-05-01",
+        fetch_list=lambda _url, _data: json.dumps(list_payload, ensure_ascii=False),
+        fetch_detail=lambda _url: detail_html,
+        today=date(2026, 5, 9),
+    )
+
+    assert len(documents) == 1
+    payload = json.loads(documents[0].payload)
+    assert payload["deadline"] == "2026-05-28"
+
+
+def test_collect_ggzy_documents_extracts_deadline_from_spaced_chinese_notice() -> None:
+    source = _build_source(
+        "ggzy_public_notices",
+        name="National Public Resources Trading Platform",
+        jurisdiction="china",
+        base_url="https://www.ggzy.gov.cn/deal/dealList.html",
+        scan_method="api",
+        extractor="generic_listing_html",
+        collector="ggzy_public_notices",
+        regions=["asia", "china"],
+        languages=["zh"],
+    )
+
+    list_payload = {
+        "code": 200,
+        "message": "success",
+        "data": {
+            "records": [
+                {
+                    "id": "gx-001",
+                    "publishTime": "2026-05-08",
+                    "businessTypeText": "政府采购",
+                    "informationType": "0201",
+                    "informationTypeText": "采购/资审公告",
+                    "provinceText": "广西壮族自治区",
+                    "title": "防城港市防城区人民医院医共体能力提升建设项目初步设计、方案设计、施工图编制设计服务竞争性磋商公告",
+                    "url": "/information/deal/html/a/450000/0201/20260508/gx-001.html",
+                }
+            ]
+        },
+    }
+
+    detail_html = """
+<!doctype html>
+<html>
+  <body>
+    <div class="detail">
+      <h4 class="h4_o">防城港市防城区人民医院医共体能力提升建设项目初步设计、方案设计、施工图编制设计服务竞争性磋商公告</h4>
+      <div id="mycontent">
+        <div class="detail_content">
+          <p>项目概况：潜在供应商应于 202 6 年 5 月 19 日 13 时 30分（北京时间）前提交响应文件。</p>
+          <p>截止时间：202 6 年 5 月 19 日 13 时 30分（北京时间）</p>
+          <p>采购方式：竞争性磋商</p>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
+""".strip()
+
+    documents = collect_ggzy_documents(
+        source,
+        limit=5,
+        publication_date_from="2026-05-01",
+        fetch_list=lambda _url, _data: json.dumps(list_payload, ensure_ascii=False),
+        fetch_detail=lambda _url: detail_html,
+        today=date(2026, 5, 9),
+    )
+
+    assert len(documents) == 1
+    payload = json.loads(documents[0].payload)
+    assert payload["deadline"] == "2026-05-19"
+
+
+def test_collect_ggzy_documents_extracts_deadline_from_sichuan_word_html_template() -> None:
+    source = _build_source(
+        "ggzy_public_notices",
+        name="National Public Resources Trading Platform",
+        jurisdiction="china",
+        base_url="https://www.ggzy.gov.cn/deal/dealList.html",
+        scan_method="api",
+        extractor="generic_listing_html",
+        collector="ggzy_public_notices",
+        regions=["asia", "china"],
+        languages=["zh"],
+    )
+
+    list_payload = {
+        "code": 200,
+        "message": "success",
+        "data": {
+            "records": [
+                {
+                    "id": "sc-001",
+                    "publishTime": "2026-05-07",
+                    "businessTypeText": "工程建设",
+                    "informationType": "0101",
+                    "informationTypeText": "招标/资审公告",
+                    "provinceText": "四川省",
+                    "title": "叙州丽雅拟建地块方案设计（二次）招标招标公告",
+                    "url": "/information/deal/html/a/510000/0101/20260507/sc-001.html",
+                }
+            ]
+        },
+    }
+
+    detail_html = """
+<!doctype html>
+<html>
+  <body>
+    <div class="detail">
+      <h4 class="h4_o">叙州丽雅拟建地块方案设计（二次）招标招标公告</h4>
+      <div id="mycontent">
+        <div class="detail_content">
+          <!DOCTYPE html>
+          <html>
+            <head><title></title></head>
+            <body>
+              <div>招标范围：叙州丽雅拟建地块建设项目建筑概念方案设计、建筑方案设计。</div>
+              <div>5.1 投标文件递交的截止时间（投标截止时间，下同）为 2026-05-28 09:00。</div>
+              <div>3.1.1资质要求：具备建筑行业（建筑工程）设计乙级及以上资质。</div>
+            </body>
+          </html>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
+""".strip()
+
+    documents = collect_ggzy_documents(
+        source,
+        limit=5,
+        publication_date_from="2026-05-01",
+        fetch_list=lambda _url, _data: json.dumps(list_payload, ensure_ascii=False),
+        fetch_detail=lambda _url: detail_html,
+        today=date(2026, 5, 9),
+    )
+
+    assert len(documents) == 1
+    payload = json.loads(documents[0].payload)
+    assert payload["deadline"] == "2026-05-28"
+
+
+def test_collect_ggzy_documents_extracts_deadline_from_fujian_word_export_notice() -> None:
+    source = _build_source(
+        "ggzy_public_notices",
+        name="National Public Resources Trading Platform",
+        jurisdiction="china",
+        base_url="https://www.ggzy.gov.cn/deal/dealList.html",
+        scan_method="api",
+        extractor="generic_listing_html",
+        collector="ggzy_public_notices",
+        regions=["asia", "china"],
+        languages=["zh"],
+    )
+
+    list_payload = {
+        "code": 200,
+        "message": "success",
+        "data": {
+            "records": [
+                {
+                    "id": "fj-001",
+                    "publishTime": "2026-05-08",
+                    "businessTypeText": "工程建设",
+                    "informationType": "0101",
+                    "informationTypeText": "招标/资审公告",
+                    "provinceText": "福建省",
+                    "title": "石狮市黄金海岸国际度假酒店设计服务（招标公告）",
+                    "url": "/information/deal/html/a/350000/0101/20260508/fj-001.html",
+                }
+            ]
+        },
+    }
+
+    detail_html = """
+<!doctype html>
+<html>
+  <body>
+    <div class="detail">
+      <h4 class="h4_o">石狮市黄金海岸国际度假酒店设计服务（招标公告）</h4>
+      <div id="mycontent">
+        <div class="detail_content">
+          <html xmlns="http://www.w3.org/TR/REC-html40">
+            <head>
+              <meta http-equiv="Content-Type" content="text/html; charset=gb2312">
+              <title>Word Export</title>
+            </head>
+            <body>
+              <p>项目名称：石狮市黄金海岸国际度假酒店设计服务</p>
+              <p>投标截止时间：2026年05月29日 09时30分</p>
+              <p>开标时间：2026年05月29日 09时30分</p>
+              <p>资质要求：建筑行业（建筑工程）甲级。</p>
+            </body>
+          </html>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
+""".strip()
+
+    documents = collect_ggzy_documents(
+        source,
+        limit=5,
+        publication_date_from="2026-05-01",
+        fetch_list=lambda _url, _data: json.dumps(list_payload, ensure_ascii=False),
+        fetch_detail=lambda _url: detail_html,
+        today=date(2026, 5, 9),
+    )
+
+    assert len(documents) == 1
+    payload = json.loads(documents[0].payload)
+    assert payload["deadline"] == "2026-05-29"
+    assert "投标截止时间" in payload["summary"]
+
+
+def test_collect_ggzy_documents_prefers_submission_deadline_over_opening_time() -> None:
+    source = _build_source(
+        "ggzy_public_notices",
+        name="National Public Resources Trading Platform",
+        jurisdiction="china",
+        base_url="https://www.ggzy.gov.cn/deal/dealList.html",
+        scan_method="api",
+        extractor="generic_listing_html",
+        collector="ggzy_public_notices",
+        regions=["asia", "china"],
+        languages=["zh"],
+    )
+
+    list_payload = {
+        "code": 200,
+        "message": "success",
+        "data": {
+            "records": [
+                {
+                    "id": "prefer-deadline-001",
+                    "publishTime": "2026-05-08",
+                    "businessTypeText": "工程建设",
+                    "informationType": "0101",
+                    "informationTypeText": "招标/资审公告",
+                    "provinceText": "山东省",
+                    "title": "青岛市市民文化中心项目方案设计招标公告",
+                    "url": "/information/deal/html/a/370000/0101/20260508/prefer-deadline-001.html",
+                }
+            ]
+        },
+    }
+
+    detail_html = """
+<!doctype html>
+<html>
+  <body>
+    <div class="detail">
+      <h4 class="h4_o">青岛市市民文化中心项目方案设计招标公告</h4>
+      <div id="mycontent">
+        <div class="detail_content">
+          <p>项目名称：青岛市市民文化中心项目方案设计</p>
+          <p>开标时间：2026年05月18日 09时30分</p>
+          <p>投标文件递交截止时间：2026年05月19日 09时30分</p>
+          <p>资质要求：投标人须具备建筑行业（建筑工程）甲级资质。</p>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
+""".strip()
+
+    documents = collect_ggzy_documents(
+        source,
+        limit=5,
+        publication_date_from="2026-05-01",
+        fetch_list=lambda _url, _data: json.dumps(list_payload, ensure_ascii=False),
+        fetch_detail=lambda _url: detail_html,
+        today=date(2026, 5, 9),
+    )
+
+    assert len(documents) == 1
+    payload = json.loads(documents[0].payload)
+    assert payload["deadline"] == "2026-05-19"
+
+
+def test_collect_ggzy_documents_retries_detail_fetch_to_extract_deadline() -> None:
+    source = _build_source(
+        "ggzy_public_notices",
+        name="National Public Resources Trading Platform",
+        jurisdiction="china",
+        base_url="https://www.ggzy.gov.cn/deal/dealList.html",
+        scan_method="api",
+        extractor="generic_listing_html",
+        collector="ggzy_public_notices",
+        regions=["asia", "china"],
+        languages=["zh"],
+    )
+
+    list_payload = {
+        "code": 200,
+        "message": "success",
+        "data": {
+            "records": [
+                {
+                    "id": "retry-001",
+                    "publishTime": "2026-05-08",
+                    "businessTypeText": "政府采购",
+                    "informationType": "0201",
+                    "informationTypeText": "采购/资审公告",
+                    "provinceText": "广西壮族自治区",
+                    "title": "防城港市防城区人民医院医共体能力提升建设项目初步设计、方案设计、施工图编制设计服务竞争性磋商公告",
+                    "url": "/information/deal/html/a/450000/0201/20260508/retry-001.html",
+                }
+            ]
+        },
+    }
+
+    detail_html = """
+<!doctype html>
+<html>
+  <body>
+    <div class="detail">
+      <h4 class="h4_o">防城港市防城区人民医院医共体能力提升建设项目初步设计、方案设计、施工图编制设计服务竞争性磋商公告</h4>
+      <div id="mycontent">
+        <div class="detail_content">
+          <p>项目概况：潜在供应商应于 202 6 年 5 月 19 日 13 时 30分（北京时间）前提交响应文件。</p>
+          <p>截止时间：202 6 年 5 月 19 日 13 时 30分（北京时间）</p>
+          <p>采购方式：竞争性磋商</p>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
+""".strip()
+
+    attempts = {"count": 0}
+
+    def flaky_fetch_detail(_url: str) -> str:
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise TimeoutError("transient detail fetch failure")
+        return detail_html
+
+    documents = collect_ggzy_documents(
+        source,
+        limit=5,
+        publication_date_from="2026-05-01",
+        fetch_list=lambda _url, _data: json.dumps(list_payload, ensure_ascii=False),
+        fetch_detail=flaky_fetch_detail,
+        today=date(2026, 5, 9),
+    )
+
+    assert attempts["count"] >= 2
+    assert len(documents) == 1
+    payload = json.loads(documents[0].payload)
+    assert payload["deadline"] == "2026-05-19"
+    assert payload["evidenceLevel"] == "official_notice"
+
+
+def test_collect_ggzy_documents_retries_list_fetch_before_filtering() -> None:
+    source = _build_source(
+        "ggzy_public_notices",
+        name="National Public Resources Trading Platform",
+        jurisdiction="china",
+        base_url="https://www.ggzy.gov.cn/deal/dealList.html",
+        scan_method="api",
+        extractor="generic_listing_html",
+        collector="ggzy_public_notices",
+        regions=["asia", "china"],
+        languages=["zh"],
+    )
+
+    list_payload = {
+        "code": 200,
+        "message": "success",
+        "data": {
+            "records": [
+                {
+                    "id": "retry-list-001",
+                    "publishTime": "2026-05-08",
+                    "businessTypeText": "工程建设",
+                    "informationType": "0101",
+                    "informationTypeText": "招标/资审公告",
+                    "provinceText": "贵州省",
+                    "title": "贵阳观城运小龙滩地产项目会所室内设计招标公告",
+                    "url": "/information/deal/html/a/520000/0101/20260507/retry-list-001.html",
+                }
+            ]
+        },
+    }
+
+    detail_html = """
+<!doctype html>
+<html>
+  <body>
+    <div class="detail">
+      <h4 class="h4_o">贵阳观城运小龙滩地产项目会所室内设计招标公告</h4>
+      <div id="mycontent">
+        <div class="detail_content">
+          <p>招标人：贵阳观城运地产开发有限公司</p>
+          <p>项目编号：GY-INTERIOR-2026-001</p>
+          <p>投标文件递交截止时间：2026年05月21日 09时30分</p>
+          <p>项目规模：会所室内设计及精装修设计服务。</p>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
+""".strip()
+
+    attempts = {"count": 0}
+
+    def flaky_fetch_list(_url: str, _data: dict[str, str]) -> str:
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise IncompleteRead(b"partial", 10)
+        return json.dumps(list_payload, ensure_ascii=False)
+
+    documents = collect_ggzy_documents(
+        source,
+        limit=5,
+        publication_date_from="2026-05-01",
+        fetch_list=flaky_fetch_list,
+        fetch_detail=lambda _url: detail_html,
+        today=date(2026, 5, 9),
+    )
+
+    assert attempts["count"] >= 2
+    assert len(documents) == 1
+    payload = json.loads(documents[0].payload)
+    assert payload["title"] == "贵阳观城运小龙滩地产项目会所室内设计招标公告"
+
+
+def test_collect_ggzy_documents_excludes_water_engineering_notice_from_original_category() -> None:
+    source = _build_source(
+        "ggzy_public_notices",
+        name="National Public Resources Trading Platform",
+        jurisdiction="china",
+        base_url="https://www.ggzy.gov.cn/deal/dealList.html",
+        scan_method="api",
+        extractor="generic_listing_html",
+        collector="ggzy_public_notices",
+        regions=["asia", "china"],
+        languages=["zh"],
+    )
+
+    list_payload = {
+        "code": 200,
+        "message": "success",
+        "data": {
+            "records": [
+                {
+                    "id": "water-001",
+                    "publishTime": "2026-05-08",
+                    "businessTypeText": "工程建设",
+                    "informationType": "0101",
+                    "informationTypeText": "招标/资审公告",
+                    "provinceText": "江苏省",
+                    "title": "滆湖湖区生态修复一期项目初步设计",
+                    "url": "/information/deal/html/a/320000/0101/20260508/water-001.html",
+                }
+            ]
+        },
+    }
+
+    detail_html = """
+<!doctype html>
+<html>
+  <body>
+    <div class="detail">
+      <h4 class="h4_o">滆湖湖区生态修复一期项目初步设计</h4>
+      <p class="p_o">
+        <span class='detail_url'>
+          <a target="_blank" href="https://example.cn/original/water-001">原文链接地址</a>
+        </span>
+      </p>
+      <div id="mycontent">
+        <div class="detail_content">
+          <p>项目名称：滆湖湖区生态修复一期项目初步设计</p>
+          <p>项目建设内容：主要建设内容为防浪消浪带构建工程、水体透明度恢复工程和沉水植物重建工程。</p>
+          <p>资质要求：水利工程设计资质、环境工程设计专项（水污染防治工程或污染修复工程）甲级资质。</p>
+          <p>投标文件递交的截止时间为2026年06月01日09时00分。</p>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
+""".strip()
+
+    original_html = """
+<!doctype html>
+<html>
+  <body>
+    <div class="ewb-bread">
+      <a href="/">首页</a> &gt; <a>交易信息</a> &gt; <a>水利工程</a> &gt; <span>招标公告</span>
+    </div>
+  </body>
+</html>
+""".strip()
+
+    def fake_fetch_detail(url: str) -> str:
+        if url == "https://example.cn/original/water-001":
+            return original_html
+        return detail_html
+
+    documents = collect_ggzy_documents(
+        source,
+        limit=5,
+        publication_date_from="2026-05-01",
+        fetch_list=lambda _url, _data: json.dumps(list_payload, ensure_ascii=False),
+        fetch_detail=fake_fetch_detail,
+        today=date(2026, 5, 9),
+    )
+
+    assert documents == []
+
+
+def test_collect_ggzy_documents_excludes_water_ecology_notice_without_original_category_probe() -> None:
+    source = _build_source(
+        "ggzy_public_notices",
+        name="National Public Resources Trading Platform",
+        jurisdiction="china",
+        base_url="https://www.ggzy.gov.cn/deal/dealList.html",
+        scan_method="api",
+        extractor="generic_listing_html",
+        collector="ggzy_public_notices",
+        regions=["asia", "china"],
+        languages=["zh"],
+    )
+
+    list_payload = {
+        "code": 200,
+        "message": "success",
+        "data": {
+            "records": [
+                {
+                    "id": "water-002",
+                    "publishTime": "2026-05-08",
+                    "businessTypeText": "工程建设",
+                    "informationType": "0101",
+                    "informationTypeText": "招标/资审公告",
+                    "provinceText": "江苏省",
+                    "title": "滆湖湖区生态修复一期项目初步设计",
+                    "url": "/information/deal/html/a/320000/0101/20260508/water-002.html",
+                }
+            ]
+        },
+    }
+
+    detail_html = """
+<!doctype html>
+<html>
+  <body>
+    <div class="detail">
+      <h4 class="h4_o">滆湖湖区生态修复一期项目初步设计</h4>
+      <div id="mycontent">
+        <div class="detail_content">
+          <p>项目总体建设内容：主要建设内容为防浪消浪带构建工程、水体透明度恢复工程和沉水植物重建工程。</p>
+          <p>资质要求：水利工程设计资质或水利行业（河道整治）专业乙级及以上资质；环境工程设计专项（水污染防治工程或污染修复工程）甲级资质。</p>
+          <p>投标文件递交的截止时间为2026年06月01日09时00分。</p>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
+""".strip()
+
+    documents = collect_ggzy_documents(
+        source,
+        limit=5,
+        publication_date_from="2026-05-01",
+        fetch_list=lambda _url, _data: json.dumps(list_payload, ensure_ascii=False),
+        fetch_detail=lambda _url: detail_html,
+        today=date(2026, 5, 9),
+    )
+
+    assert documents == []
+
+
+def test_collect_ggzy_documents_keeps_unknown_building_type_with_positive_official_category_and_building_discipline() -> None:
+    source = _build_source(
+        "ggzy_public_notices",
+        name="National Public Resources Trading Platform",
+        jurisdiction="china",
+        base_url="https://www.ggzy.gov.cn/deal/dealList.html",
+        scan_method="api",
+        extractor="generic_listing_html",
+        collector="ggzy_public_notices",
+        regions=["asia", "china"],
+        languages=["zh"],
+    )
+
+    list_payload = {
+        "code": 200,
+        "message": "success",
+        "data": {
+            "records": [
+                {
+                    "id": "keep-unknown-building-001",
+                    "publishTime": "2026-05-08",
+                    "businessTypeText": "工程建设",
+                    "informationType": "0101",
+                    "informationTypeText": "招标/资审公告",
+                    "provinceText": "北京市",
+                    "title": "星际计算中心项目方案设计、初步设计招标公告",
+                    "url": "/information/deal/html/a/110000/0101/20260508/keep-unknown-building-001.html",
+                }
+            ]
+        },
+    }
+
+    detail_html = """
+<!doctype html>
+<html>
+  <body>
+    <div class="detail">
+      <h4 class="h4_o">星际计算中心项目方案设计、初步设计招标公告</h4>
+      <p class="p_o">
+        <span class='detail_url'>
+          <a target="_blank" href="https://example.cn/original/keep-unknown-building-001">原文链接地址</a>
+        </span>
+      </p>
+      <div id="mycontent">
+        <div class="detail_content">
+          <p>项目名称：星际计算中心项目方案设计、初步设计</p>
+          <p>建设规模：新建科研计算设施及配套公共服务空间。</p>
+          <p>投标文件递交的截止时间为2026年06月06日09时30分。</p>
+          <p>资质要求：投标人须具备建筑行业（建筑工程）甲级资质，项目负责人须具备一级注册建筑师资格。</p>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
+""".strip()
+
+    original_html = """
+<!doctype html>
+<html>
+  <body>
+    <div class="ewb-bread">
+      <a href="/">首页</a> &gt; <a>交易信息</a> &gt; <a>工程建设</a> &gt; <a>勘察设计</a> &gt; <a>房屋建筑</a> &gt; <span>招标公告</span>
+    </div>
+  </body>
+</html>
+""".strip()
+
+    def fake_fetch_detail(url: str) -> str:
+        if url == "https://example.cn/original/keep-unknown-building-001":
+            return original_html
+        return detail_html
+
+    documents = collect_ggzy_documents(
+        source,
+        limit=5,
+        publication_date_from="2026-05-01",
+        fetch_list=lambda _url, _data: json.dumps(list_payload, ensure_ascii=False),
+        fetch_detail=fake_fetch_detail,
+        today=date(2026, 5, 9),
+    )
+
+    assert len(documents) == 1
+    payload = json.loads(documents[0].payload)
+    assert payload["title"] == "星际计算中心项目方案设计、初步设计招标公告"
+    assert payload["deadline"] == "2026-06-06"
+
+
+def test_collect_ggzy_documents_excludes_municipal_design_notice_from_official_category_even_with_design_scope() -> None:
+    source = _build_source(
+        "ggzy_public_notices",
+        name="National Public Resources Trading Platform",
+        jurisdiction="china",
+        base_url="https://www.ggzy.gov.cn/deal/dealList.html",
+        scan_method="api",
+        extractor="generic_listing_html",
+        collector="ggzy_public_notices",
+        regions=["asia", "china"],
+        languages=["zh"],
+    )
+
+    list_payload = {
+        "code": 200,
+        "message": "success",
+        "data": {
+            "records": [
+                {
+                    "id": "drop-municipal-001",
+                    "publishTime": "2026-05-08",
+                    "businessTypeText": "工程建设",
+                    "informationType": "0101",
+                    "informationTypeText": "招标/资审公告",
+                    "provinceText": "浙江省",
+                    "title": "滨江大道综合管廊项目初步设计招标公告",
+                    "url": "/information/deal/html/a/330000/0101/20260508/drop-municipal-001.html",
+                }
+            ]
+        },
+    }
+
+    detail_html = """
+<!doctype html>
+<html>
+  <body>
+    <div class="detail">
+      <h4 class="h4_o">滨江大道综合管廊项目初步设计招标公告</h4>
+      <p class="p_o">
+        <span class='detail_url'>
+          <a target="_blank" href="https://example.cn/original/drop-municipal-001">原文链接地址</a>
+        </span>
+      </p>
+      <div id="mycontent">
+        <div class="detail_content">
+          <p>项目建设内容：新建综合管廊及附属市政配套设施。</p>
+          <p>投标文件递交的截止时间为2026年06月08日09时00分。</p>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
+""".strip()
+
+    original_html = """
+<!doctype html>
+<html>
+  <body>
+    <div class="ewb-bread">
+      <a href="/">首页</a> &gt; <a>交易信息</a> &gt; <a>工程建设</a> &gt; <a>市政工程</a> &gt; <span>招标公告</span>
+    </div>
+  </body>
+</html>
+""".strip()
+
+    def fake_fetch_detail(url: str) -> str:
+        if url == "https://example.cn/original/drop-municipal-001":
+            return original_html
+        return detail_html
+
+    documents = collect_ggzy_documents(
+        source,
+        limit=5,
+        publication_date_from="2026-05-01",
+        fetch_list=lambda _url, _data: json.dumps(list_payload, ensure_ascii=False),
+        fetch_detail=fake_fetch_detail,
+        today=date(2026, 5, 9),
+    )
+
+    assert documents == []
+
+
+def test_collect_ggzy_documents_ignores_qualification_examples_when_mapping_building_categories() -> None:
+    source = _build_source(
+        "ggzy_public_notices",
+        name="National Public Resources Trading Platform",
+        jurisdiction="china",
+        base_url="https://www.ggzy.gov.cn/deal/dealList.html",
+        scan_method="api",
+        extractor="generic_listing_html",
+        collector="ggzy_public_notices",
+        regions=["asia", "china"],
+        languages=["zh"],
+    )
+
+    list_payload = {
+        "code": 200,
+        "message": "success",
+        "data": {
+            "records": [
+                {
+                    "id": "culture-001",
+                    "publishTime": "2026-05-09",
+                    "businessTypeText": "工程建设",
+                    "informationType": "0101",
+                    "informationTypeText": "招标/资审公告",
+                    "provinceText": "安徽省",
+                    "title": "庐阳工人文化宫规划方案及初步设计招标公告",
+                    "url": "/information/deal/html/a/340000/0101/20260509/culture-001.html",
+                }
+            ]
+        },
+    }
+
+    detail_html = """
+<!doctype html>
+<html>
+  <body>
+    <div class="detail">
+      <h4 class="h4_o">庐阳工人文化宫规划方案及初步设计招标公告</h4>
+      <div id="mycontent">
+        <div class="detail_content">
+          <p>项目名称：庐阳工人文化宫规划方案及初步设计</p>
+          <p>项目概况：新建工人文化宫，包含公共文化活动空间及配套服务用房。</p>
+          <p>招标范围：方案设计、初步设计及相关服务。</p>
+          <p>投标文件递交的截止时间为2026年05月29日09时30分。</p>
+          <p>投标人资格要求：公共建筑项目设计业绩应包含方案设计、初步设计内容。</p>
+          <p>注：“公共建筑”系指办公建筑、商业建筑、旅游建筑、科教文卫建筑、通信建筑、交通运输类建筑等。工业建筑及居住建筑设计业绩不予认可。</p>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
+""".strip()
+
+    documents = collect_ggzy_documents(
+        source,
+        limit=5,
+        publication_date_from="2026-05-01",
+        fetch_list=lambda _url, _data: json.dumps(list_payload, ensure_ascii=False),
+        fetch_detail=lambda _url: detail_html,
+        today=date(2026, 5, 9),
+    )
+
+    assert len(documents) == 1
+    payload = json.loads(documents[0].payload)
+    assert payload["buildingCategories"] == ["civic_public"]
+    assert payload["builtAssetTypes"] == ["civic_culture"]
+
+
+def test_collect_ggzy_documents_ignores_contact_address_when_mapping_hospitality_labels() -> None:
+    source = _build_source(
+        "ggzy_public_notices",
+        name="National Public Resources Trading Platform",
+        jurisdiction="china",
+        base_url="https://www.ggzy.gov.cn/deal/dealList.html",
+        scan_method="api",
+        extractor="generic_listing_html",
+        collector="ggzy_public_notices",
+        regions=["asia", "china"],
+        languages=["zh"],
+    )
+
+    list_payload = {
+        "code": 200,
+        "message": "success",
+        "data": {
+            "records": [
+                {
+                    "id": "housing-001",
+                    "publishTime": "2026-05-07",
+                    "businessTypeText": "政府采购",
+                    "informationType": "0201",
+                    "informationTypeText": "采购/资审公告",
+                    "provinceText": "新疆维吾尔自治区",
+                    "title": "库车市2025年棚户区（城中村）改造项目初步设计及施工图设计竞争性磋商公告",
+                    "url": "/information/deal/html/a/650000/0201/20260507/housing-001.html",
+                }
+            ]
+        },
+    }
+
+    detail_html = """
+<!doctype html>
+<html>
+  <body>
+    <div class="detail">
+      <h4 class="h4_o">库车市2025年棚户区（城中村）改造项目初步设计及施工图设计竞争性磋商公告</h4>
+      <div id="mycontent">
+        <div class="detail_content">
+          <p>项目概况：库车市2025年棚户区（城中村）改造项目初步设计及施工图设计采购项目的潜在供应商应于2026年05月20日10:30前提交响应文件。</p>
+          <p>简要规格描述：本次工程的初步设计、施工图设计编制工作（含方案设计、施工期间的配合服务）。</p>
+          <p>地 址：阿克苏市解放北路御城青山商业综合体御城大厦A座12楼。</p>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
+""".strip()
+
+    documents = collect_ggzy_documents(
+        source,
+        limit=5,
+        publication_date_from="2026-05-01",
+        fetch_list=lambda _url, _data: json.dumps(list_payload, ensure_ascii=False),
+        fetch_detail=lambda _url: detail_html,
+        today=date(2026, 5, 9),
+    )
+
+    assert len(documents) == 1
+    payload = json.loads(documents[0].payload)
+    assert payload["buildingCategories"] == ["housing"]
+    assert payload["builtAssetTypes"] == ["housing"]
+    assert payload["projectModes"] == ["renovation"]
+
+
+def test_collect_ggzy_documents_drops_generic_construction_project_from_new_build_when_notice_is_renovation() -> None:
+    source = _build_source(
+        "ggzy_public_notices",
+        name="National Public Resources Trading Platform",
+        jurisdiction="china",
+        base_url="https://www.ggzy.gov.cn/deal/dealList.html",
+        scan_method="api",
+        extractor="generic_listing_html",
+        collector="ggzy_public_notices",
+        regions=["asia", "china"],
+        languages=["zh"],
+    )
+
+    list_payload = {
+        "code": 200,
+        "message": "success",
+        "data": {
+            "records": [
+                {
+                    "id": "health-001",
+                    "publishTime": "2026-05-08",
+                    "businessTypeText": "政府采购",
+                    "informationType": "0201",
+                    "informationTypeText": "采购/资审公告",
+                    "provinceText": "广西壮族自治区",
+                    "title": "防城港市防城区人民医院医共体能力提升建设项目初步设计、方案设计、施工图编制设计服务的竞争性磋商公告",
+                    "url": "/information/deal/html/a/450000/0201/20260508/health-001.html",
+                }
+            ]
+        },
+    }
+
+    detail_html = """
+<!doctype html>
+<html>
+  <body>
+    <div class="detail">
+      <h4 class="h4_o">防城港市防城区人民医院医共体能力提升建设项目初步设计、方案设计、施工图编制设计服务的竞争性磋商公告</h4>
+      <div id="mycontent">
+        <div class="detail_content">
+          <p>项目名称：防城港市防城区人民医院医共体能力提升建设项目初步设计、方案设计、施工图编制设计服务</p>
+          <p>采购需求：拟对防城区人民医院及3个乡镇卫生院进行改建，总改建建筑面积17525.50平方米。</p>
+          <p>响应文件提交截止时间：2026年05月19日13时30分。</p>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
+""".strip()
+
+    documents = collect_ggzy_documents(
+        source,
+        limit=5,
+        publication_date_from="2026-05-01",
+        fetch_list=lambda _url, _data: json.dumps(list_payload, ensure_ascii=False),
+        fetch_detail=lambda _url: detail_html,
+        today=date(2026, 5, 9),
+    )
+
+    assert len(documents) == 1
+    payload = json.loads(documents[0].payload)
+    assert payload["projectModes"] == ["renovation"]
 
 
 def test_collect_tenderned_documents_transforms_design_relevant_service_notices() -> None:
