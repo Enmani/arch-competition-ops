@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import {
   buildLocalePath,
@@ -28,8 +29,12 @@ export const LocaleSwitcher = ({
   const barePathname = stripLocalePrefix(pathname);
   const search = searchParams.toString();
   const [isOpen, setIsOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState<{ left: number; top: number; width: number } | null>(
+    null,
+  );
   const menuId = useId();
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
 
   const buildHref = (targetLocale: AppLocale) => {
     const href = buildLocalePath(targetLocale, barePathname);
@@ -62,6 +67,34 @@ export const LocaleSwitcher = ({
     };
   }, []);
 
+  useEffect(() => {
+    if (!isOpen || !triggerRef.current) {
+      return;
+    }
+
+    const syncPosition = () => {
+      if (!triggerRef.current) {
+        return;
+      }
+
+      const rect = triggerRef.current.getBoundingClientRect();
+      setMenuPosition({
+        left: Math.max(8, rect.right - Math.max(rect.width * 1.9, 136)),
+        top: rect.bottom + 4,
+        width: Math.max(rect.width * 1.9, 136),
+      });
+    };
+
+    syncPosition();
+    window.addEventListener("resize", syncPosition);
+    window.addEventListener("scroll", syncPosition, true);
+
+    return () => {
+      window.removeEventListener("resize", syncPosition);
+      window.removeEventListener("scroll", syncPosition, true);
+    };
+  }, [isOpen]);
+
   return (
     <div aria-label={ariaLabel} className={`locale-switcher${isOpen ? " is-open" : ""}`} ref={containerRef}>
       <button
@@ -71,6 +104,7 @@ export const LocaleSwitcher = ({
         aria-label={`${ariaLabel}: ${localeNames[activeLocale]}`}
         className="locale-trigger"
         onClick={() => setIsOpen((current) => !current)}
+        ref={triggerRef}
         type="button"
       >
         <span aria-hidden="true" className="locale-globe">
@@ -88,26 +122,41 @@ export const LocaleSwitcher = ({
         <span className="locale-trigger-label">{localeNames[activeLocale]}</span>
       </button>
 
-      <div className="locale-menu" hidden={!isOpen} id={menuId}>
-        {(["zh", "en"] as const).map((locale) => {
-          const active = locale === activeLocale;
-
-          return (
-            <Link
-              key={locale}
-              aria-current={active ? "true" : undefined}
-              className={`locale-menu-item${active ? " active" : ""}`}
-              href={buildHref(locale)}
-              onClick={() => {
-                setLocaleCookie(locale);
-                setIsOpen(false);
+      {typeof document !== "undefined" && isOpen && menuPosition
+        ? createPortal(
+            <div
+              className="locale-menu"
+              id={menuId}
+              style={{
+                left: `${menuPosition.left}px`,
+                minWidth: `${menuPosition.width}px`,
+                position: "fixed",
+                right: "auto",
+                top: `${menuPosition.top}px`,
               }}
             >
-              <span className="locale-menu-label">{localeNames[locale]}</span>
-            </Link>
-          );
-        })}
-      </div>
+              {(["zh", "en"] as const).map((locale) => {
+                const active = locale === activeLocale;
+
+                return (
+                  <Link
+                    key={locale}
+                    aria-current={active ? "true" : undefined}
+                    className={`locale-menu-item${active ? " active" : ""}`}
+                    href={buildHref(locale)}
+                    onClick={() => {
+                      setLocaleCookie(locale);
+                      setIsOpen(false);
+                    }}
+                  >
+                    <span className="locale-menu-label">{localeNames[locale]}</span>
+                  </Link>
+                );
+              })}
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 };

@@ -73,7 +73,7 @@ const WatchlistDashboardTable = ({
               ) ?? row.watchedAt;
 
             return (
-              <tr key={row.opportunity.id}>
+              <tr className="watchlist-row" key={row.opportunity.id}>
                 <td>
                   <Link className="inline-link" href={detailPath}>
                     {row.opportunity.title}

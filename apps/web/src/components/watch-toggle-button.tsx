@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 
 import type { AppDictionary } from "@/i18n/dictionaries";
 
@@ -23,7 +23,7 @@ const WatchToggleButton = ({
 }: WatchToggleButtonProps) => {
   const [isWatched, setIsWatched] = useState(initialWatched);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isMutating, setIsMutating] = useState(false);
+  const [isMutating, startTransition] = useTransition();
   const isMutatingRef = useRef(false);
   const opportunityIdRef = useRef(opportunityId);
   const requestSequenceRef = useRef(0);
@@ -37,7 +37,6 @@ const WatchToggleButton = ({
     isMutatingRef.current = false;
     setIsWatched(initialWatched);
     setErrorMessage(null);
-    setIsMutating(false);
   }, [initialWatched, opportunityId]);
 
   const finishRequest = (requestSequence: number, targetOpportunityId: string) => {
@@ -49,7 +48,6 @@ const WatchToggleButton = ({
     }
 
     isMutatingRef.current = false;
-    setIsMutating(false);
     return true;
   };
 
@@ -63,45 +61,48 @@ const WatchToggleButton = ({
     const requestSequence = requestSequenceRef.current + 1;
     requestSequenceRef.current = requestSequence;
     isMutatingRef.current = true;
-    setIsMutating(true);
     setErrorMessage(null);
-    void (async () => {
-      try {
-        const response = await fetch("/api/watchlists", {
-          method: nextWatched ? "POST" : "DELETE",
-          headers: {
-            "content-type": "application/json",
-          },
-          body: JSON.stringify({ opportunityId: targetOpportunityId }),
-        });
-        const payload = (await response.json()) as { error?: string };
+    setIsWatched(nextWatched);
+    onToggle?.(nextWatched);
 
-        if (!response.ok) {
-          throw new Error(payload.error || dictionary.errors.update);
+    startTransition(() => {
+      void (async () => {
+        try {
+          const response = await fetch("/api/watchlists", {
+            method: nextWatched ? "POST" : "DELETE",
+            headers: {
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({ opportunityId: targetOpportunityId }),
+          });
+          const payload = (await response.json()) as { error?: string };
+
+          if (!response.ok) {
+            throw new Error(payload.error || dictionary.errors.update);
+          }
+
+          if (
+            requestSequence !== requestSequenceRef.current ||
+            targetOpportunityId !== opportunityIdRef.current
+          ) {
+            return;
+          }
+        } catch {
+          if (
+            requestSequence !== requestSequenceRef.current ||
+            targetOpportunityId !== opportunityIdRef.current
+          ) {
+            return;
+          }
+
+          setIsWatched(!nextWatched);
+          onToggle?.(!nextWatched);
+          setErrorMessage(dictionary.errors.update);
+        } finally {
+          finishRequest(requestSequence, targetOpportunityId);
         }
-
-        if (
-          requestSequence !== requestSequenceRef.current ||
-          targetOpportunityId !== opportunityIdRef.current
-        ) {
-          return;
-        }
-
-        setIsWatched(nextWatched);
-        onToggle?.(nextWatched);
-      } catch {
-        if (
-          requestSequence !== requestSequenceRef.current ||
-          targetOpportunityId !== opportunityIdRef.current
-        ) {
-          return;
-        }
-
-        setErrorMessage(dictionary.errors.update);
-      } finally {
-        finishRequest(requestSequence, targetOpportunityId);
-      }
-    })();
+      })();
+    });
   };
 
   return (

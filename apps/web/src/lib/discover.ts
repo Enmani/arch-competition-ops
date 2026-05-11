@@ -132,6 +132,12 @@ export const buildDiscoverSearchParams = (
   if (filters.includeExpired === true) {
     searchParams.includeExpired = "true";
   }
+  if (filters.limit !== undefined) {
+    searchParams.limit = filters.limit.toString();
+  }
+  if (filters.offset !== undefined && filters.offset > 0) {
+    searchParams.offset = filters.offset.toString();
+  }
   if (filters.procedureType) {
     searchParams.procedureType = filters.procedureType;
   }
@@ -174,6 +180,7 @@ export const readDiscoverFilters = (
     implementationPath: readSingleValue(searchParams.implementationPath) || undefined,
     jurisdiction: readSingleValue(searchParams.jurisdiction) || undefined,
     limit: readNumberValue(searchParams.limit) ?? DISCOVER_DEFAULT_LIMIT,
+    offset: readNumberValue(searchParams.offset) ?? 0,
     licensedArchitectRequired:
       readSingleValue(searchParams.licensedArchitectRequired) === "true" ? true : undefined,
     maxEstimatedValueEur: readNumberValue(searchParams.maxEstimatedValueEur),

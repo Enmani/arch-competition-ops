@@ -1,0 +1,446 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e5]:
+        - generic [ref=e6]:
+          - link "Ministerio de Hacienda y Función Pública Ministerio de Hacienda y Función Pública" [ref=e7] [cursor=pointer]:
+            - /url: https://www.hacienda.gob.es
+            - generic [ref=e8]:
+              - img "Ministerio de Hacienda y Función Pública" [ref=e9]
+              - img "Ministerio de Hacienda y Función Pública" [ref=e10]
+          - link "Plataforma de Contratación del Sector Público" [ref=e11] [cursor=pointer]:
+            - /url: /wps/portal/plataforma
+            - img "Plataforma de Contratación del Sector Público" [ref=e12]
+        - generic [ref=e13] [cursor=pointer]:
+          - strong [ref=e14]: ZH |
+          - img "Seleccionar lenguaje" [ref=e15]
+      - generic [ref=e16]:
+        - list [ref=e17]:
+          - generic [ref=e18]:
+            - button "Abrir menú Menú" [ref=e19] [cursor=pointer]:
+              - img "Abrir menú" [ref=e20]
+              - generic [ref=e21]: Menú
+            - list [ref=e22]:
+              - listitem [ref=e23]:
+                - link "Buscador" [ref=e24] [cursor=pointer]:
+                  - /url: /wps/portal/plataforma/buscador/!ut/p/z1/jZHLDoIwEEW_xS_otEDBJUIt4KsKRemGkJgYEh7GGEz8eou6lTq7ydwzc3MHKXRCqquG-lLd676rGt0XipY22wXBMiLgpVYIZB1KSaOxJehoEig9hh_lg4HnH95437ECO09yQdOYA8TRMlxL7Gic_sdPGDTy6i2ZcmDKQE0e0RkU2qRb-jnb-_Hcgt3ioAWJ2GSCEwxAkez6W6vflY676jMbGlQQwHMHey51vzznEOMFBxuvtiFQ4bKE7bPRg4m_tlLKE9SiTYYne8xeySmpXw!!/dz/d5/L2dJQSEvUUt3QS80TmxFL1o2X0FWRVFBSTkzMDA5Q0IwMlJBNFJHVTIyMDk3/
+                  - img "Buscador" [ref=e25]
+              - listitem [ref=e26]:
+                - link "Information" [ref=e27] [cursor=pointer]:
+                  - /url: /wps/portal/plataforma/informacion/!ut/p/z1/jZHLDoIwEEW_xS_otEDBJUIt4KsKRemGkJgYEh7GGEz8eou6lTq7ydwzc3MHKXRCqquG-lLd676rGt0XipY22wXBMiLgpVYIZB1KSaOxJehoEig9hh_lg4HnH95437ECO09yQdOYA8TRMlxL7Gic_sdPGDTy6i2ZcmDKQE0e0RkU2qRb-jnb-_Hcgt3ioAWJ2GSCEwxAkez6W6vflY676jMbGlQQwHMHey51vzznEOMFBxuvtiFQ4bKE7bPRg4m_tlLKE9SiTYYne8xeySmpXw!!/dz/d5/L2dJQSEvUUt3QS80TmxFL1o2X0JTODhBQjFBMEdKSjUwQU0wNExHUDEzMEUy/
+                  - img "Information" [ref=e28]
+        - list [ref=e31]:
+          - listitem [ref=e32]:
+            - link "Search" [ref=e33] [cursor=pointer]:
+              - /url: /wps/portal/plataforma/buscadores/busqueda
+          - listitem [ref=e34]:
+            - generic "Detail" [ref=e35]
+        - generic:
+          - generic:
+            - list
+    - generic [ref=e38]:
+      - region "SeguimientoExpedientePortlet" [ref=e40]:
+        - generic [ref=e42]: SeguimientoExpedientePortlet
+        - list [ref=e46]:
+          - listitem [ref=e47]:
+            - text: If you would like to be notified of any news regarding this bid, please register on the State Contracting Platform homepage.
+            - link "Start session" [ref=e48] [cursor=pointer]:
+              - /url: /wps/portal/plataforma/empresas/!ut/p/z1/jZHLDoIwEEW_xS_otEDBJUIt4KsKRemGkJgYEh7GGEz8eou6lTq7ydwzc3MHKXRCqquG-lLd676rGt0XipY22wXBMiLgpVYIZB1KSaOxJehoEig9hh_lg4HnH95437ECO09yQdOYA8TRMlxL7Gic_sdPGDTy6i2ZcmDKQE0e0RkU2qRb-jnb-_Hcgt3ioAWJ2GSCEwxAkez6W6vflY676jMbGlQQwHMHey51vzznEOMFBxuvtiFQ4bKE7bPRg4m_tlLKE9SiTYYne8xeySmpXw!!/dz/d5/L2dJQSEvUUt3QS80TmxFL1o2X0JTODhBQjFBMDg3QkQwQTZFMzY1UTEyMEc2/?cID=Z6_4EOCCFH208S3D02LDUU6HH2082&nID=Z6_4EOCCFH208S3D02LDUU6HH2082
+            - link "Register" [ref=e49] [cursor=pointer]:
+              - /url: /wps/portal/registrarse/!ut/p/z1/jZHLDoIwEEW_xS_otEDBJUIt4KsKRemGkJgYEh7GGEz8eou6lTq7ydwzc3MHKXRCqquG-lLd676rGt0XipY22wXBMiLgpVYIZB1KSaOxJehoEig9hh_lg4HnH95437ECO09yQdOYA8TRMlxL7Gic_sdPGDTy6i2ZcmDKQE0e0RkU2qRb-jnb-_Hcgt3ioAWJ2GSCEwxAkez6W6vflY676jMbGlQQwHMHey51vzznEOMFBxuvtiFQ4bKE7bPRg4m_tlLKE9SiTYYne8xeySmpXw!!/dz/d5/L2dJQSEvUUt3QS80TmxFL1o2XzRFT0NDRkgyME80SDcwMkxIQVE5S1ExMEg3/?cID=Z6_4EOCCFH208S3D02LDUU6HH2082&nID=Z6_4EOCCFH208S3D02LDUU6HH2082
+      - region "Detall de licitació" [ref=e51]:
+        - generic [ref=e53]: Detall de licitació
+        - generic [ref=e57]:
+          - generic [ref=e58]:
+            - generic [ref=e59]:
+              - generic "Contracting Party" [ref=e60]
+              - generic [ref=e61]:
+                - link "Alcaldía del Ayuntamiento de Emperador" [ref=e63] [cursor=pointer]:
+                  - /url: https://contrataciondelestado.es/wps/poc?uri=deeplink:perfilContratante&idBp=Ua%2BT0JhXswU%3D
+                - generic "30036080005491" [ref=e64]
+                - generic "ENTIDADES LOCALES>Comunidad Valenciana>Valencia>Ayuntamientos>Emperador" [ref=e65]
+            - generic [ref=e66]:
+              - generic "File" [ref=e67]
+              - generic "2062908A" [ref=e68]
+            - generic [ref=e69]:
+              - generic "Subject of the contract" [ref=e70]
+              - generic "Obra de ejecución de rehabilitación y cambio de uso de edifcio para \"Llar del Jubilat\" de Emperador, en Avenida Barcelona nº 18" [ref=e71]
+            - generic [ref=e72]:
+              - generic "Link to the bidding" [ref=e73]
+              - link "https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&idEvl=1OsxB80lYow7u6%2B%2FR7DUoA%3D%3D" [ref=e74] [cursor=pointer]:
+                - /url: https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&idEvl=1OsxB80lYow7u6%2B%2FR7DUoA%3D%3D
+            - img "Logo plataforma" [ref=e76]
+          - separator [ref=e77]
+          - generic [ref=e78]:
+            - generic "State of the Tender" [ref=e79]
+            - generic [ref=e80]: Publicada
+          - generic [ref=e81]:
+            - generic "EU Financing" [ref=e82]
+            - generic "No hay financiación con fondos de la UE" [ref=e83]
+          - generic [ref=e84]:
+            - generic "Base bidding budget without taxes" [ref=e85]
+            - generic [ref=e86]: 197.627,36 Euros
+          - generic [ref=e87]:
+            - generic "Estimated value of the contract" [ref=e88]
+            - generic [ref=e89]: 197.627,36 Euros
+          - generic [ref=e90]:
+            - generic "Type of Contract" [ref=e91]
+            - generic "Obras" [ref=e92]
+          - generic [ref=e93]:
+            - generic "CPV code" [ref=e94]
+            - generic "45453100-Trabajos de reacondicionamiento." [ref=e95]
+          - generic [ref=e96]:
+            - generic "Place of execution" [ref=e97]
+            - generic "España - Valencia/València - Emperador" [ref=e98]
+          - generic [ref=e99]:
+            - generic "Sistema de contractació" [ref=e100]
+            - generic "No aplica" [ref=e101]
+          - generic [ref=e102]:
+            - generic "Procurement procedure" [ref=e103]
+            - generic "Abierto simplificado" [ref=e104]
+          - generic [ref=e105]:
+            - generic "Type of processing" [ref=e106]
+            - generic "Ordinaria" [ref=e107]
+          - generic "Other Information" [ref=e108]
+          - generic [ref=e109]:
+            - generic "Method of presenting the offer" [ref=e110]
+            - generic "Electrónica" [ref=e111]
+          - generic [ref=e112]:
+            - generic "End date for the submission of offers" [ref=e113]
+            - generic "2026-05-26 23:59:00.0" [ref=e114]: 26/05/2026 23:59
+          - generic "Advertisements and documents" [ref=e115]
+          - table "Tabla de documentos publicados de la licitación" [ref=e116]:
+            - rowgroup [ref=e117]:
+              - row "Post on platform Document Veure documents" [ref=e118]:
+                - columnheader "Post on platform" [ref=e119]:
+                  - generic [ref=e121]: Post on platform
+                - columnheader "Document" [ref=e122]:
+                  - generic [ref=e124]: Document
+                - columnheader "Veure documents" [ref=e125]:
+                  - generic [ref=e127]: Veure documents
+            - rowgroup [ref=e128]:
+              - row "28/04/2026 19:13:05 Anuncio de información previa con reducción de plazos Documento html Documento xml Documento pdf Sello de Tiempo" [ref=e129]:
+                - cell "28/04/2026 19:13:05" [ref=e130]:
+                  - generic [ref=e131]: 28/04/2026 19:13:05
+                - cell "Anuncio de información previa con reducción de plazos" [ref=e132]:
+                  - generic [ref=e133]: Anuncio de información previa con reducción de plazos
+                - cell "Documento html Documento xml Documento pdf Sello de Tiempo" [ref=e134]:
+                  - generic [ref=e135]:
+                    - link "Documento html" [ref=e136] [cursor=pointer]:
+                      - /url: https://contrataciondelestado.es/FileSystem/servlet/GetDocumentByIdServlet?cifrado=QUC1GjXXSiLkydRHJBmbpw%3D%3D&DocumentIdParam=QgHb8DQrQJszhYS90T4DgRy9yE3CicJR1NsPJY1Tnu85KKVK7VZnp1dsC15WgaXf38xB2AOMRZIn60wpwq1x4uiWUy5%2BYfP3o6oCS2zlaGg//q7NB2iMZvNyf0xrJmjt
+                      - img "Documento html" [ref=e137]
+                    - link "Documento xml" [ref=e138] [cursor=pointer]:
+                      - /url: https://contrataciondelestado.es/FileSystem/servlet/GetDocumentByIdServlet?cifrado=QUC1GjXXSiLkydRHJBmbpw%3D%3D&DocumentIdParam=i7v97XoKp3EYt0T4dom2McNNvS/%2BHqt982JY/85LYjB3C24CuYJ5miqnIeiTi0ySBrZWGhI7wGP7etgFed1p5pnTP5D7KIC8cKyK7Na2RA8C1/zDIE0Kw/PWNnLS0Z0z
+                      - img "Documento xml" [ref=e139]
+                    - link "Documento pdf" [ref=e140] [cursor=pointer]:
+                      - /url: https://contrataciondelestado.es/FileSystem/servlet/GetDocumentByIdServlet?cifrado=QUC1GjXXSiLkydRHJBmbpw%3D%3D&DocumentIdParam=N8L2aW%2BwmqvIFfdXD/74Bt6XaU4HeAaevdGNY5BaSt5223GfB90f5NmC0MWwV3HZVwGuWciJbmGkzpSPfj8P0lJ9zzGAmnKRwAFw/BdepkGCx2e6p7hqtlp2aFupgHMr
+                      - img "Documento pdf" [ref=e141]
+                    - link "Sello de Tiempo" [ref=e142] [cursor=pointer]:
+                      - /url: "#"
+                      - img "Sello de Tiempo" [ref=e143]
+              - row "28/04/2026 19:08:32 Anuncio Previo Documento html Documento xml Documento pdf Sello de Tiempo" [ref=e144]:
+                - cell "28/04/2026 19:08:32" [ref=e145]:
+                  - generic [ref=e146]: 28/04/2026 19:08:32
+                - cell "Anuncio Previo" [ref=e147]:
+                  - generic [ref=e148]: Anuncio Previo
+                - cell "Documento html Documento xml Documento pdf Sello de Tiempo" [ref=e149]:
+                  - generic [ref=e150]:
+                    - link "Documento html" [ref=e151] [cursor=pointer]:
+                      - /url: https://contrataciondelestado.es/FileSystem/servlet/GetDocumentByIdServlet?cifrado=QUC1GjXXSiLkydRHJBmbpw%3D%3D&DocumentIdParam=tKGHLQmn938ye0RSB9SmYQrlxePdV3hxpad/RmTSmGT1oegGdRVoM27iO9LXPx%2BjDZ6K4fWCS2P6HGyU8A14e3idm06YZqJj20rjS3/avPp7QB3HKyQaFUExmUVQCerk
+                      - img "Documento html" [ref=e152]
+                    - link "Documento xml" [ref=e153] [cursor=pointer]:
+                      - /url: https://contrataciondelestado.es/FileSystem/servlet/GetDocumentByIdServlet?cifrado=QUC1GjXXSiLkydRHJBmbpw%3D%3D&DocumentIdParam=AoSuaAKlgMlD4S9pK%2B8pqMRiCFzr114lhT/Xh7aw85BW7wlLe1a5zwsdjV%2BSCHYSqib9rPl5ZstkVkH2UrPka0nru2gqxexwxdkXv87v8z0ZyAJWGsSt0OzTSTyw9JAs
+                      - img "Documento xml" [ref=e154]
+                    - link "Documento pdf" [ref=e155] [cursor=pointer]:
+                      - /url: https://contrataciondelestado.es/FileSystem/servlet/GetDocumentByIdServlet?cifrado=QUC1GjXXSiLkydRHJBmbpw%3D%3D&DocumentIdParam=3rl6R2muVA2gDznnnu9dKkikJ4LEu4YNdw4CoJ7K0dGi/xakBA1FO26Ha7V8xxy/2e8jWVpPAkXoNhkJmBfqy%2BiZMjErLYp7s7hEjzI4SMD6CYyL7SIrUOBFfNf52ZqA
+                      - img "Documento pdf" [ref=e156]
+                    - link "Sello de Tiempo" [ref=e157] [cursor=pointer]:
+                      - /url: "#"
+                      - img "Sello de Tiempo" [ref=e158]
+              - row "Mostrar Más 06/05/2026 17:09:40 Rectificación de Anuncio de Licitación Documento html Documento xml Documento pdf Sello de Tiempo" [ref=e159]:
+                - cell "Mostrar Más 06/05/2026 17:09:40" [ref=e160]:
+                  - generic [ref=e161]:
+                    - img "Mostrar Más" [ref=e162]
+                    - text: 06/05/2026 17:09:40
+                - cell "Rectificación de Anuncio de Licitación" [ref=e163]:
+                  - generic [ref=e164]: Rectificación de Anuncio de Licitación
+                - cell "Documento html Documento xml Documento pdf Sello de Tiempo" [ref=e165]:
+                  - generic [ref=e166]:
+                    - link "Documento html" [ref=e167] [cursor=pointer]:
+                      - /url: https://contrataciondelestado.es/FileSystem/servlet/GetDocumentByIdServlet?cifrado=QUC1GjXXSiLkydRHJBmbpw%3D%3D&DocumentIdParam=%2Bo1DuLpHRsqJAYSeZVs1nkjKyUNzOQeDxJBuOjfPYvMbiMTPW8zau40T5rpQiClW/Ge3mtQsze2ZKBEtMdFHIF9PW1DujJX5hmW4JiVxe4z6CYyL7SIrUOBFfNf52ZqA
+                      - img "Documento html" [ref=e168]
+                    - link "Documento xml" [ref=e169] [cursor=pointer]:
+                      - /url: https://contrataciondelestado.es/FileSystem/servlet/GetDocumentByIdServlet?cifrado=QUC1GjXXSiLkydRHJBmbpw%3D%3D&DocumentIdParam=juDLAFkh6pYdsP%2BwIrLCqC8mvNQozpaxoJZYAU/bOu%2BegrblACoGh6vc96BhhcyMrBrhcrrkSDArD%2BOr%2BdePbbz54BiMENY1k0fHlwYIei33GVhXrFFqN7yFncy7YfRK
+                      - img "Documento xml" [ref=e170]
+                    - link "Documento pdf" [ref=e171] [cursor=pointer]:
+                      - /url: https://contrataciondelestado.es/FileSystem/servlet/GetDocumentByIdServlet?cifrado=QUC1GjXXSiLkydRHJBmbpw%3D%3D&DocumentIdParam=NOib/Y2ktM4WtXJnw2fAHqTbCFYzSJW8ke9bLXiO9nG75pFQcf5PMz2OQOUw7XbjQFTsdXfHbaN/i2J55dcjPCnjA7WLzfSB1EgdRBHiNLH6CYyL7SIrUOBFfNf52ZqA
+                      - img "Documento pdf" [ref=e172]
+                    - link "Sello de Tiempo" [ref=e173] [cursor=pointer]:
+                      - /url: "#"
+                      - img "Sello de Tiempo" [ref=e174]
+              - row "Mostrar Más 06/05/2026 17:56:11 Rectificación de Pliego Documento html Documento xml Documento pdf Sello de Tiempo" [ref=e175]:
+                - cell "Mostrar Más 06/05/2026 17:56:11" [ref=e176]:
+                  - generic [ref=e177]:
+                    - img "Mostrar Más" [ref=e178]
+                    - text: 06/05/2026 17:56:11
+                - cell "Rectificación de Pliego" [ref=e179]:
+                  - generic [ref=e180]: Rectificación de Pliego
+                - cell "Documento html Documento xml Documento pdf Sello de Tiempo" [ref=e181]:
+                  - generic [ref=e182]:
+                    - link "Documento html" [ref=e183] [cursor=pointer]:
+                      - /url: https://contrataciondelestado.es/FileSystem/servlet/GetDocumentByIdServlet?cifrado=QUC1GjXXSiLkydRHJBmbpw%3D%3D&DocumentIdParam=k0QxBVq47zHq6x2NdeTLU12bV6NHwmCsVsy6fIwbMk5SPEWRCsyj5/0udBPB1Vn%2Bwq5Rjlo2wZIbU5wHoiK7td0VdGaKgAGnX2jaSX9Vx2zfdyQgZAdTm3EfcUAC7CJ6
+                      - img "Documento html" [ref=e184]
+                    - link "Documento xml" [ref=e185] [cursor=pointer]:
+                      - /url: https://contrataciondelestado.es/FileSystem/servlet/GetDocumentByIdServlet?cifrado=QUC1GjXXSiLkydRHJBmbpw%3D%3D&DocumentIdParam=fhcoW3jHPoLmSnlKY8v1znS9aiAi%2Ba0tPJbbCX7GauNbZ5/YX6Ns9fntIVUcKWA8ES0hb5U1xXZ/ZIIuHsfusfkSAloiduA%2BjfhKKm7p0IyHAj0WEJrB5sP7amrh2jBD
+                      - img "Documento xml" [ref=e186]
+                    - link "Documento pdf" [ref=e187] [cursor=pointer]:
+                      - /url: https://contrataciondelestado.es/FileSystem/servlet/GetDocumentByIdServlet?cifrado=QUC1GjXXSiLkydRHJBmbpw%3D%3D&DocumentIdParam=U8wtj/g3eiCv7iXpb7CdN06H4BGioYhSbF1kr5kLhPN9LzwAnBF80D5srSoUfbd34wfWCSYV7kjJ3vybeOb2ALU4JfuHMYgQRiu2J1ZDagMC1/zDIE0Kw/PWNnLS0Z0z
+                      - img "Documento pdf" [ref=e188]
+                    - link "Sello de Tiempo" [ref=e189] [cursor=pointer]:
+                      - /url: "#"
+                      - img "Sello de Tiempo" [ref=e190]
+          - generic "Otros Documentos" [ref=e191]
+          - table "Resumen Licitaciï¿½n" [ref=e192]:
+            - rowgroup [ref=e193]:
+              - row "Post on platform Document Veure documents" [ref=e194]:
+                - columnheader "Post on platform" [ref=e195]
+                - columnheader "Document" [ref=e196]
+                - columnheader "Veure documents" [ref=e197]
+            - rowgroup [ref=e198]:
+              - row "28/04/2026 19:15:35 Actos públicos informativos o de aperturas de ofertas Ver Sello Tiempo" [ref=e199]:
+                - cell "28/04/2026 19:15:35" [ref=e200]:
+                  - generic [ref=e202]: 28/04/2026 19:15:35
+                - cell "Actos públicos informativos o de aperturas de ofertas" [ref=e203]
+                - cell "Ver Sello Tiempo" [ref=e204]:
+                  - generic [ref=e205]:
+                    - link "Ver" [ref=e206] [cursor=pointer]:
+                      - /url: https://contrataciondelestado.es/FileSystem/servlet/GetDocumentByIdServlet?cifrado=QUC1GjXXSiLkydRHJBmbpw%3D%3D&DocumentIdParam=Q%2B4UaAqSeVOOC7BWjNM7t7%2Bd8ye39x/UOOotCIHKWguQRmupBeoXiPdz5OrZCwzsk1xVyNthk%2BQU1%2BlYdRQ24wSso8Eoeaeu50MJYOlWsKh45ClyWkoJ44mKM70IFcOu
+                      - img "Ver" [ref=e207]
+                    - link "Sello Tiempo" [ref=e208] [cursor=pointer]:
+                      - /url: "#"
+                      - img "Sello Tiempo" [ref=e209]
+              - row "28/04/2026 19:15:45 Memoria justificativa Ver Sello Tiempo" [ref=e210]:
+                - cell "28/04/2026 19:15:45" [ref=e211]:
+                  - generic [ref=e213]: 28/04/2026 19:15:45
+                - cell "Memoria justificativa" [ref=e214]
+                - cell "Ver Sello Tiempo" [ref=e215]:
+                  - generic [ref=e216]:
+                    - link "Ver" [ref=e217] [cursor=pointer]:
+                      - /url: https://contrataciondelestado.es/FileSystem/servlet/GetDocumentByIdServlet?cifrado=QUC1GjXXSiLkydRHJBmbpw%3D%3D&DocumentIdParam=zkCQWFCu2/Q395V4pKNlVU89Xx0FXyDmICvw/qrEl8ZFexyv6eEHva1n3B88Zr3BURLMYSdb3yV5COVfFg/MtZOlTG%2BQL434jtO7Fym8hyaCx2e6p7hqtlp2aFupgHMr
+                      - img "Ver" [ref=e218]
+                    - link "Sello Tiempo" [ref=e219] [cursor=pointer]:
+                      - /url: "#"
+                      - img "Sello Tiempo" [ref=e220]
+              - row "28/04/2026 19:16:11 Delegación competencia, BOP 10/10/2025 Ver Sello Tiempo" [ref=e221]:
+                - cell "28/04/2026 19:16:11" [ref=e222]:
+                  - generic [ref=e224]: 28/04/2026 19:16:11
+                - cell "Delegación competencia, BOP 10/10/2025" [ref=e225]
+                - cell "Ver Sello Tiempo" [ref=e226]:
+                  - generic [ref=e227]:
+                    - link "Ver" [ref=e228] [cursor=pointer]:
+                      - /url: https://contrataciondelestado.es/FileSystem/servlet/GetDocumentByIdServlet?cifrado=QUC1GjXXSiLkydRHJBmbpw%3D%3D&DocumentIdParam=jKZP7my1eBL/6VUcW0nl9tnviA4SSfZsIeYbZ1%2BZlvYtDazj8bSzqvb96PCiNeqQTuwe0sV4l/FXehWHVVWziRVV14Qq7UNwgobEBO/CMzV45ClyWkoJ44mKM70IFcOu
+                      - img "Ver" [ref=e229]
+                    - link "Sello Tiempo" [ref=e230] [cursor=pointer]:
+                      - /url: "#"
+                      - img "Sello Tiempo" [ref=e231]
+              - row "28/04/2026 19:16:38 Certificado de existencia de consignación suficiente y adecuada Ver Sello Tiempo" [ref=e232]:
+                - cell "28/04/2026 19:16:38" [ref=e233]:
+                  - generic [ref=e235]: 28/04/2026 19:16:38
+                - cell "Certificado de existencia de consignación suficiente y adecuada" [ref=e236]
+                - cell "Ver Sello Tiempo" [ref=e237]:
+                  - generic [ref=e238]:
+                    - link "Ver" [ref=e239] [cursor=pointer]:
+                      - /url: https://contrataciondelestado.es/FileSystem/servlet/GetDocumentByIdServlet?cifrado=QUC1GjXXSiLkydRHJBmbpw%3D%3D&DocumentIdParam=sSaR55uBwqIyuCeoX8KNVREuzQxcHUSl2UcuMAWmiARvbDd3e0U3COlvpkrmD8BuRvm7H8JpLJgvQd9NsBeuq2oLdZYvcMjUXIX7LDVQHceHAj0WEJrB5sP7amrh2jBD
+                      - img "Ver" [ref=e240]
+                    - link "Sello Tiempo" [ref=e241] [cursor=pointer]:
+                      - /url: "#"
+                      - img "Sello Tiempo" [ref=e242]
+              - row "28/04/2026 19:16:53 Acta de replanteo Ver Sello Tiempo" [ref=e243]:
+                - cell "28/04/2026 19:16:53" [ref=e244]:
+                  - generic [ref=e246]: 28/04/2026 19:16:53
+                - cell "Acta de replanteo" [ref=e247]
+                - cell "Ver Sello Tiempo" [ref=e248]:
+                  - generic [ref=e249]:
+                    - link "Ver" [ref=e250] [cursor=pointer]:
+                      - /url: https://contrataciondelestado.es/FileSystem/servlet/GetDocumentByIdServlet?cifrado=QUC1GjXXSiLkydRHJBmbpw%3D%3D&DocumentIdParam=pLexEmxJ92uD61CilLZLCeAL1WIE8j1IJDpk7gFQahmRX1d%2BDAb/mivIN5KNpB5cVmEy8Q9sj3F0wsWYgH6uTF0qn22GY5n%2BRBokJdSqaUaCx2e6p7hqtlp2aFupgHMr
+                      - img "Ver" [ref=e251]
+                    - link "Sello Tiempo" [ref=e252] [cursor=pointer]:
+                      - /url: "#"
+                      - img "Sello Tiempo" [ref=e253]
+              - row "28/04/2026 19:18:09 Proyecto de obra - Pliego de Prescripciones Técnicas Ver Sello Tiempo" [ref=e254]:
+                - cell "28/04/2026 19:18:09" [ref=e255]:
+                  - generic [ref=e257]: 28/04/2026 19:18:09
+                - cell "Proyecto de obra - Pliego de Prescripciones Técnicas" [ref=e258]
+                - cell "Ver Sello Tiempo" [ref=e259]:
+                  - generic [ref=e260]:
+                    - link "Ver" [ref=e261] [cursor=pointer]:
+                      - /url: https://contrataciondelestado.es/FileSystem/servlet/GetDocumentByIdServlet?cifrado=QUC1GjXXSiLkydRHJBmbpw%3D%3D&DocumentIdParam=GfRGETW9/kXd0EEJQoXJvtR8IlYMFOmRGoLT8lxlxCMO2rs%2BSjoXvuaKPZwcQjyIVZIkx16B2OmWwmYQnzG/KXA1XLTJx5OrupCeGVuqYcrfdyQgZAdTm3EfcUAC7CJ6
+                      - img "Ver" [ref=e262]
+                    - link "Sello Tiempo" [ref=e263] [cursor=pointer]:
+                      - /url: "#"
+                      - img "Sello Tiempo" [ref=e264]
+              - row "04/05/2026 13:11:19 BC3. del proyecto del Llar del Jubilat Ver Sello Tiempo" [ref=e265]:
+                - cell "04/05/2026 13:11:19" [ref=e266]:
+                  - generic [ref=e268]: 04/05/2026 13:11:19
+                - cell "BC3. del proyecto del Llar del Jubilat" [ref=e269]
+                - cell "Ver Sello Tiempo" [ref=e270]:
+                  - generic [ref=e271]:
+                    - link "Ver" [ref=e272] [cursor=pointer]:
+                      - /url: https://contrataciondelestado.es/FileSystem/servlet/GetDocumentByIdServlet?cifrado=QUC1GjXXSiLkydRHJBmbpw%3D%3D&DocumentIdParam=v8aWgqjiBQ/0XLtMkCSAcFTU4KR7/vFAT5dSg8C2UWuhnnoP34mYnsmf45LdZESyS2xafKfaLOA0iTZp/UphVUN/QlnE01sZOWxCb81JeDiCx2e6p7hqtlp2aFupgHMr
+                      - img "Ver" [ref=e273]
+                    - link "Sello Tiempo" [ref=e274] [cursor=pointer]:
+                      - /url: "#"
+                      - img "Sello Tiempo" [ref=e275]
+              - row "06/05/2026 16:02:01 Pliego de Claúsulas Administrativas Particulares Ver Sello Tiempo" [ref=e276]:
+                - cell "06/05/2026 16:02:01" [ref=e277]:
+                  - generic [ref=e279]: 06/05/2026 16:02:01
+                - cell "Pliego de Claúsulas Administrativas Particulares" [ref=e280]
+                - cell "Ver Sello Tiempo" [ref=e281]:
+                  - generic [ref=e282]:
+                    - link "Ver" [ref=e283] [cursor=pointer]:
+                      - /url: https://contrataciondelestado.es/FileSystem/servlet/GetDocumentByIdServlet?cifrado=QUC1GjXXSiLkydRHJBmbpw%3D%3D&DocumentIdParam=O4fLYkvN2sJPOZxXtA%2BcjBwJKPTCf/y5iK%2Bx9Y09vOWI9L6Q6p2sb16DwpSLNu7iSB50SYkSP//VFg%2BwRnOXgebIK4iIY1v%2BidYFQIByVHeCx2e6p7hqtlp2aFupgHMr
+                      - img "Ver" [ref=e284]
+                    - link "Sello Tiempo" [ref=e285] [cursor=pointer]:
+                      - /url: "#"
+                      - img "Sello Tiempo" [ref=e286]
+              - row "06/05/2026 16:03:37 Documento de aprobación del expediente Ver Sello Tiempo" [ref=e287]:
+                - cell "06/05/2026 16:03:37" [ref=e288]:
+                  - generic [ref=e290]: 06/05/2026 16:03:37
+                - cell "Documento de aprobación del expediente" [ref=e291]
+                - cell "Ver Sello Tiempo" [ref=e292]:
+                  - generic [ref=e293]:
+                    - link "Ver" [ref=e294] [cursor=pointer]:
+                      - /url: https://contrataciondelestado.es/FileSystem/servlet/GetDocumentByIdServlet?cifrado=QUC1GjXXSiLkydRHJBmbpw%3D%3D&DocumentIdParam=fF0Mom%2B7UFIYJkMwQrZqJnnyuvNNqEa5FNfsS/%2BNsLuV7Gu/ejw4pkD8yi/ergnkK7O9CiCqDL2UQG5BLjNLqIxLqS1Xn7lOEE0JPxCJeFD3GVhXrFFqN7yFncy7YfRK
+                      - img "Ver" [ref=e295]
+                    - link "Sello Tiempo" [ref=e296] [cursor=pointer]:
+                      - /url: "#"
+                      - img "Sello Tiempo" [ref=e297]
+              - 'row "06/05/2026 17:21:28 Anexo I: Declaración responsable y proposición económica Ver Sello Tiempo" [ref=e298]':
+                - cell "06/05/2026 17:21:28" [ref=e299]:
+                  - generic [ref=e301]: 06/05/2026 17:21:28
+                - 'cell "Anexo I: Declaración responsable y proposición económica" [ref=e302]'
+                - cell "Ver Sello Tiempo" [ref=e303]:
+                  - generic [ref=e304]:
+                    - link "Ver" [ref=e305] [cursor=pointer]:
+                      - /url: https://contrataciondelestado.es/FileSystem/servlet/GetDocumentByIdServlet?cifrado=QUC1GjXXSiLkydRHJBmbpw%3D%3D&DocumentIdParam=dzE%2BmfcwsJgmSWnvn16pjQ8ipcifWGq6X2vNmpoBKE/w6mnwAtNezQz3xrZt3P9DR6m4rBNfRSc3L8KVRb6wB9JWQ%2BhuQKglkpQXEEgHb8OHAj0WEJrB5sP7amrh2jBD
+                      - img "Ver" [ref=e306]
+                    - link "Sello Tiempo" [ref=e307] [cursor=pointer]:
+                      - /url: "#"
+                      - img "Sello Tiempo" [ref=e308]
+          - generic "Anuncios Anulados" [ref=e309]
+          - table "Tabla de documentos anulados de la licitación" [ref=e310]:
+            - rowgroup [ref=e311]:
+              - row "Post on platform Document Veure documents" [ref=e312]:
+                - columnheader "Post on platform" [ref=e313]:
+                  - generic [ref=e315]: Post on platform
+                - columnheader "Document" [ref=e316]:
+                  - generic [ref=e318]: Document
+                - columnheader "Veure documents" [ref=e319]:
+                  - generic [ref=e321]: Veure documents
+            - rowgroup [ref=e322]:
+              - row "Mostrar Más 28/04/2026 18:56:51 Anulación Anuncio Previo Documento html Documento xml Documento pdf Sello de Tiempo" [ref=e323]:
+                - cell "Mostrar Más 28/04/2026 18:56:51" [ref=e324]:
+                  - generic [ref=e325]:
+                    - img "Mostrar Más" [ref=e326]
+                    - text: 28/04/2026 18:56:51
+                - cell "Anulación Anuncio Previo" [ref=e327]:
+                  - generic [ref=e328]: Anulación Anuncio Previo
+                - cell "Documento html Documento xml Documento pdf Sello de Tiempo" [ref=e329]:
+                  - generic [ref=e330]:
+                    - link "Documento html" [ref=e331] [cursor=pointer]:
+                      - /url: https://contrataciondelestado.es/FileSystem/servlet/GetDocumentByIdServlet?cifrado=QUC1GjXXSiLkydRHJBmbpw%3D%3D&DocumentIdParam=j5TYGXIBxB6lCVB/4tBuqcodZgaLHhQ6SJsZjIHSN14eDaQM9CwDTYNxpQYU%2B/qG0ytULgTVP4oaqxxot38eVbyWdTrqzgHA2NdeQO/WqKr6CYyL7SIrUOBFfNf52ZqA
+                      - img "Documento html" [ref=e332]
+                    - link "Documento xml" [ref=e333] [cursor=pointer]:
+                      - /url: https://contrataciondelestado.es/FileSystem/servlet/GetDocumentByIdServlet?cifrado=QUC1GjXXSiLkydRHJBmbpw%3D%3D&DocumentIdParam=dmQNuyT9paRD2lH4gmTFySc2MgYuGHvbQYG%2B%2BmnPocA%2BGFarA3Yk%2BvGACCkd%2B/hrfRNUf0Ic4a6y%2B8GKHh3YPPJ4KOlBVqSplLdAsa8lZDx45ClyWkoJ44mKM70IFcOu
+                      - img "Documento xml" [ref=e334]
+                    - link "Documento pdf" [ref=e335] [cursor=pointer]:
+                      - /url: https://contrataciondelestado.es/FileSystem/servlet/GetDocumentByIdServlet?cifrado=QUC1GjXXSiLkydRHJBmbpw%3D%3D&DocumentIdParam=aqsGmUlftMbbDo0lzvRLkRFBqK2kx51AfpgN%2B1PAeZaNpJbiHMeA%2BCmw0peg377MuUSTHPH6aCQY31ExK3nTKMsXZjye8vl3fjn/2ZavaGT3GVhXrFFqN7yFncy7YfRK
+                      - img "Documento pdf" [ref=e336]
+                    - link "Sello de Tiempo" [ref=e337] [cursor=pointer]:
+                      - /url: "#"
+                      - img "Sello de Tiempo" [ref=e338]
+              - row "Mostrar Más 28/04/2026 19:12:12 Anulación Anuncio de Licitación Documento html Documento xml Documento pdf Sello de Tiempo" [ref=e339]:
+                - cell "Mostrar Más 28/04/2026 19:12:12" [ref=e340]:
+                  - generic [ref=e341]:
+                    - img "Mostrar Más" [ref=e342]
+                    - text: 28/04/2026 19:12:12
+                - cell "Anulación Anuncio de Licitación" [ref=e343]:
+                  - generic [ref=e344]: Anulación Anuncio de Licitación
+                - cell "Documento html Documento xml Documento pdf Sello de Tiempo" [ref=e345]:
+                  - generic [ref=e346]:
+                    - link "Documento html" [ref=e347] [cursor=pointer]:
+                      - /url: https://contrataciondelestado.es/FileSystem/servlet/GetDocumentByIdServlet?cifrado=QUC1GjXXSiLkydRHJBmbpw%3D%3D&DocumentIdParam=nyn/kvuQOaDOsUZKj7cu9e2Lar9pZ2AEVBDW%2BTQnO1M9IvHWKFGDG7x5B3KztwFgs2q7HdprbbBeYcpFrFJAdPphcmqqQ8iK8H7/QQlTBsAC1/zDIE0Kw/PWNnLS0Z0z
+                      - img "Documento html" [ref=e348]
+                    - link "Documento xml" [ref=e349] [cursor=pointer]:
+                      - /url: https://contrataciondelestado.es/FileSystem/servlet/GetDocumentByIdServlet?cifrado=QUC1GjXXSiLkydRHJBmbpw%3D%3D&DocumentIdParam=1rpIfopOJtjbWecj9QM/10H1BldIkplhdEg/U1fkH9qHG3aAHSv7c682zTkKJ%2B12DGppuj2MZZ9zl0R0pc5YW/eBEJ902Hre0RmKUdsxxcO1aXEvq3KHa/AEHgtDrQw0
+                      - img "Documento xml" [ref=e350]
+                    - link "Documento pdf" [ref=e351] [cursor=pointer]:
+                      - /url: https://contrataciondelestado.es/FileSystem/servlet/GetDocumentByIdServlet?cifrado=QUC1GjXXSiLkydRHJBmbpw%3D%3D&DocumentIdParam=1KTWCALprcAHhudn0amiGr3mPLmcEYrDCAIJ8/48x4EUvkqR1o3Kkwx1j92pcWyV7sn1e%2BGC0wgL5ZSdCq8d0FOTxAcPbHfkwzQ/LR4dX0g//q7NB2iMZvNyf0xrJmjt
+                      - img "Documento pdf" [ref=e352]
+                    - link "Sello de Tiempo" [ref=e353] [cursor=pointer]:
+                      - /url: "#"
+                      - img "Sello de Tiempo" [ref=e354]
+          - generic [ref=e355]:
+            - generic "Link to the bidding" [ref=e356]
+            - link "Si desea copiar la URL pulse boton derecho sobre este enlace y seleccione la opción 'Copiar acceso directo'" [ref=e358] [cursor=pointer]:
+              - /url: https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&idEvl=1OsxB80lYow7u6%2B%2FR7DUoA%3D%3D
+    - contentinfo [ref=e359]:
+      - generic [ref=e363]:
+        - generic [ref=e364]:
+          - heading "Legal advise" [level=3] [ref=e365]
+          - list [ref=e366]:
+            - listitem [ref=e367]:
+              - link "Legal advise" [ref=e368] [cursor=pointer]:
+                - /url: /wps/portal/info/aviso_legal
+        - generic [ref=e369]:
+          - heading "Data Protection" [level=3] [ref=e370]
+          - list [ref=e371]:
+            - listitem [ref=e372]:
+              - link "General information on data protection" [ref=e373] [cursor=pointer]:
+                - /url: /wps/portal/info/ProteccionDeDatos
+            - listitem [ref=e374]:
+              - link "Registro de Actividades de Tratamiento" [ref=e375] [cursor=pointer]:
+                - /url: https://www.hacienda.gob.es/es-ES/El%20Ministerio/Paginas/DPD/REGISTRO_DE_ACTIVIDADES_DE_TRATAMIENTO_DE_HACIENDA.aspx
+            - listitem [ref=e376]:
+              - link "Spanish Data Protection Agency" [ref=e377] [cursor=pointer]:
+                - /url: https://www.aepd.es/
+            - listitem [ref=e378]:
+              - link "Data Protection information." [ref=e379] [cursor=pointer]:
+                - /url: https://www.hacienda.gob.es/es-ES/El%20Ministerio/Paginas/DPD/Normativa_PD.aspx
+            - listitem [ref=e380]:
+              - link "Information on data processing by the Ministry" [ref=e381] [cursor=pointer]:
+                - /url: https://www.hacienda.gob.es/es-ES/El%20Ministerio/Paginas/DPD/Infoart13/Infoart13.aspx
+        - generic [ref=e382]:
+          - heading "Navigation Guide" [level=3] [ref=e383]
+          - list [ref=e384]:
+            - listitem [ref=e385]:
+              - link "General Information on navigation Guide" [ref=e386] [cursor=pointer]:
+                - /url: /wps/portal/info/guia_navegacion
+            - listitem [ref=e387]:
+              - link "Mapa Web" [ref=e388] [cursor=pointer]:
+                - /url: /wps/portal/info/mapa_web
+        - generic [ref=e389]:
+          - heading "Accesibility" [level=3] [ref=e390]
+          - list [ref=e391]:
+            - listitem [ref=e392]:
+              - link "Accesibility" [ref=e393] [cursor=pointer]:
+                - /url: /wps/portal/info/Accesibilidad/
+        - generic [ref=e394]:
+          - heading "Contact" [level=3] [ref=e395]
+          - list [ref=e396]:
+            - listitem [ref=e397]:
+              - link "Contact" [ref=e398] [cursor=pointer]:
+                - /url: /wps/portal/plataforma/contacto/
+      - generic [ref=e400]:
+        - link "Plataforma de Contratación del Sector Público" [ref=e401] [cursor=pointer]:
+          - /url: "#"
+          - img "Plataforma de Contratación del Sector Público" [ref=e402]
+        - list [ref=e403]:
+          - list [ref=e404]:
+            - listitem [ref=e405]:
+              - link "Go up" [ref=e406] [cursor=pointer]:
+                - /url: "#top"
+              - img "Go up" [ref=e407]
+  - region "Complementary Content":
+    - generic [ref=e409]: "${loading}"
+  - heading [level=1]

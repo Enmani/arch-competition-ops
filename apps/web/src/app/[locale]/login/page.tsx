@@ -1,6 +1,5 @@
 import Link from "next/link";
 
-import { loginAction } from "@/app/[locale]/login/actions";
 import { buildLocalePath } from "@/i18n/config";
 import { getDictionary, resolveLocaleOrNotFound } from "@/i18n/server";
 import type { AppDictionary } from "@/i18n/dictionaries";
@@ -53,7 +52,8 @@ const LocalizedLoginPage = async ({ params, searchParams }: LocalizedLoginPagePr
           </p>
         ) : null}
 
-        <form action={loginAction.bind(null, locale)} className="auth-form">
+        <form action="/api/auth/login" className="auth-form" method="post">
+          <input name="locale" type="hidden" value={locale} />
           <div className="auth-field">
             <label htmlFor="login-email">{dictionary.auth.fields.email}</label>
             <input

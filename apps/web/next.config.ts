@@ -19,6 +19,14 @@ const createNextConfig = (phase: string): NextConfig => {
     distDir: isDevelopmentServer ? ".next-dev" : ".next",
     outputFileTracingRoot: path.join(currentDirectory, "../../"),
     transpilePackages: ["@arch-competition/core", "@arch-competition/storage"],
+    images: {
+      localPatterns: [
+        {
+          pathname: "/api/opportunities/**",
+          search: "?rev=20260510geo7",
+        },
+      ],
+    },
     experimental: {
       externalDir: true,
     },

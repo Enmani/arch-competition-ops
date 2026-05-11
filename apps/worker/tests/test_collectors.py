@@ -3231,6 +3231,106 @@ def test_refresh_geocodes_command_backfills_missing_coordinates(tmp_path, monkey
     assert row["geo_lng"] == 8.671
 
 
+def test_prewarm_card_previews_command_reports_generated_counts(tmp_path, monkeypatch, capsys) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        "arch_competition_ops.cli.prewarm_card_previews",
+        lambda settings, *, competition_ids: SimpleNamespace(
+            attempted=len(competition_ids),
+            generated=max(0, len(competition_ids) - 1),
+            skipped=1 if competition_ids else 0,
+        ),
+    )
+
+    exit_code = main(
+        [
+            "prewarm-card-previews",
+            "--competition-id",
+            "alpha-opportunity",
+            "--competition-id",
+            "beta-opportunity",
+        ]
+    )
+
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "attempted=2" in output
+    assert "generated=1" in output
+    assert "skipped=1" in output
+
+
+def test_ingest_source_prewarms_card_previews_for_ingested_records(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "config").mkdir()
+    (tmp_path / "data").mkdir()
+    (tmp_path / "config" / "sources.yml").write_text(
+        """
+sources:
+  - source_id: ted_design_notices
+    name: TED Design and Procurement Notices
+    kind: official_procurement
+    jurisdiction: eu
+    base_url: https://ted.europa.eu/
+    scan_method: api
+    extractor: ted_notice_parser
+    source_tier: primary
+    enabled: true
+    regions: [europe]
+    languages: [en]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    documents = [
+        CollectedSourceDocument(
+            source_url="https://ted.europa.eu/en/notice/314672-2026/html",
+            payload=json.dumps({"title": "Bridge retrofit design package"}),
+        )
+    ]
+    prewarm_calls: list[list[str]] = []
+
+    def fake_collect(*_args, **_kwargs) -> list[CollectedSourceDocument]:
+        return documents
+
+    def fake_parse(_source, payload: str, *, source_url: str) -> CompetitionRecord:
+        return CompetitionRecord(
+            title=json.loads(payload)["title"],
+            organizer="TED Design and Procurement Notices",
+            source_url=source_url,
+            official_url=source_url,
+            status="discovered",
+            opportunity_type="public_design_services_procurement",
+            extraction_confidence=0.9,
+            evidence_level="official_notice",
+        )
+
+    monkeypatch.setattr("arch_competition_ops.operations.collect_source_documents", fake_collect)
+    monkeypatch.setattr("arch_competition_ops.operations.parse_source_payload", fake_parse)
+    monkeypatch.setattr(
+        "arch_competition_ops.operations.verify_record",
+        lambda **kwargs: kwargs["record"],
+    )
+    monkeypatch.setattr(
+        "arch_competition_ops.operations.enrich_record_geocode",
+        lambda record, **_kwargs: record,
+    )
+    monkeypatch.setattr(
+        "arch_competition_ops.operations.prewarm_opportunity_card_previews",
+        lambda settings, *, competition_ids: prewarm_calls.append(list(competition_ids)) or SimpleNamespace(
+            attempted=len(competition_ids),
+            generated=len(competition_ids),
+            skipped=0,
+        ),
+    )
+
+    exit_code = main(["ingest-source", "--source-id", "ted_design_notices", "--limit", "1"])
+
+    assert exit_code == 0
+    assert len(prewarm_calls) == 1
+    assert len(prewarm_calls[0]) == 1
+
+
 def test_normalize_anac_source_traces_command_rewrites_machine_urls_to_public_pages(
     tmp_path,
     monkeypatch,

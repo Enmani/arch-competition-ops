@@ -1,6 +1,5 @@
 import Link from "next/link";
 
-import { registerAction } from "@/app/[locale]/register/actions";
 import { buildLocalePath } from "@/i18n/config";
 import { getDictionary, resolveLocaleOrNotFound } from "@/i18n/server";
 import type { AppDictionary } from "@/i18n/dictionaries";
@@ -56,7 +55,8 @@ const LocalizedRegisterPage = async ({
           </p>
         ) : null}
 
-        <form action={registerAction.bind(null, locale)} className="auth-form">
+        <form action="/api/auth/register" className="auth-form" method="post">
+          <input name="locale" type="hidden" value={locale} />
           <div className="auth-field">
             <label htmlFor="register-email">{dictionary.auth.fields.email}</label>
             <input

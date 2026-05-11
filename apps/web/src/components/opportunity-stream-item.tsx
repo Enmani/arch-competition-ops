@@ -1,5 +1,5 @@
-import Image from "next/image";
 import Link from "next/link";
+import Image from "next/image";
 
 import type { StoredOpportunityFeedItem } from "@arch-competition/storage/cloudflare";
 
@@ -10,18 +10,22 @@ import { getOpportunityDisplayMeta } from "@/lib/opportunity-display";
 
 type OpportunityStreamItemProps = {
   dictionary: AppDictionary;
+  index: number;
   isWatched: boolean;
   locale: AppLocale;
+  onWatchChange?: (isWatched: boolean) => void;
   opportunity: StoredOpportunityFeedItem;
   workspaceWritesEnabled: boolean;
 };
 
-const opportunityImageRevision = "20260502geo";
+const opportunityImageRevision = "20260510geo7";
 
 export const OpportunityStreamItem = ({
   dictionary,
+  index,
   isWatched,
   locale,
+  onWatchChange,
   opportunity,
   workspaceWritesEnabled,
 }: OpportunityStreamItemProps) => {
@@ -35,7 +39,7 @@ export const OpportunityStreamItem = ({
   );
 
   return (
-    <article className="opportunity-tile">
+    <article className="opportunity-tile" style={{ ["--tile-index" as string]: index }}>
       <Link className="opportunity-tile-link" href={localizedRecordLink}>
         <div className="opportunity-media-frame">
           <div className="opportunity-media">
@@ -82,6 +86,7 @@ export const OpportunityStreamItem = ({
       <div className="opportunity-tile-actions">
         <WatchToggleButton
           initialWatched={isWatched}
+          onToggle={onWatchChange}
           opportunityId={opportunity.id}
           workspaceDictionary={dictionary.workspace}
           workspaceWritesEnabled={workspaceWritesEnabled}

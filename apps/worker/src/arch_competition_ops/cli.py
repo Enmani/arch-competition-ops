@@ -15,6 +15,7 @@ from arch_competition_ops.operations import (
     normalize_anac_record_statuses,
     normalize_anac_source_traces,
     normalize_gets_preannouncement_statuses,
+    prewarm_card_previews,
     rebuild_review_queue,
     refresh_missing_geocodes,
     run_doctor,
@@ -56,6 +57,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="geocode stored opportunity locations and update coordinate fields",
     )
     geocode_parser.add_argument("--limit", type=int, default=50)
+    preview_parser = subparsers.add_parser(
+        "prewarm-card-previews",
+        help="generate and cache opportunity card preview images for supplied competition ids",
+    )
+    preview_parser.add_argument("--competition-id", action="append", dest="competition_ids", default=[])
     anac_parser = subparsers.add_parser(
         "normalize-anac-source-traces",
         help="rewrite stored ANAC source trace links to human-readable ANAC detail pages",
@@ -126,6 +132,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "refresh-geocodes":
         updated_count = refresh_missing_geocodes(settings, limit=args.limit)
         _safe_print(f"Updated geocodes for {updated_count} records")
+        return 0
+
+    if args.command == "prewarm-card-previews":
+        result = prewarm_card_previews(settings, competition_ids=args.competition_ids)
+        _safe_print(
+            "Card preview prewarm completed "
+            f"(attempted={result.attempted}, generated={result.generated}, skipped={result.skipped})"
+        )
         return 0
 
     if args.command == "normalize-anac-source-traces":

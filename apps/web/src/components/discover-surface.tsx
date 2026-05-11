@@ -14,8 +14,10 @@ import {
   listWebWatchedOpportunityIds,
 } from "@/lib/server-storage";
 import { isWorkspaceWritesEnabled, resolveWorkspaceKey } from "@/lib/workspace";
+import { DiscoverFeed } from "@/components/discover-feed";
 import { DiscoverDock } from "@/components/discover-dock";
-import { OpportunityStreamItem } from "@/components/opportunity-stream-item";
+
+const DISCOVER_INITIAL_BATCH = 36;
 
 type DiscoverSurfaceProps = {
   dictionary: AppDictionary;
@@ -29,12 +31,16 @@ export const DiscoverSurface = async ({
   searchParams,
 }: DiscoverSurfaceProps) => {
   const filters = readDiscoverFilters(searchParams);
-  const { opportunities, filterOptions } = await getWebDiscoverSurfaceData(filters);
+  const { opportunities, filterOptions, total } = await getWebDiscoverSurfaceData({
+    ...filters,
+    limit: DISCOVER_INITIAL_BATCH,
+    offset: 0,
+  });
   const activeFilterCount = countActiveDiscoverFilters(filters);
   const routeBase = buildLocalePath(locale, "/discover");
   const workspaceKey = resolveWorkspaceKey();
   const workspaceWritesEnabled = isWorkspaceWritesEnabled();
-  const watchedOpportunityIds = new Set(await listWebWatchedOpportunityIds(workspaceKey));
+  const watchedOpportunityIds = await listWebWatchedOpportunityIds(workspaceKey);
   const sortOptions = [
     { label: dictionary.discover.filterOptions.sortByDeadline, value: "deadline" },
     { label: dictionary.discover.filterOptions.sortByLatest, value: "latest" },
@@ -61,18 +67,16 @@ export const DiscoverSurface = async ({
       />
 
       {opportunities.length > 0 ? (
-        <section className="waterfall-feed" aria-label={dictionary.discover.feedRegionLabel}>
-          {opportunities.map((opportunity) => (
-            <OpportunityStreamItem
-              dictionary={dictionary}
-              isWatched={watchedOpportunityIds.has(opportunity.id)}
-              key={opportunity.id}
-              locale={locale}
-              opportunity={opportunity}
-              workspaceWritesEnabled={workspaceWritesEnabled}
-            />
-          ))}
-        </section>
+        <DiscoverFeed
+          dictionary={dictionary}
+          filters={filters}
+          initialItems={opportunities}
+          initialWatchedIds={watchedOpportunityIds}
+          locale={locale}
+          routeBase={routeBase}
+          total={total}
+          workspaceWritesEnabled={workspaceWritesEnabled}
+        />
       ) : (
         <section className="empty-state">
           <span className="eyebrow">{dictionary.discover.empty.eyebrow}</span>

@@ -98,7 +98,7 @@ export const SiteShell = ({ authUserEmail, children, copy, locale }: SiteShellPr
 
   return (
     <div className="page-shell">
-      <div className="site-frame" ref={frameRef}>
+      <div className="site-frame route-shell" ref={frameRef}>
         <header className="topbar" ref={topbarRef}>
           <div className="brand-stack">
             <Link className="brand-title" href={buildLocalePath(locale, "/discover")}>

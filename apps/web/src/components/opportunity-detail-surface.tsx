@@ -84,7 +84,7 @@ export const OpportunityDetailSurface = ({
 
       <div className="detail-grid">
         <div className="detail-stack">
-          <section className="detail-section">
+          <section className="detail-section detail-section-anchored">
             <h2>{dictionary.detail.keyFacts}</h2>
             <div className="detail-list">
               <div className="detail-item">
@@ -118,7 +118,7 @@ export const OpportunityDetailSurface = ({
             </div>
           </section>
 
-          <section className="detail-section">
+          <section className="detail-section detail-section-anchored">
             <h2>{dictionary.feed.sections.commercial}</h2>
             <div className="detail-list">
               <div className="detail-item">
@@ -136,7 +136,7 @@ export const OpportunityDetailSurface = ({
             </div>
           </section>
 
-          <section className="detail-section">
+          <section className="detail-section detail-section-anchored">
             <h2>{dictionary.feed.sections.qualification}</h2>
             <div className="detail-list">
               <div className="detail-item">
@@ -171,7 +171,7 @@ export const OpportunityDetailSurface = ({
         </div>
 
         <div className="detail-stack">
-          <section className="detail-section">
+          <section className="detail-section detail-section-anchored">
             <h2>{dictionary.feed.sections.trace}</h2>
             <div className="detail-list">
               <div className="detail-item">
@@ -231,7 +231,7 @@ export const OpportunityDetailSurface = ({
             </div>
           </section>
 
-          <section className="detail-section">
+          <section className="detail-section detail-section-anchored">
             <h2>{dictionary.detail.evidenceActions}</h2>
             <div className="card-grid detail-card-grid">
               <article className="competition-card detail-note-card">

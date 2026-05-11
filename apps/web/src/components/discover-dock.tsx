@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState, useTransition } from "react";
 
 import type { StoredFilterOptions, StoredOpportunityQuery } from "@arch-competition/storage/cloudflare";
 
@@ -10,9 +11,11 @@ import type { AppDictionary } from "@/i18n/dictionaries";
 import { translateMappedValue } from "@/i18n/format";
 import {
   buildDiscoverSearchParams,
+  collectDiscoverSearchParams,
   discoverRecencyValues,
   discoverSortValues,
   formatTokenLabel,
+  readDiscoverFilters,
 } from "@/lib/discover";
 
 type Option = {
@@ -41,23 +44,62 @@ export const DiscoverDock = ({
   routeBase,
   sortOptions,
 }: DiscoverDockProps) => {
+  const router = useRouter();
   const defaultOpen = activeFilterCount > 0;
   const [isOpen, setIsOpen] = useState(defaultOpen);
+  const [isPending, startTransition] = useTransition();
   const formStateKey = `${routeBase}${serializeSearchParams(buildDiscoverSearchParams(filters))}`;
 
   useEffect(() => {
     setIsOpen(defaultOpen);
   }, [defaultOpen]);
 
+  const handleSubmit = (formData: FormData) => {
+    const rawSearchParams = new URLSearchParams();
+
+    for (const [key, value] of formData.entries()) {
+      if (typeof value !== "string") {
+        continue;
+      }
+
+      const normalizedValue = value.trim();
+      if (!normalizedValue) {
+        continue;
+      }
+
+      rawSearchParams.append(key, normalizedValue);
+    }
+
+    const nextFilters = readDiscoverFilters(collectDiscoverSearchParams(rawSearchParams));
+    const nextHref = `${routeBase}${serializeSearchParams(buildDiscoverSearchParams(nextFilters))}`;
+
+    startTransition(() => {
+      router.replace(nextHref || routeBase, { scroll: false });
+    });
+  };
+
   return (
-    <section className={`discover-dock${isOpen ? " is-open" : ""}`}>
-      <form action={routeBase} className="filter-form" key={formStateKey} method="GET">
+    <section
+      aria-busy={isPending}
+      className={`discover-dock${isOpen ? " is-open" : ""}${isPending ? " is-pending" : ""}`}
+    >
+      <form
+        action={routeBase}
+        className="filter-form"
+        key={formStateKey}
+        method="GET"
+        onSubmit={(event) => {
+          event.preventDefault();
+          handleSubmit(new FormData(event.currentTarget));
+        }}
+      >
         <div className="discover-filter-grid discover-filter-grid-base">
           <button
             aria-controls="discover-dock-panel"
             aria-expanded={isOpen}
             aria-label={dictionary.discover.searchEyebrow}
             className="discover-dock-summary discover-dock-summary-icon"
+            disabled={isPending}
             onClick={() => setIsOpen((current) => !current)}
             title={dictionary.discover.searchEyebrow}
             type="button"
@@ -136,10 +178,10 @@ export const DiscoverDock = ({
           </label>
 
           <div className="dock-actions">
-            <Link className="button secondary" href={routeBase}>
+            <Link aria-disabled={isPending} className="button secondary" href={routeBase}>
               {dictionary.discover.buttons.resetFilters}
             </Link>
-            <button className="button primary" type="submit">
+            <button className="button primary" disabled={isPending} type="submit">
               {dictionary.discover.buttons.applyScreen}
             </button>
           </div>

@@ -92,6 +92,7 @@ export type StoredOpportunityQuery = {
   implementationPath?: string;
   jurisdiction?: string;
   limit?: number;
+  offset?: number;
   licensedArchitectRequired?: boolean;
   maxEstimatedValueEur?: number;
   minEstimatedValueEur?: number;
@@ -115,6 +116,7 @@ export type StoredFilterOptions = {
 export type StoredDiscoverSurfaceData = {
   filterOptions: StoredFilterOptions;
   opportunities: StoredOpportunityFeedItem[];
+  total: number;
 };
 export type StoredSourceHealthItem = {
   sourceId: string;
@@ -1293,9 +1295,10 @@ const buildSortClause = (sort: StoredOpportunityQuery["sort"]) => {
 
 const queryVisibleOpportunityRows = (
   {
+    offset,
     sort = "deadline",
     ...filters
-  }: Omit<StoredOpportunityQuery, "limit"> = {},
+  }: StoredOpportunityQuery = {},
   sqlLimit?: number,
 ) => {
   if (!hasStoredOpportunities()) {
@@ -1310,6 +1313,14 @@ const queryVisibleOpportunityRows = (
       (filters.projectModes?.length ?? 0) > 0,
   );
   const useSqlLimit = !hasDerivedFilters && sqlLimit !== undefined;
+  const useSqlOffset = useSqlLimit && !hasDerivedFilters && offset !== undefined && offset > 0;
+  const sqlParameters = [...parameters];
+  if (useSqlLimit) {
+    sqlParameters.push(sqlLimit);
+  }
+  if (useSqlOffset) {
+    sqlParameters.push(offset);
+  }
   const rows = readRows<OpportunityRow>(
     `
       SELECT ${buildOpportunitySelectList()}
@@ -1317,8 +1328,9 @@ const queryVisibleOpportunityRows = (
       ${whereClause}
       ORDER BY ${buildSortClause(sort)}
       ${useSqlLimit ? "LIMIT ?" : ""}
+      ${useSqlOffset ? "OFFSET ?" : ""}
     `,
-    useSqlLimit ? [...parameters, sqlLimit] : parameters,
+    sqlParameters,
   );
 
   if (rows.length === 0) {
@@ -1330,10 +1342,11 @@ const queryVisibleOpportunityRows = (
 
 export const queryStoredOpportunityFeed = ({
   limit = 24,
+  offset = 0,
   sort = "deadline",
   ...filters
 }: StoredOpportunityQuery = {}): StoredOpportunityFeedItem[] => {
-  const rows = queryVisibleOpportunityRows({ sort, ...filters }, limit);
+  const rows = queryVisibleOpportunityRows({ offset, sort, ...filters }, limit);
   if (rows.length === 0) {
     return [];
   }
@@ -1520,6 +1533,7 @@ export const getStoredFilterOptions = (filters: StoredOpportunityQuery = {}): St
 
 export const getStoredDiscoverSurfaceData = ({
   limit = 24,
+  offset = 0,
   sort = "deadline",
   ...filters
 }: StoredOpportunityQuery = {}): StoredDiscoverSurfaceData => {
@@ -1528,12 +1542,14 @@ export const getStoredDiscoverSurfaceData = ({
     return {
       filterOptions: emptyFilterOptions(),
       opportunities: [],
+      total: 0,
     };
   }
 
   return {
     filterOptions: buildScopedFilterOptions(rows, filters),
-    opportunities: rows.slice(0, limit).map(toOpportunityFeedItem),
+    opportunities: rows.slice(offset, offset + limit).map(toOpportunityFeedItem),
+    total: rows.length,
   };
 };
 

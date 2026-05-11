@@ -1,0 +1,1075 @@
+{
+  "entries": {
+    "belgium:dijver 12": {
+      "confidence": 0.72,
+      "label": "Brugge",
+      "lat": 51.2058726,
+      "lng": 3.2257874,
+      "provider": "nominatim"
+    },
+    "canada:ottawa": {
+      "confidence": 0.77,
+      "label": "Ottawa",
+      "lat": 45.4208777,
+      "lng": -75.6901106,
+      "provider": "nominatim"
+    },
+    "canada:parc national jasper": {
+      "confidence": 0.72,
+      "label": "Parc national Jasper",
+      "lat": 52.4664366,
+      "lng": -116.9547299,
+      "provider": "nominatim"
+    },
+    "finland:varkauden kaupunki": null,
+    "france:bastia": {
+      "confidence": 0.75,
+      "label": "Bastia",
+      "lat": 42.6974612,
+      "lng": 9.4497707,
+      "provider": "nominatim"
+    },
+    "france:bordeaux": {
+      "confidence": 0.77,
+      "label": "Bordeaux",
+      "lat": 44.841225,
+      "lng": -0.5800364,
+      "provider": "nominatim"
+    },
+    "france:bouc bel air": {
+      "confidence": 0.73,
+      "label": "Bouc-Bel-Air",
+      "lat": 43.4511819,
+      "lng": 5.4127848,
+      "provider": "nominatim"
+    },
+    "france:ceillac": {
+      "confidence": 0.74,
+      "label": "Ceillac",
+      "lat": 44.6683282,
+      "lng": 6.7780124,
+      "provider": "nominatim"
+    },
+    "france:champagne sur seine": {
+      "confidence": 0.75,
+      "label": "Champagne-sur-Seine",
+      "lat": 48.3948577,
+      "lng": 2.8028617,
+      "provider": "nominatim"
+    },
+    "france:divonne les bains": {
+      "confidence": 0.75,
+      "label": "Divonne-les-Bains",
+      "lat": 46.3569916,
+      "lng": 6.142994,
+      "provider": "nominatim"
+    },
+    "france:gap": {
+      "confidence": 0.75,
+      "label": "Gap",
+      "lat": 44.5612032,
+      "lng": 6.0820639,
+      "provider": "nominatim"
+    },
+    "france:libourne": {
+      "confidence": 0.75,
+      "label": "Libourne",
+      "lat": 44.9133742,
+      "lng": -0.2427217,
+      "provider": "nominatim"
+    },
+    "france:lyon": {
+      "confidence": 0.78,
+      "label": "Lyon",
+      "lat": 45.7578137,
+      "lng": 4.8320114,
+      "provider": "nominatim"
+    },
+    "france:macon": {
+      "confidence": 0.76,
+      "label": "Mâcon",
+      "lat": 46.3036683,
+      "lng": 4.8322266,
+      "provider": "nominatim"
+    },
+    "france:mons en baroeul": {
+      "confidence": 0.75,
+      "label": "Mons-en-Barœul",
+      "lat": 50.6428547,
+      "lng": 3.1093516,
+      "provider": "nominatim"
+    },
+    "france:montpellier": {
+      "confidence": 0.77,
+      "label": "Montpellier",
+      "lat": 43.6112422,
+      "lng": 3.8767337,
+      "provider": "nominatim"
+    },
+    "france:nantes metropole": {
+      "confidence": 0.72,
+      "label": "Nantes Métropole",
+      "lat": 47.2277893,
+      "lng": -1.6083455,
+      "provider": "nominatim"
+    },
+    "france:noe": {
+      "confidence": 0.75,
+      "label": "Noé",
+      "lat": 43.3545352,
+      "lng": 1.2749497,
+      "provider": "nominatim"
+    },
+    "france:ocqueville et ouainville": null,
+    "france:perpignan": {
+      "confidence": 0.76,
+      "label": "Perpignan",
+      "lat": 42.6985304,
+      "lng": 2.8953121,
+      "provider": "nominatim"
+    },
+    "france:peyrolles en provence": {
+      "confidence": 0.73,
+      "label": "Peyrolles-en-Provence",
+      "lat": 43.6465639,
+      "lng": 5.5836164,
+      "provider": "nominatim"
+    },
+    "france:remire montjoly": {
+      "confidence": 0.73,
+      "label": "Remire-Montjoly",
+      "lat": 4.9051217,
+      "lng": -52.2772372,
+      "provider": "nominatim"
+    },
+    "france:saint barthelemy": {
+      "confidence": 0.75,
+      "label": "Saint-Barthélemy",
+      "lat": 17.9036287,
+      "lng": -62.8115292,
+      "provider": "nominatim"
+    },
+    "france:tours": {
+      "confidence": 0.76,
+      "label": "Tours",
+      "lat": 47.3900474,
+      "lng": 0.6889268,
+      "provider": "nominatim"
+    },
+    "france:valenciennes": {
+      "confidence": 0.76,
+      "label": "Valenciennes",
+      "lat": 50.3579317,
+      "lng": 3.5234846,
+      "provider": "nominatim"
+    },
+    "france:versailles": {
+      "confidence": 0.76,
+      "label": "Versailles",
+      "lat": 48.8035403,
+      "lng": 2.1266886,
+      "provider": "nominatim"
+    },
+    "france:vitrolles": {
+      "confidence": 0.74,
+      "label": "Vitrolles",
+      "lat": 44.4347105,
+      "lng": 5.9496043,
+      "provider": "nominatim"
+    },
+    "germany:10117 berlin": {
+      "confidence": 0.72,
+      "label": "Berlin",
+      "lat": 52.5175184,
+      "lng": 13.3877686,
+      "provider": "nominatim"
+    },
+    "germany:10249 berlin": {
+      "confidence": 0.72,
+      "label": "Berlin",
+      "lat": 52.5238116,
+      "lng": 13.4429595,
+      "provider": "nominatim"
+    },
+    "germany:10318 berlin": {
+      "confidence": 0.72,
+      "label": "Berlin",
+      "lat": 52.48346,
+      "lng": 13.5288146,
+      "provider": "nominatim"
+    },
+    "germany:10369 berlin": {
+      "confidence": 0.72,
+      "label": "Berlin",
+      "lat": 52.5294386,
+      "lng": 13.4693734,
+      "provider": "nominatim"
+    },
+    "germany:10407 berlin": {
+      "confidence": 0.72,
+      "label": "Berlin",
+      "lat": 52.5345266,
+      "lng": 13.4500103,
+      "provider": "nominatim"
+    },
+    "germany:10785 berlin": {
+      "confidence": 0.72,
+      "label": "Berlin",
+      "lat": 52.5052449,
+      "lng": 13.3629834,
+      "provider": "nominatim"
+    },
+    "germany:13353 berlin": {
+      "confidence": 0.72,
+      "label": "Berlin",
+      "lat": 52.5427825,
+      "lng": 13.3503976,
+      "provider": "nominatim"
+    },
+    "germany:13439 berlin": {
+      "confidence": 0.72,
+      "label": "Berlin",
+      "lat": 52.5985349,
+      "lng": 13.3587263,
+      "provider": "nominatim"
+    },
+    "germany:14195 berlin": {
+      "confidence": 0.72,
+      "label": "Berlin",
+      "lat": 52.4588979,
+      "lng": 13.2829183,
+      "provider": "nominatim"
+    },
+    "germany:6 elt": {
+      "confidence": 0.72,
+      "label": "Losheim am See",
+      "lat": 49.5309658,
+      "lng": 6.7733644,
+      "provider": "nominatim"
+    },
+    "germany:alsfeld": {
+      "confidence": 0.73,
+      "label": "Alsfeld",
+      "lat": 50.76522,
+      "lng": 9.30144,
+      "provider": "nominatim"
+    },
+    "germany:anlagengruppe 1 und 2": null,
+    "germany:bei stufenweiser beauftragung": null,
+    "germany:dormagen": {
+      "confidence": 0.73,
+      "label": "Dormagen",
+      "lat": 51.0934389,
+      "lng": 6.8416158,
+      "provider": "nominatim"
+    },
+    "germany:dusseldorf": {
+      "confidence": 0.77,
+      "label": "Düsseldorf",
+      "lat": 51.2254018,
+      "lng": 6.7763137,
+      "provider": "nominatim"
+    },
+    "germany:essen": {
+      "confidence": 0.76,
+      "label": "Essen",
+      "lat": 51.4582235,
+      "lng": 7.0158171,
+      "provider": "nominatim"
+    },
+    "germany:frankfurt am main": {
+      "confidence": 0.78,
+      "label": "Frankfurt am Main",
+      "lat": 50.1106444,
+      "lng": 8.6820917,
+      "provider": "nominatim"
+    },
+    "germany:freianlagen": null,
+    "germany:hof": {
+      "confidence": 0.75,
+      "label": "Hof",
+      "lat": 50.3187507,
+      "lng": 11.9162992,
+      "provider": "nominatim"
+    },
+    "germany:lahnstein": {
+      "confidence": 0.74,
+      "label": "Lahnstein",
+      "lat": 50.3090305,
+      "lng": 7.6044602,
+      "provider": "nominatim"
+    },
+    "germany:plessow": {
+      "confidence": 0.82,
+      "label": "Werder (Havel",
+      "lat": 52.3847606,
+      "lng": 12.8753411,
+      "provider": "nominatim"
+    },
+    "germany:villingen schwenningen": {
+      "confidence": 0.74,
+      "label": "Villingen-Schwenningen",
+      "lat": 48.063152,
+      "lng": 8.4929618,
+      "provider": "nominatim"
+    },
+    "ireland:co donegal": {
+      "confidence": 0.72,
+      "label": "Co. Donegal",
+      "lat": 54.9207542,
+      "lng": -7.9523852,
+      "provider": "nominatim"
+    },
+    "ireland:co limerick": {
+      "confidence": 0.72,
+      "label": "Co. Limerick",
+      "lat": 52.5188317,
+      "lng": -8.7958347,
+      "provider": "nominatim"
+    },
+    "italy:ampezzo": {
+      "confidence": 0.74,
+      "label": "Ampezzo / Dimpeç",
+      "lat": 46.4170855,
+      "lng": 12.7902735,
+      "provider": "nominatim"
+    },
+    "italy:arco": {
+      "confidence": 0.75,
+      "label": "Arco",
+      "lat": 45.9318708,
+      "lng": 10.9171966,
+      "provider": "nominatim"
+    },
+    "italy:arzachena": {
+      "confidence": 0.74,
+      "label": "Alzachèna/Arzachena",
+      "lat": 41.0808915,
+      "lng": 9.4279079,
+      "provider": "nominatim"
+    },
+    "italy:belvedere di spinello": {
+      "confidence": 0.73,
+      "label": "Belvedere di Spinello",
+      "lat": 39.2119442,
+      "lng": 16.8893176,
+      "provider": "nominatim"
+    },
+    "italy:belvis": {
+      "confidence": 0.72,
+      "label": "Gallipoli",
+      "lat": 40.0558852,
+      "lng": 17.9903372,
+      "provider": "nominatim"
+    },
+    "italy:bollengo": {
+      "confidence": 0.75,
+      "label": "Bollengo",
+      "lat": 45.470859,
+      "lng": 7.94202,
+      "provider": "nominatim"
+    },
+    "italy:borgomanero": {
+      "confidence": 0.74,
+      "label": "Borgomanero",
+      "lat": 45.6987105,
+      "lng": 8.4652724,
+      "provider": "nominatim"
+    },
+    "italy:boscoreale": {
+      "confidence": 0.74,
+      "label": "Boscoreale",
+      "lat": 40.7740398,
+      "lng": 14.4774318,
+      "provider": "nominatim"
+    },
+    "italy:calcinato": {
+      "confidence": 0.75,
+      "label": "Calcinato",
+      "lat": 45.457182,
+      "lng": 10.413574,
+      "provider": "nominatim"
+    },
+    "italy:cambiano": {
+      "confidence": 0.75,
+      "label": "Cambiano",
+      "lat": 44.9714155,
+      "lng": 7.7786983,
+      "provider": "nominatim"
+    },
+    "italy:canepina": {
+      "confidence": 0.73,
+      "label": "Canepina",
+      "lat": 42.3811422,
+      "lng": 12.2334149,
+      "provider": "nominatim"
+    },
+    "italy:capaccio paestum": {
+      "confidence": 0.75,
+      "label": "Capaccio Paestum",
+      "lat": 40.424407,
+      "lng": 15.080854,
+      "provider": "nominatim"
+    },
+    "italy:capena": {
+      "confidence": 0.74,
+      "label": "Capena",
+      "lat": 42.1401497,
+      "lng": 12.540201,
+      "provider": "nominatim"
+    },
+    "italy:capranica prenestina": {
+      "confidence": 0.74,
+      "label": "Capranica Prenestina",
+      "lat": 41.8629967,
+      "lng": 12.9518024,
+      "provider": "nominatim"
+    },
+    "italy:cassano d adda": {
+      "confidence": 0.74,
+      "label": "Cassano d'Adda",
+      "lat": 45.5263333,
+      "lng": 9.5214907,
+      "provider": "nominatim"
+    },
+    "italy:castel gandolfo": {
+      "confidence": 0.75,
+      "label": "Castel Gandolfo",
+      "lat": 41.7425222,
+      "lng": 12.6488774,
+      "provider": "nominatim"
+    },
+    "italy:castelfranco in miscano": {
+      "confidence": 0.74,
+      "label": "Castelfranco in Miscano",
+      "lat": 41.2971923,
+      "lng": 15.0858356,
+      "provider": "nominatim"
+    },
+    "italy:collarmele": {
+      "confidence": 0.74,
+      "label": "Collarmele",
+      "lat": 42.05903,
+      "lng": 13.6257,
+      "provider": "nominatim"
+    },
+    "italy:contabilita e cre": null,
+    "italy:coordinamento sicurezza": null,
+    "italy:del comune di villalba": null,
+    "italy:direzione lavori": null,
+    "italy:direzione lavori e contabilita": null,
+    "italy:elmas": {
+      "confidence": 0.73,
+      "label": "Su Masu/Elmas",
+      "lat": 39.2680862,
+      "lng": 9.0496306,
+      "provider": "nominatim"
+    },
+    "italy:favale di malvaro": {
+      "confidence": 0.74,
+      "label": "Favale di Malvaro",
+      "lat": 44.4529968,
+      "lng": 9.2595603,
+      "provider": "nominatim"
+    },
+    "italy:fiumicello villa vicentina": {
+      "confidence": 0.73,
+      "label": "FIUMICELLO VILLA VICENTINA",
+      "lat": 45.7836083,
+      "lng": 13.4130187,
+      "provider": "nominatim"
+    },
+    "italy:formello": {
+      "confidence": 0.74,
+      "label": "Formello",
+      "lat": 42.082521,
+      "lng": 12.400273,
+      "provider": "nominatim"
+    },
+    "italy:frassinello monferrato": {
+      "confidence": 0.75,
+      "label": "Frassinello Monferrato",
+      "lat": 45.031753,
+      "lng": 8.387638,
+      "provider": "nominatim"
+    },
+    "italy:galzignano terme": {
+      "confidence": 0.74,
+      "label": "Galzignano Terme",
+      "lat": 45.3068076,
+      "lng": 11.7339679,
+      "provider": "nominatim"
+    },
+    "italy:guastalla": {
+      "confidence": 0.74,
+      "label": "Guastalla",
+      "lat": 44.9211516,
+      "lng": 10.6539985,
+      "provider": "nominatim"
+    },
+    "italy:investimento 3 3": null,
+    "italy:ischia": {
+      "confidence": 0.74,
+      "label": "Ischia",
+      "lat": 40.734205,
+      "lng": 13.947125,
+      "provider": "nominatim"
+    },
+    "italy:lavagno": {
+      "confidence": 0.74,
+      "label": "Lavagno",
+      "lat": 45.4472381,
+      "lng": 11.134971,
+      "provider": "nominatim"
+    },
+    "italy:marsciano": {
+      "confidence": 0.74,
+      "label": "Marsciano",
+      "lat": 42.9105115,
+      "lng": 12.3377232,
+      "provider": "nominatim"
+    },
+    "italy:mirano": {
+      "confidence": 0.78,
+      "label": "Milano",
+      "lat": 45.4641943,
+      "lng": 9.1896346,
+      "provider": "nominatim"
+    },
+    "italy:montagnareale": {
+      "confidence": 0.74,
+      "label": "Montagnareale",
+      "lat": 38.1323538,
+      "lng": 14.9464822,
+      "provider": "nominatim"
+    },
+    "italy:montale": {
+      "confidence": 0.73,
+      "label": "Montale",
+      "lat": 43.9352396,
+      "lng": 11.0158786,
+      "provider": "nominatim"
+    },
+    "italy:montalto uffugo": {
+      "confidence": 0.74,
+      "label": "Montalto Uffugo",
+      "lat": 39.404795,
+      "lng": 16.15799,
+      "provider": "nominatim"
+    },
+    "italy:monte argentario": {
+      "confidence": 0.73,
+      "label": "Monte Argentario",
+      "lat": 42.407352,
+      "lng": 11.1503838,
+      "provider": "nominatim"
+    },
+    "italy:montella": {
+      "confidence": 0.74,
+      "label": "Montella",
+      "lat": 40.8424096,
+      "lng": 15.0179097,
+      "provider": "nominatim"
+    },
+    "italy:monteroni d arbia": {
+      "confidence": 0.73,
+      "label": "Monteroni d'Arbia",
+      "lat": 43.2310941,
+      "lng": 11.4214524,
+      "provider": "nominatim"
+    },
+    "italy:montesarchio": {
+      "confidence": 0.74,
+      "label": "Montesarchio",
+      "lat": 41.0639234,
+      "lng": 14.6397875,
+      "provider": "nominatim"
+    },
+    "italy:nocera inferiore": {
+      "confidence": 0.75,
+      "label": "Nocera Inferiore",
+      "lat": 40.7472133,
+      "lng": 14.6433202,
+      "provider": "nominatim"
+    },
+    "italy:nocera terinese": {
+      "confidence": 0.74,
+      "label": "Nocera Terinese",
+      "lat": 39.0368928,
+      "lng": 16.1607183,
+      "provider": "nominatim"
+    },
+    "italy:orgosolo": {
+      "confidence": 0.74,
+      "label": "Orgòsolo/Orgosolo",
+      "lat": 40.204758,
+      "lng": 9.354936,
+      "provider": "nominatim"
+    },
+    "italy:oriolo": {
+      "confidence": 0.74,
+      "label": "Oriolo",
+      "lat": 40.053809,
+      "lng": 16.446088,
+      "provider": "nominatim"
+    },
+    "italy:pesche": {
+      "confidence": 0.73,
+      "label": "Pesche",
+      "lat": 41.611079,
+      "lng": 14.2819702,
+      "provider": "nominatim"
+    },
+    "italy:polignano a mare": {
+      "confidence": 0.73,
+      "label": "Polignano a Mare",
+      "lat": 40.9944463,
+      "lng": 17.2224879,
+      "provider": "nominatim"
+    },
+    "italy:portocannone": {
+      "confidence": 0.74,
+      "label": "Portocannone",
+      "lat": 41.9150353,
+      "lng": 15.0091974,
+      "provider": "nominatim"
+    },
+    "italy:portorecanati": null,
+    "italy:prato": {
+      "confidence": 0.77,
+      "label": "PRATO",
+      "lat": 43.9357181,
+      "lng": 11.0941473,
+      "provider": "nominatim"
+    },
+    "italy:pula": {
+      "confidence": 0.74,
+      "label": "Pula",
+      "lat": 39.007433,
+      "lng": 9.001646,
+      "provider": "nominatim"
+    },
+    "italy:roasio": {
+      "confidence": 0.74,
+      "label": "Roasio",
+      "lat": 45.6080186,
+      "lng": 8.2880115,
+      "provider": "nominatim"
+    },
+    "italy:rotella": {
+      "confidence": 0.73,
+      "label": "Rotella",
+      "lat": 42.9552587,
+      "lng": 13.5527018,
+      "provider": "nominatim"
+    },
+    "italy:san bartolomeo in galdo": {
+      "confidence": 0.74,
+      "label": "San Bartolomeo in Galdo",
+      "lat": 41.4098544,
+      "lng": 15.0153973,
+      "provider": "nominatim"
+    },
+    "italy:san benedetto del tronto": {
+      "confidence": 0.74,
+      "label": "San Benedetto del Tronto",
+      "lat": 42.9525328,
+      "lng": 13.8807144,
+      "provider": "nominatim"
+    },
+    "italy:san quirico d orcia": {
+      "confidence": 0.74,
+      "label": "San Quirico d'Orcia",
+      "lat": 43.0603953,
+      "lng": 11.603645,
+      "provider": "nominatim"
+    },
+    "italy:sassari": {
+      "confidence": 0.75,
+      "label": "Tàttari/Sassari",
+      "lat": 40.7234746,
+      "lng": 8.5612674,
+      "provider": "nominatim"
+    },
+    "italy:selegas": {
+      "confidence": 0.74,
+      "label": "Sèligas/Selegas",
+      "lat": 39.567844,
+      "lng": 9.10414,
+      "provider": "nominatim"
+    },
+    "italy:serrenti": {
+      "confidence": 0.74,
+      "label": "Serrenti",
+      "lat": 39.4927706,
+      "lng": 8.9752276,
+      "provider": "nominatim"
+    },
+    "italy:servigliano": {
+      "confidence": 0.73,
+      "label": "Servigliano",
+      "lat": 43.0816214,
+      "lng": 13.4937644,
+      "provider": "nominatim"
+    },
+    "italy:settala": {
+      "confidence": 0.74,
+      "label": "Settala",
+      "lat": 45.4558605,
+      "lng": 9.3917427,
+      "provider": "nominatim"
+    },
+    "italy:sigillo": {
+      "confidence": 0.74,
+      "label": "Sigillo",
+      "lat": 43.3312955,
+      "lng": 12.7423157,
+      "provider": "nominatim"
+    },
+    "italy:sogliano al rubicone": {
+      "confidence": 0.73,
+      "label": "Sogliano al Rubicone",
+      "lat": 44.004663,
+      "lng": 12.300541,
+      "provider": "nominatim"
+    },
+    "italy:somma vesuviana": {
+      "confidence": 0.74,
+      "label": "Somma Vesuviana",
+      "lat": 40.8716147,
+      "lng": 14.4361417,
+      "provider": "nominatim"
+    },
+    "italy:tesero": {
+      "confidence": 0.75,
+      "label": "Tesero",
+      "lat": 46.2780329,
+      "lng": 11.5165038,
+      "provider": "nominatim"
+    },
+    "italy:trecase": {
+      "confidence": 0.74,
+      "label": "Trecase",
+      "lat": 40.7708909,
+      "lng": 14.4396509,
+      "provider": "nominatim"
+    },
+    "italy:trieste": {
+      "confidence": 0.77,
+      "label": "Trieste",
+      "lat": 45.6496485,
+      "lng": 13.7772781,
+      "provider": "nominatim"
+    },
+    "italy:variante urbanistica": null,
+    "italy:via morego n 30": {
+      "confidence": 0.72,
+      "label": "Genova",
+      "lat": 44.4721676,
+      "lng": 8.9058646,
+      "provider": "nominatim"
+    },
+    "italy:villaricca": {
+      "confidence": 0.74,
+      "label": "Villaricca",
+      "lat": 40.921611,
+      "lng": 14.189828,
+      "provider": "nominatim"
+    },
+    "italy:zeddiani": {
+      "confidence": 0.74,
+      "label": "Zeddiani",
+      "lat": 39.989947,
+      "lng": 8.595324,
+      "provider": "nominatim"
+    },
+    "latvia:buvprojekta izstrade un autoruzraudziba": null,
+    "latvia:riga": {
+      "confidence": 0.77,
+      "label": "Rīga",
+      "lat": 56.9493977,
+      "lng": 24.1051846,
+      "provider": "nominatim"
+    },
+    "new_zealand:bell block primary school": null,
+    "new_zealand:central otago": {
+      "confidence": 0.72,
+      "label": "Vincent Community",
+      "lat": -45.350509,
+      "lng": 169.696148,
+      "provider": "nominatim"
+    },
+    "new_zealand:pasadena intermediate school": {
+      "confidence": 0.72,
+      "label": "Albert-Eden",
+      "lat": -36.8652052,
+      "lng": 174.7177414,
+      "provider": "nominatim"
+    },
+    "new_zealand:taupo": {
+      "confidence": 0.83,
+      "label": "Taupō",
+      "lat": -38.6866197,
+      "lng": 176.0694773,
+      "provider": "nominatim"
+    },
+    "new_zealand:thames coromandel": {
+      "confidence": 0.72,
+      "label": "Thames",
+      "lat": -37.1397892,
+      "lng": 175.5423706,
+      "provider": "nominatim"
+    },
+    "new_zealand:wairoa": {
+      "confidence": 0.82,
+      "label": "Wairoa",
+      "lat": -39.03939,
+      "lng": 177.4271389,
+      "provider": "nominatim"
+    },
+    "new_zealand:westland": {
+      "confidence": 0.72,
+      "label": "Westland",
+      "lat": -42.8508,
+      "lng": 170.7152,
+      "provider": "nominatim"
+    },
+    "norway:strandebarm i hardanger": null,
+    "spain:a coruna": {
+      "confidence": 0.76,
+      "label": "A Coruña",
+      "lat": 43.3466447,
+      "lng": -8.4127029,
+      "provider": "nominatim"
+    },
+    "spain:adecuacion hidraulica": null,
+    "spain:alcanices": {
+      "confidence": 0.74,
+      "label": "Alcañices",
+      "lat": 41.697969,
+      "lng": -6.3656915,
+      "provider": "nominatim"
+    },
+    "spain:alfondeguilla": {
+      "confidence": 0.73,
+      "label": "Alfondeguilla",
+      "lat": 39.8376893,
+      "lng": -0.2690126,
+      "provider": "nominatim"
+    },
+    "spain:alginet": {
+      "confidence": 0.74,
+      "label": "Alginet",
+      "lat": 39.2651129,
+      "lng": -0.4716912,
+      "provider": "nominatim"
+    },
+    "spain:arganza": {
+      "confidence": 0.74,
+      "label": "Arganza",
+      "lat": 42.6517216,
+      "lng": -6.679937,
+      "provider": "nominatim"
+    },
+    "spain:arquitectura": {
+      "confidence": 0.72,
+      "label": "Madrid",
+      "lat": 40.4402099,
+      "lng": -3.7310053,
+      "provider": "nominatim"
+    },
+    "spain:beniatjar": {
+      "confidence": 0.74,
+      "label": "Beniatjar",
+      "lat": 38.8479764,
+      "lng": -0.4168998,
+      "provider": "nominatim"
+    },
+    "spain:bunyola": {
+      "confidence": 0.73,
+      "label": "Bunyola",
+      "lat": 39.6961887,
+      "lng": 2.6989574,
+      "provider": "nominatim"
+    },
+    "spain:ciempozuelos": {
+      "confidence": 0.74,
+      "label": "Ciempozuelos",
+      "lat": 40.1580087,
+      "lng": -3.6205514,
+      "provider": "nominatim"
+    },
+    "spain:colliga": {
+      "confidence": 0.72,
+      "label": "Cuenca",
+      "lat": 40.0455609,
+      "lng": -2.2607841,
+      "provider": "nominatim"
+    },
+    "spain:cubillos del sil": {
+      "confidence": 0.74,
+      "label": "Cubillos del Sil",
+      "lat": 42.6240882,
+      "lng": -6.5629162,
+      "provider": "nominatim"
+    },
+    "spain:cullera": {
+      "confidence": 0.74,
+      "label": "Cullera",
+      "lat": 39.1647217,
+      "lng": -0.2542313,
+      "provider": "nominatim"
+    },
+    "spain:emperador": {
+      "confidence": 0.74,
+      "label": "Emperador",
+      "lat": 39.5540582,
+      "lng": -0.3388611,
+      "provider": "nominatim"
+    },
+    "spain:en alcala de guadaira": {
+      "confidence": 0.72,
+      "label": "Alcalá de Guadaíra",
+      "lat": 37.3469795,
+      "lng": -5.863082,
+      "provider": "nominatim"
+    },
+    "spain:fuentespalda": {
+      "confidence": 0.74,
+      "label": "Fuentespalda / Fontdespatla",
+      "lat": 40.8070873,
+      "lng": 0.0657727,
+      "provider": "nominatim"
+    },
+    "spain:granadilla de abona": {
+      "confidence": 0.73,
+      "label": "Granadilla de Abona",
+      "lat": 28.1220315,
+      "lng": -16.5573154,
+      "provider": "nominatim"
+    },
+    "spain:guia": {
+      "confidence": 0.73,
+      "label": "Guía",
+      "lat": 28.1390522,
+      "lng": -15.6318282,
+      "provider": "nominatim"
+    },
+    "spain:icod de los vinos": {
+      "confidence": 0.73,
+      "label": "Icod de los Vinos",
+      "lat": 28.3330922,
+      "lng": -16.6915591,
+      "provider": "nominatim"
+    },
+    "spain:lliber": {
+      "confidence": 0.74,
+      "label": "Llíber",
+      "lat": 38.7429774,
+      "lng": 0.0061079,
+      "provider": "nominatim"
+    },
+    "spain:plasencia de jalon": {
+      "confidence": 0.74,
+      "label": "Plasencia de Jalón",
+      "lat": 41.6870286,
+      "lng": -1.2643871,
+      "provider": "nominatim"
+    },
+    "spain:postas la luisiana": null,
+    "spain:salamanca": {
+      "confidence": 0.76,
+      "label": "Salamanca",
+      "lat": 40.9651572,
+      "lng": -5.6640182,
+      "provider": "nominatim"
+    },
+    "spain:san cristobal de la laguna": {
+      "confidence": 0.75,
+      "label": "San Cristóbal de La Laguna",
+      "lat": 28.4857715,
+      "lng": -16.3159422,
+      "provider": "nominatim"
+    },
+    "spain:santa cruz de tenerife": {
+      "confidence": 0.75,
+      "label": "Santa Cruz de Tenerife",
+      "lat": 28.467178,
+      "lng": -16.2507843,
+      "provider": "nominatim"
+    },
+    "spain:sevilla": {
+      "confidence": 0.77,
+      "label": "Sevilla",
+      "lat": 37.3886303,
+      "lng": -5.9953403,
+      "provider": "nominatim"
+    },
+    "spain:tejeda": {
+      "confidence": 0.72,
+      "label": "Tejeda",
+      "lat": 27.9953756,
+      "lng": -15.6153664,
+      "provider": "nominatim"
+    },
+    "spain:tenerife sur": {
+      "confidence": 0.74,
+      "label": "Granadilla de Abona",
+      "lat": 28.0461411,
+      "lng": -16.5720078,
+      "provider": "nominatim"
+    },
+    "spain:vilaflor de chasna": {
+      "confidence": 0.82,
+      "label": "Vilaflor",
+      "lat": 28.1590955,
+      "lng": -16.6365089,
+      "provider": "nominatim"
+    },
+    "spain:vilar": {
+      "confidence": 0.72,
+      "label": "Mondariz",
+      "lat": 42.2363756,
+      "lng": -8.4902473,
+      "provider": "nominatim"
+    },
+    "spain:villar de olalla": {
+      "confidence": 0.74,
+      "label": "Villar de Olalla",
+      "lat": 40.0148219,
+      "lng": -2.1962859,
+      "provider": "nominatim"
+    },
+    "spain:vimianzo y dumbria": null,
+    "switzerland:la tour de peilz": {
+      "confidence": 0.73,
+      "label": "La Tour-de-Peilz",
+      "lat": 46.4537524,
+      "lng": 6.8569063,
+      "provider": "nominatim"
+    },
+    "switzerland:maur": {
+      "confidence": 0.72,
+      "label": "Maur",
+      "lat": 47.3402856,
+      "lng": 8.6692369,
+      "provider": "nominatim"
+    },
+    "switzerland:sante et service sociaux": null,
+    "switzerland:zurich": {
+      "confidence": 0.78,
+      "label": "Zürich",
+      "lat": 47.3744489,
+      "lng": 8.5410422,
+      "provider": "nominatim"
+    },
+    "united_kingdom:marden": {
+      "confidence": 0.72,
+      "label": "Maidstone",
+      "lat": 51.1768381,
+      "lng": 0.5031825,
+      "provider": "nominatim"
+    }
+  },
+  "version": 1
+}

@@ -1,6 +1,11 @@
 import { resolveOpportunityCardImageUrl } from "@/lib/opportunity-card-image";
 import { buildOpportunityLocatorPlaceholderSvg } from "@/lib/opportunity-card-placeholder";
 import {
+  isStadtZurichOpportunitySource,
+  resolveOpportunitySatellitePreview,
+  satellitePreviewContentType,
+} from "@/lib/opportunity-satellite-preview";
+import {
   getWebOpportunityFeedItemBySlug,
   type StoredOpportunityFeedItem,
 } from "@/lib/server-storage";
@@ -45,6 +50,14 @@ const fetchImageResponse = async (imageUrl: string) => {
   }
 };
 
+const buildBinaryImageResponse = (payload: ArrayBuffer | Buffer, contentType: string) =>
+  new Response(payload instanceof ArrayBuffer ? new Uint8Array(payload) : new Uint8Array(payload), {
+    headers: {
+      "cache-control": "public, max-age=3600, stale-while-revalidate=86400",
+      "content-type": contentType,
+    },
+  });
+
 type OpportunityImageRouteContext = {
   params: Promise<{ slug: string }>;
 };
@@ -60,12 +73,19 @@ export const GET = async (
     return buildPlaceholderResponse(undefined, 404);
   }
 
-  const imageUrl = await resolveOpportunityCardImageUrl(opportunity);
-  if (imageUrl) {
-    const imageResponse = await fetchImageResponse(imageUrl);
-    if (imageResponse) {
-      return imageResponse;
+  if (isStadtZurichOpportunitySource(opportunity)) {
+    const imageUrl = await resolveOpportunityCardImageUrl(opportunity);
+    if (imageUrl) {
+      const imageResponse = await fetchImageResponse(imageUrl);
+      if (imageResponse) {
+        return imageResponse;
+      }
     }
+  }
+
+  const satellitePreview = await resolveOpportunitySatellitePreview(opportunity);
+  if (satellitePreview) {
+    return buildBinaryImageResponse(satellitePreview, satellitePreviewContentType);
   }
 
   return buildPlaceholderResponse(opportunity);

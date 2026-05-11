@@ -6,6 +6,10 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from arch_competition_ops.card_previews import (
+    CardPreviewPrewarmResult,
+    prewarm_opportunity_card_previews,
+)
 from arch_competition_ops.collectors import collect_source_documents
 from arch_competition_ops.collectors.generic_rss import is_preannouncement_rss_notice
 from arch_competition_ops.collectors.common import fetch_json_get
@@ -358,6 +362,17 @@ def refresh_missing_geocodes(settings: Settings, *, limit: int = 50) -> int:
     return updated_count
 
 
+def prewarm_card_previews(
+    settings: Settings,
+    *,
+    competition_ids: list[str],
+) -> CardPreviewPrewarmResult:
+    return prewarm_opportunity_card_previews(
+        settings,
+        competition_ids=competition_ids,
+    )
+
+
 def _normalize_anac_source_trace_url(
     *,
     official_notice_id: str | None,
@@ -682,6 +697,12 @@ def ingest_source(
         last_error=last_error,
     )
     refresh_review_queue(db_path)
+
+    if ingested_ids:
+        prewarm_opportunity_card_previews(
+            settings,
+            competition_ids=ingested_ids,
+        )
 
     if parse_failure_count > 0:
         raise ValueError(

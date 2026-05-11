@@ -26,6 +26,33 @@ export const SupportSurface = ({ dictionary, locale }: SupportSurfaceProps) => {
               {copy.heroActions.secondary}
             </Link>
           </div>
+
+          <div className="support-contact-band">
+            <div className="support-contact-copy">
+              <span className="section-kicker">{copy.contact.eyebrow}</span>
+              <p className="support-contact-title">{copy.contact.title}</p>
+              <p className="support-body">{copy.contact.body}</p>
+            </div>
+
+            <div className="support-contact-grid">
+              {copy.contact.items.map((item) => {
+                const external = item.href.startsWith("http");
+
+                return (
+                  <a
+                    key={item.label}
+                    className="support-contact-item"
+                    href={item.href}
+                    rel={external ? "noreferrer" : undefined}
+                    target={external ? "_blank" : undefined}
+                  >
+                    <span className="support-contact-label">{item.label}</span>
+                    <span className="support-contact-value">{item.value}</span>
+                  </a>
+                );
+              })}
+            </div>
+          </div>
         </div>
 
         <aside className="support-principles">

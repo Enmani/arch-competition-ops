@@ -114,6 +114,8 @@ export type AppDictionary = {
       applyScreen: string;
       resetFilters: string;
       clearFilters: string;
+      loadMore: string;
+      loadingMore: string;
     };
     card: {
       deadline: string;
@@ -601,6 +603,8 @@ export const dictionaries: Record<AppLocale, AppDictionary> = {
         applyScreen: "筛选",
         resetFilters: "重置筛选",
         clearFilters: "清空筛选",
+        loadMore: "继续展开机会流",
+        loadingMore: "正在展开",
       },
       card: {
         deadline: "截止日期",
@@ -1305,6 +1309,8 @@ export const dictionaries: Record<AppLocale, AppDictionary> = {
         applyScreen: "Filter",
         resetFilters: "Reset",
         clearFilters: "Clear",
+        loadMore: "Continue the opportunity stream",
+        loadingMore: "Expanding",
       },
       card: {
         deadline: "Deadline",
