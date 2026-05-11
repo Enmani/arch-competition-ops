@@ -5,8 +5,10 @@
   "scripts": {
     "dev": "next dev --port 3400",
     "build": "next build",
-    "build:cloudflare": "opennextjs-cloudflare build",
-    "deploy:cloudflare": "opennextjs-cloudflare deploy",
+    "prepare:cloudflare-build": "powershell -ExecutionPolicy Bypass -File ../../scripts/prepare-cloudflare-build.ps1",
+    "sync:satellite-previews": "node ../../scripts/sync-satellite-previews.mjs",
+    "build:cloudflare": "npm run prepare:cloudflare-build && npm run sync:satellite-previews && opennextjs-cloudflare build",
+    "deploy:cloudflare": "npm run build:cloudflare && opennextjs-cloudflare deploy",
     "d1:create": "wrangler d1 create arch-competition-ops",
     "d1:migrate:local": "wrangler d1 migrations apply arch-competition-ops --local",
     "d1:migrate:remote": "wrangler d1 migrations apply arch-competition-ops --remote",

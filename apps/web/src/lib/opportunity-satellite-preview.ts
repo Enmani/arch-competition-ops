@@ -8,6 +8,11 @@ import sharp from "sharp";
 import type { StoredOpportunityFeedItem } from "@arch-competition/storage/cloudflare";
 
 import { pickOpportunityExplicitCity } from "./opportunity-location";
+import {
+  getSatellitePreviewStaticFileName,
+  sanitizeSatellitePreviewFileName,
+  satellitePreviewCacheVersion as previewCacheVersion,
+} from "./opportunity-satellite-preview-cache";
 
 type SatellitePreviewInput = Pick<
   StoredOpportunityFeedItem,
@@ -96,7 +101,6 @@ const satelliteTileSize = 256;
 const satelliteZoomWithStreetNumber = 18;
 const satelliteZoomWithoutStreetNumber = 17;
 const satelliteZoomWithLocality = 16;
-const previewCacheVersion = 5;
 const stadtZurichHosts = ["stadt-zuerich.ch"];
 const htmlRequestTimeoutMs = 7000;
 const pdfRequestTimeoutMs = 12000;
@@ -712,10 +716,10 @@ const resolveUrlAgainstBase = (value: string, baseUrl: string) => {
   }
 };
 
-const sanitizePreviewFileName = (slug: string) => slug.replace(/[^a-z0-9._-]+/gi, "_").slice(0, 180);
+const sanitizePreviewFileName = sanitizeSatellitePreviewFileName;
 
 const getSatellitePreviewPath = (slug: string) =>
-  path.join(previewImageDirectory, `${sanitizePreviewFileName(slug)}_v${previewCacheVersion}.jpg`);
+  path.join(previewImageDirectory, getSatellitePreviewStaticFileName(slug));
 
 const normalizeJurisdictionKey = (value: string | null | undefined) =>
   value?.trim().toLowerCase().replace(/-/g, "_") ?? null;

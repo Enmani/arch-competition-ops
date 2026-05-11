@@ -603,7 +603,7 @@ export const dictionaries: Record<AppLocale, AppDictionary> = {
         applyScreen: "筛选",
         resetFilters: "重置筛选",
         clearFilters: "清空筛选",
-        loadMore: "继续展开机会流",
+        loadMore: "加载更多项目",
         loadingMore: "正在展开",
       },
       card: {
