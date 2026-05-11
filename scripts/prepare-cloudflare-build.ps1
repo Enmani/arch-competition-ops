@@ -21,6 +21,10 @@ function Remove-RepoDirectoryThroughShortDrive {
     [string] $TargetPath
   )
 
+  if (-not (Test-Path -LiteralPath $TargetPath)) {
+    return
+  }
+
   $resolvedTargetPath = (Resolve-Path -LiteralPath $TargetPath).Path
   if (-not $resolvedTargetPath.StartsWith($repoRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
     Remove-Item -LiteralPath $resolvedTargetPath -Recurse -Force -ErrorAction Stop
