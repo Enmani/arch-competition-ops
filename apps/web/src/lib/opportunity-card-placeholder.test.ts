@@ -21,6 +21,7 @@ test("buildOpportunityLocatorPlaceholderSvg renders a jurisdiction code and city
   assert.match(svg, /data-outline-source="world-atlas"/);
   assert.match(svg, /data-country-key="switzerland"/);
   assert.match(svg, /data-marker-source="country-centroid"/);
+  assert.doesNotMatch(svg, /stroke="#285f47" stroke-width="3"/);
 });
 
 test("buildOpportunityLocatorPlaceholderSvg projects known coordinates onto the country outline", () => {

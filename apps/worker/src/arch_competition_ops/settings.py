@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     browser_storage_dir: Path = Path("artifacts") / "crawlee"
     geocode_cache: Path = Path("data") / "geocoding-cache.json"
     card_preview_prewarm_enabled: bool = True
+    expired_competition_retention_days: int = 7
+    expired_cleanup_state: Path = (
+        Path("artifacts") / "automation" / "expired-competition-cleanup-state.json"
+    )
 
     def resolve_path(self, path: Path) -> Path:
         if path.is_absolute():

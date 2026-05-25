@@ -886,6 +886,21 @@ const loadStorageModule = async () => {
   return import(`./index.ts?case=${Date.now()}-${Math.random()}`);
 };
 
+const withToday = async <T>(today: string, run: () => Promise<T>) => {
+  const previous = process.env.ARCH_COMPETITION_TODAY;
+  process.env.ARCH_COMPETITION_TODAY = today;
+
+  try {
+    return await run();
+  } finally {
+    if (previous === undefined) {
+      delete process.env.ARCH_COMPETITION_TODAY;
+    } else {
+      process.env.ARCH_COMPETITION_TODAY = previous;
+    }
+  }
+};
+
 test("queryStoredOpportunities filters stored records by jurisdiction and qualification score", async () => {
   const { dbPath, cleanup } = createTempDb();
   process.env.ARCH_COMPETITION_DB_PATH = dbPath;
@@ -912,8 +927,10 @@ test("getStoredFilterOptions returns distinct selectable values from the databas
   process.env.ARCH_COMPETITION_DB_PATH = dbPath;
 
   try {
-    const { getStoredFilterOptions } = await loadStorageModule();
-    const options = getStoredFilterOptions();
+    const options = await withToday("2026-05-01", async () => {
+      const { getStoredFilterOptions } = await loadStorageModule();
+      return getStoredFilterOptions();
+    });
 
     assert.deepEqual(options.jurisdictions, ["china", "france", "germany", "italy", "switzerland"]);
     assert.deepEqual(options.procedureTypes, [
@@ -960,15 +977,19 @@ test("getStoredFilterOptions scopes selectable values to the current discover sl
   process.env.ARCH_COMPETITION_DB_PATH = dbPath;
 
   try {
-    const { getStoredDiscoverSurfaceData, getStoredFilterOptions } = await loadStorageModule();
-    const options = getStoredFilterOptions({
-      includeExpired: true,
-      search: "Cantonal School",
-    });
-    const discoverData = getStoredDiscoverSurfaceData({
-      includeExpired: true,
-      limit: 10,
-      search: "Cantonal School",
+    const { options, discoverData } = await withToday("2026-05-01", async () => {
+      const { getStoredDiscoverSurfaceData, getStoredFilterOptions } = await loadStorageModule();
+      return {
+        options: getStoredFilterOptions({
+          includeExpired: true,
+          search: "Cantonal School",
+        }),
+        discoverData: getStoredDiscoverSurfaceData({
+          includeExpired: true,
+          limit: 10,
+          search: "Cantonal School",
+        }),
+      };
     });
 
     assert.deepEqual(options.jurisdictions, ["switzerland"]);
@@ -993,6 +1014,13 @@ test("getStoredFilterOptions scopes selectable values to the current discover sl
 test("queryStoredOpportunityFeed filters stored records by search, recent time window, deadline, and value", async () => {
   const { dbPath, cleanup } = createTempDb();
   process.env.ARCH_COMPETITION_DB_PATH = dbPath;
+  process.env.ARCH_COMPETITION_TODAY = "2026-04-19";
+
+  const database = new Database(dbPath);
+  database
+    .prepare("UPDATE competitions SET discovered_at = ? WHERE id = ?")
+    .run(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(), "france-hospital");
+  database.close();
 
   try {
     const { queryStoredOpportunityFeed } = await loadStorageModule();
@@ -1007,6 +1035,7 @@ test("queryStoredOpportunityFeed filters stored records by search, recent time w
     assert.equal(opportunities.length, 1);
     assert.equal(opportunities[0]?.id, "france-hospital");
   } finally {
+    delete process.env.ARCH_COMPETITION_TODAY;
     delete process.env.ARCH_COMPETITION_DB_PATH;
     cleanup();
   }

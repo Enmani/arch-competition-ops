@@ -7,6 +7,7 @@ import WatchToggleButton from "@/components/watch-toggle-button";
 import { buildLocalePath, type AppLocale } from "@/i18n/config";
 import type { AppDictionary } from "@/i18n/dictionaries";
 import { getOpportunityDisplayMeta } from "@/lib/opportunity-display";
+import { opportunityImageRevision } from "@/lib/opportunity-preview-revision";
 
 type OpportunityStreamItemProps = {
   dictionary: AppDictionary;
@@ -17,8 +18,6 @@ type OpportunityStreamItemProps = {
   opportunity: StoredOpportunityFeedItem;
   workspaceWritesEnabled: boolean;
 };
-
-const opportunityImageRevision = "20260510geo7";
 
 export const OpportunityStreamItem = ({
   dictionary,

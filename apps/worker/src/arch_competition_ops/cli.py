@@ -10,6 +10,7 @@ from arch_competition_ops.country_packs import load_country_pack_coverage
 from arch_competition_ops.extractors import parse_source_payload
 from arch_competition_ops import __version__
 from arch_competition_ops.operations import (
+    cleanup_expired_competitions,
     ingest_source,
     initialize_database,
     normalize_anac_record_statuses,
@@ -62,6 +63,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="generate and cache opportunity card preview images for supplied competition ids",
     )
     preview_parser.add_argument("--competition-id", action="append", dest="competition_ids", default=[])
+    cleanup_parser = subparsers.add_parser(
+        "cleanup-expired-competitions",
+        help="delete competitions and cached previews whose deadline is older than the retention window",
+    )
+    cleanup_parser.add_argument("--retention-days", type=int)
+    cleanup_parser.add_argument("--limit", type=int, default=500)
     anac_parser = subparsers.add_parser(
         "normalize-anac-source-traces",
         help="rewrite stored ANAC source trace links to human-readable ANAC detail pages",
@@ -139,6 +146,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         _safe_print(
             "Card preview prewarm completed "
             f"(attempted={result.attempted}, generated={result.generated}, skipped={result.skipped})"
+        )
+        return 0
+
+    if args.command == "cleanup-expired-competitions":
+        result = cleanup_expired_competitions(
+            settings,
+            retention_days=args.retention_days,
+            limit=args.limit,
+        )
+        _safe_print(
+            "Expired competition cleanup completed "
+            f"(attempted={result.attempted}, deleted={result.deleted_competitions}, "
+            f"preview_files={result.deleted_preview_files}, static_preview_files={result.deleted_static_preview_files}, "
+            f"skipped={result.skipped})"
         )
         return 0
 

@@ -2646,6 +2646,49 @@ const mapAuthSessionRow = (row: AuthSessionRow): StoredAuthSession => ({
   userId: row.user_id,
 });
 
+const ensureD1AuthTables = async (database: D1DatabaseLike) => {
+  const [hasUsersTable, hasSessionsTable] = await Promise.all([
+    hasTable(database, "auth_users"),
+    hasTable(database, "auth_sessions"),
+  ]);
+
+  if (hasUsersTable && hasSessionsTable) {
+    return;
+  }
+
+  await runStatement(
+    database,
+    `
+      CREATE TABLE IF NOT EXISTS auth_users (
+        id TEXT PRIMARY KEY,
+        email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+        password_hash TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    `,
+  );
+  await runStatement(
+    database,
+    `
+      CREATE TABLE IF NOT EXISTS auth_sessions (
+        token_hash TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES auth_users(id) ON DELETE CASCADE
+      )
+    `,
+  );
+  await runStatement(
+    database,
+    `
+      CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_expires
+      ON auth_sessions (user_id, expires_at)
+    `,
+  );
+};
+
 const readD1AuthUserById = async (database: D1DatabaseLike, userId: string) => {
   const row = await readRow<AuthUserRow>(
     database,
@@ -2692,6 +2735,8 @@ export const createD1AuthUser = async (
     password,
   }: StoredAuthUserCreateInput,
 ): Promise<StoredAuthUser> => {
+  await ensureD1AuthTables(database);
+
   const normalizedEmail = normalizeEmailOrThrow(email);
   assertPassword(password);
 
@@ -2741,6 +2786,8 @@ export const authenticateD1AuthUser = async (
     password,
   }: StoredAuthLoginInput,
 ): Promise<StoredAuthUser | null> => {
+  await ensureD1AuthTables(database);
+
   const normalizedEmail = normalizeEmail(email);
   if (!emailPattern.test(normalizedEmail) || password.length === 0) {
     return null;
@@ -2770,6 +2817,8 @@ export const createD1AuthSession = async (
     userId,
   }: StoredAuthSessionCreateInput,
 ): Promise<StoredAuthSessionWithToken> => {
+  await ensureD1AuthTables(database);
+
   const user = await readD1AuthUserById(database, userId);
   if (!user) {
     throw new StoredAuthError("unknown_user", "Auth user does not exist.");
@@ -2807,6 +2856,8 @@ export const getD1AuthSession = async (
   database: D1DatabaseLike,
   token: string | null | undefined,
 ): Promise<StoredAuthSession | null> => {
+  await ensureD1AuthTables(database);
+
   if (!token) {
     return null;
   }
@@ -2829,6 +2880,8 @@ export const deleteD1AuthSession = async (
   database: D1DatabaseLike,
   token: string | null | undefined,
 ) => {
+  await ensureD1AuthTables(database);
+
   if (!token) {
     return false;
   }
@@ -2842,6 +2895,8 @@ export const deleteD1AuthSession = async (
 };
 
 export const countD1AuthUsers = async (database: D1DatabaseLike) => {
+  await ensureD1AuthTables(database);
+
   const row = await readRow<{ total: number }>(database, "SELECT COUNT(*) AS total FROM auth_users");
   return row?.total ?? 0;
 };
@@ -2850,6 +2905,8 @@ export const deleteD1AuthSessionsForUser = async (
   database: D1DatabaseLike,
   userId: string,
 ) => {
+  await ensureD1AuthTables(database);
+
   const result = await runStatement(database, "DELETE FROM auth_sessions WHERE user_id = ?", [userId]);
   return result.meta?.changes ?? 0;
 };

@@ -3,7 +3,7 @@ $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $openNextPath = Join-Path $repoRoot "apps\web\.open-next"
 $repoPattern = [Regex]::Escape($repoRoot)
-$commandPattern = "$repoPattern.*(opennextjs-cloudflare|wrangler|workerd|next(\.exe)?\s+(dev|start)|next\\dist\\bin\\next)"
+$commandPattern = "$repoPattern.*(opennextjs-cloudflare|wrangler|workerd)"
 
 function Get-TemporaryDriveName {
   foreach ($candidate in @("Z", "Y", "X", "W", "V", "U", "T")) {

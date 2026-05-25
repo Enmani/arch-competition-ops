@@ -3,17 +3,18 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
-    "dev": "next dev --port 3400",
-    "build": "next build",
+    "write:preview-revisions": "node ../../scripts/write-opportunity-preview-revisions.mjs",
+    "dev": "npm run write:preview-revisions && next dev --port 3400",
+    "build": "npm run write:preview-revisions && next build",
     "prepare:cloudflare-build": "powershell -ExecutionPolicy Bypass -File ../../scripts/prepare-cloudflare-build.ps1",
-    "sync:satellite-previews": "node ../../scripts/sync-satellite-previews.mjs",
+    "sync:satellite-previews": "npm run write:preview-revisions && node ../../scripts/sync-satellite-previews.mjs",
     "build:cloudflare": "npm run prepare:cloudflare-build && npm run sync:satellite-previews && opennextjs-cloudflare build",
     "deploy:cloudflare": "npm run build:cloudflare && opennextjs-cloudflare deploy",
     "d1:create": "wrangler d1 create arch-competition-ops",
     "d1:migrate:local": "wrangler d1 migrations apply arch-competition-ops --local",
     "d1:migrate:remote": "wrangler d1 migrations apply arch-competition-ops --remote",
     "preview:cloudflare": "opennextjs-cloudflare preview",
-    "start": "next start --port 3400",
+    "start": "npm run write:preview-revisions && next start --port 3400",
     "lint": "eslint src --max-warnings=0"
   },
   "dependencies": {

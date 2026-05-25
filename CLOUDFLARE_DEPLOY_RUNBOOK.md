@@ -29,6 +29,64 @@ If GitHub has newer commits, pull them first:
 git pull
 ```
 
+## Cloudflare Authentication
+
+Use a Cloudflare User API token for every deploy, migration, and D1 import command in this runbook.
+Do not rely on `wrangler login` on this Windows host.
+
+Create the token from `My Profile -> API Tokens` and scope it to the production account and zone.
+
+Recommended permissions:
+
+- `Account` -> `Workers Scripts` -> `Edit`
+- `Account` -> `D1` -> `Edit`
+- `Zone` -> `Workers Routes` -> `Edit`
+- `Zone` -> `Zone` -> `Read`
+
+Recommended resource scope:
+
+- `Account Resources` -> `Include` -> `Specific account` -> `Fangxiaoyandi@gmail.com's Account`
+- `Zone Resources` -> `Include` -> `Specific zone` -> `arch-competition.com`
+
+Before running any Cloudflare command, inject the token into the current PowerShell session:
+
+```powershell
+$env:CLOUDFLARE_API_TOKEN="paste-token-here"
+$env:CLOUDFLARE_ACCOUNT_ID="9b32ab0cdd1d91002ccfc9b45882b4db"
+npm --workspace apps/web exec -- wrangler whoami
+```
+
+Expected:
+
+- Wrangler reports `You are logged in with an User API Token`
+- the account ID is `9b32ab0cdd1d91002ccfc9b45882b4db`
+
+If the shell is closed, set both environment variables again before retrying deploy commands.
+
+## Satellite Geocoder Secrets
+
+If runtime image generation or geocoded SVG fallbacks should stay available on Cloudflare, set the map-provider credentials as Worker secrets before deploying.
+
+Recommended secrets for the current China-enhanced pipeline:
+
+- `ARCH_SATELLITE_BAIDU_AK`
+- `ARCH_SATELLITE_BAIDU_SK`
+- `ARCH_SATELLITE_AMAP_KEY` (optional fallback)
+
+Set them from the repository root:
+
+```powershell
+npm --workspace apps/web exec -- wrangler secret put ARCH_SATELLITE_BAIDU_AK
+npm --workspace apps/web exec -- wrangler secret put ARCH_SATELLITE_BAIDU_SK
+npm --workspace apps/web exec -- wrangler secret put ARCH_SATELLITE_AMAP_KEY
+```
+
+Notes:
+
+- These should be Worker secrets, not committed `.env` values.
+- The current deploy pipeline already syncs generated static satellite previews into `apps/web/public/opportunity-card-satellite`, so production can serve existing previews even without runtime secrets.
+- Secrets are still recommended because `/api/opportunities/[slug]/image` can fall back to runtime preview generation and geocoded SVG output when a static preview is missing for the current revision.
+
 ## Case 1: Code Or UI Changed
 
 Use this when pages, API routes, components, styles, config, or package dependencies changed.
@@ -164,6 +222,12 @@ Remote D1 imports reject explicit transaction statements.
 
 Keep it unless intentionally moving this Worker to another Cloudflare account.
 
+### `wrangler login` callback fails on Windows
+
+If `wrangler login` redirects to `http://localhost:8976` and the browser shows `ERR_CONNECTION_REFUSED` or the callback hangs, stop and switch to the API-token flow above.
+
+This repository should treat the API-token route as the default authentication path on Windows.
+
 ## After Deployment
 
 Check:
@@ -171,6 +235,13 @@ Check:
 ```powershell
 git status
 git log -3 --oneline
+```
+
+If you set a temporary API token in the shell, clear it after deployment:
+
+```powershell
+Remove-Item Env:CLOUDFLARE_API_TOKEN -ErrorAction SilentlyContinue
+Remove-Item Env:CLOUDFLARE_ACCOUNT_ID -ErrorAction SilentlyContinue
 ```
 
 If deployment-related config or scripts changed, commit and push:

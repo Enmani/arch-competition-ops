@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { pickOpportunityExplicitCity } from "./opportunity-location.ts";
+import {
+  pickOpportunityDisplayLocality,
+  pickOpportunityExplicitCity,
+  sanitizeOpportunityLocationLabel,
+} from "./opportunity-location.ts";
 
 test("pickOpportunityExplicitCity rejects street-address tails that are not cities", () => {
   const city = pickOpportunityExplicitCity({
@@ -103,4 +107,105 @@ test("pickOpportunityExplicitCity ignores lowercase descriptive tails after comm
   });
 
   assert.equal(city, "Radovljica");
+});
+
+test("pickOpportunityExplicitCity still prefers authority-derived city when title embeds a square locality tail", () => {
+  const city = pickOpportunityExplicitCity({
+    authorityName: "Comune di Monte Argentario",
+    jurisdictionKey: "italy",
+    jurisdictionLabel: "Italy",
+    title:
+      "AFFIDAMENTO SERVIZI DI PROGETTAZIONE DI FATTIBILITA’ TECNICO ECONOMICA RELATIVA ALLA REALIZZAZIONE DI UNA NUOVA ROTATORIA PER LA RIORGANIZZAZIONE DELLA VIABILITA’ IN PIAZZA AMERIGO VESPUCCI IN PORTO ERCOLE",
+  });
+
+  assert.equal(city, "Monte Argentario");
+});
+
+test("pickOpportunityExplicitCity still prefers authority-derived cities when title tails are noisy", () => {
+  const city = pickOpportunityExplicitCity({
+    authorityName: "Oslo kommune",
+    jurisdictionKey: "norway",
+    jurisdictionLabel: "Norway",
+    title: "2025/5060 Parallelle rammeavtaler om rådgivende arkitekttjenester (ARK, LARK og IARK)",
+  });
+
+  assert.equal(city, "Oslo");
+});
+
+test("sanitizeOpportunityLocationLabel drops procedural location noise", () => {
+  assert.equal(sanitizeOpportunityLocationLabel("Investimento 3.3"), null);
+  assert.equal(sanitizeOpportunityLocationLabel("DIREZIONE LAVORI E CONTABILITA'"), null);
+});
+
+test("sanitizeOpportunityLocationLabel keeps real city labels and trims authority prefixes", () => {
+  assert.equal(
+    sanitizeOpportunityLocationLabel("Kulttuurin ja vapaa-ajan toimiala, Helsingin"),
+    "Helsingin",
+  );
+  assert.equal(sanitizeOpportunityLocationLabel("Ottawa"), "Ottawa");
+});
+
+test("sanitizeOpportunityLocationLabel rejects urls, institutions, and province-scale labels", () => {
+  assert.equal(sanitizeOpportunityLocationLabel("sul sito weArch.eu"), null);
+  assert.equal(sanitizeOpportunityLocationLabel("Bell Block Primary School"), null);
+  assert.equal(sanitizeOpportunityLocationLabel("广东省"), null);
+});
+
+test("pickOpportunityDisplayLocality prefers explicit city over noisy location labels", () => {
+  const locality = pickOpportunityDisplayLocality({
+    authorityName: "Comune di Mirano",
+    jurisdictionKey: "italy",
+    jurisdictionLabel: "Italy",
+    locationLabel: "Milano",
+    title:
+      "SERVIZIO PROFESSIONALE DI INGEGNERIA ED ARCHITETTURA RELATIVO AI LAVORI DI ASFALTATURA E MESSA IN SICUREZZA DI VARIE VIE DEL COMUNE DI MIRANO (VE).",
+  });
+
+  assert.equal(locality, "Mirano");
+});
+
+test("pickOpportunityExplicitCity reads italian provincial authority names", () => {
+  const city = pickOpportunityExplicitCity({
+    authorityName: "PROVINCIA DI RIMINI",
+    jurisdictionKey: "italy",
+    jurisdictionLabel: "Italy",
+    title:
+      "INCARICO PER L'ASSOLVIMENTO DEGLI OBBLIGHI PREVISTI DAL D. LGS. 81/2008 IN CAPO AL COORDINATORE",
+  });
+
+  assert.equal(city, "RIMINI");
+});
+
+test("pickOpportunityExplicitCity reads chinese administrative title leads when location labels stay provincial", () => {
+  const city = pickOpportunityExplicitCity({
+    authorityName: "National Public Resources Trading Platform",
+    jurisdictionKey: "china",
+    jurisdictionLabel: "China",
+    title: "黄山市徽州区2026年老旧小区改造-黄山路片小区改造工程项目-一标段-公开招标公告",
+  });
+
+  assert.equal(city, "黄山市徽州区");
+});
+
+test("pickOpportunityExplicitCity does not treat chinese site-scale title tails as explicit cities", () => {
+  const city = pickOpportunityExplicitCity({
+    authorityName: "National Public Resources Trading Platform",
+    jurisdictionKey: "china",
+    jurisdictionLabel: "China",
+    title: "三江新区大学城片区03街区011地块M0产业园区建设项目建筑方案及施工图设计招标公告",
+  });
+
+  assert.equal(city, null);
+});
+
+test("pickOpportunityExplicitCity reads dash-delimited french locality before site/address tails", () => {
+  const city = pickOpportunityExplicitCity({
+    authorityName: "NANTES MÉTROPOLE HABITAT",
+    jurisdictionKey: "france",
+    jurisdictionLabel: "France",
+    title:
+      "France – Architectural and related services – SAINT HERBLAIN - Chemin de la Solvadière - Mission de maîtrise d'oeuvre pour la construction d'environ 18 logements individuels groupés",
+  });
+
+  assert.equal(city, "SAINT HERBLAIN");
 });

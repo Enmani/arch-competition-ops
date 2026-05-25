@@ -12,7 +12,7 @@ import {
   translateMappedValue,
 } from "@/i18n/format";
 import { formatTokenLabel } from "@/lib/discover";
-import { pickOpportunityExplicitCity } from "@/lib/opportunity-location";
+import { pickOpportunityDisplayLocality } from "@/lib/opportunity-location";
 
 const combiningDiacriticPattern = /[\u0300-\u036f]/g;
 
@@ -157,14 +157,11 @@ export const getOpportunityDisplayMeta = (
           opportunity.updatedAt,
         )}`
       : dictionary.common.seedSample;
-  const explicitCity = pickOpportunityExplicitCity(opportunity);
-  const explicitLocation = opportunity.locationLabel;
+  const explicitLocation = pickOpportunityDisplayLocality(opportunity);
   const locationLabel =
     explicitLocation && normalizeLooseText(explicitLocation) !== normalizeLooseText(jurisdictionLabel)
       ? `${jurisdictionLabel} · ${explicitLocation}`
-      : explicitCity && normalizeLooseText(explicitCity) !== normalizeLooseText(jurisdictionLabel)
-      ? `${jurisdictionLabel} · ${explicitCity}`
-      : jurisdictionLabel || explicitLocation || explicitCity || dictionary.common.unknown;
+      : jurisdictionLabel || explicitLocation || dictionary.common.unknown;
   const documentsPortalLink =
     opportunity.documentsPortalUrl &&
     opportunity.documentsPortalUrl !== opportunity.officialUrl &&

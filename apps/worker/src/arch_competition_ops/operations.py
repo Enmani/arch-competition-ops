@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
+import json
 from pathlib import Path
+import re
 from typing import Any, Callable
 
 from arch_competition_ops.card_previews import (
@@ -25,11 +27,14 @@ from arch_competition_ops.normalizers import build_competition_key
 from arch_competition_ops.review_queue import refresh_review_queue
 from arch_competition_ops.settings import Settings
 from arch_competition_ops.storage import (
+    competition_is_stale_expired,
+    delete_competitions,
     ensure_schema,
     find_duplicate_records,
     list_anac_status_candidates,
     list_anac_source_trace_candidates,
     list_competitions_missing_geocodes,
+    list_expired_competition_ids,
     list_gets_preannouncement_candidates,
     record_source_run,
     update_competition_status,
@@ -47,6 +52,16 @@ class CheckResult:
     detail: str | None = None
 
 
+@dataclass
+class ExpiredCompetitionCleanupResult:
+    attempted: int
+    deleted_competitions: int
+    deleted_preview_files: int
+    deleted_static_preview_files: int
+    skipped: int
+    last_run_date: str | None = None
+
+
 def _required_directories(settings: Settings) -> list[Path]:
     return [
         settings.resolve_path(Path("data")),
@@ -54,6 +69,7 @@ def _required_directories(settings: Settings) -> list[Path]:
         settings.resolve_path(Path("artifacts") / "html"),
         settings.resolve_path(Path("artifacts") / "pdf"),
         settings.resolve_path(Path("artifacts") / "logs"),
+        settings.resolve_path(Path("artifacts") / "automation"),
         settings.resolve_path(settings.browser_storage_dir),
         settings.resolve_path(Path("reports")),
     ]
@@ -373,6 +389,168 @@ def prewarm_card_previews(
     )
 
 
+def _load_cleanup_state(state_path: Path) -> dict[str, Any]:
+    try:
+        return json.loads(state_path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}
+    except json.JSONDecodeError:
+        return {}
+
+
+def _write_cleanup_state(state_path: Path, payload: dict[str, Any]) -> None:
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _sanitize_satellite_preview_slug(slug: str) -> str:
+    return re.sub(r"[^a-zA-Z0-9._-]+", "_", slug)[:180]
+
+
+def _resolve_satellite_preview_revision(settings: Settings) -> str | None:
+    revision_module_path = settings.resolve_path(
+        Path("apps") / "web" / "src" / "lib" / "opportunity-preview-revision.ts"
+    )
+    try:
+        payload = revision_module_path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None
+
+    revision_match = re.search(
+        r'export const satellitePreviewRevision = "([^"]+)"',
+        payload,
+    )
+    if not revision_match:
+        return None
+
+    return revision_match.group(1)
+
+
+def _resolve_satellite_preview_file_names(settings: Settings, competition_id: str) -> list[str]:
+    sanitized_slug = _sanitize_satellite_preview_slug(competition_id)
+    revision = _resolve_satellite_preview_revision(settings)
+    versioned_candidates = [f"{sanitized_slug}_v{version}.jpg" for version in range(1, 13)]
+    candidates = [f"{sanitized_slug}.jpg", *versioned_candidates]
+    if revision:
+        candidates.insert(0, f"{sanitized_slug}_{revision}.jpg")
+    return candidates
+
+
+def _delete_expired_preview_files(
+    settings: Settings,
+    *,
+    competition_ids: list[str],
+) -> tuple[int, int]:
+    preview_root = settings.resolve_path(Path("artifacts") / "opportunity-card-satellite" / "images")
+    static_root = settings.resolve_path(Path("apps") / "web" / "public" / "opportunity-card-satellite")
+    deleted_preview_files = 0
+    deleted_static_preview_files = 0
+
+    for competition_id in competition_ids:
+        candidate_names = _resolve_satellite_preview_file_names(settings, competition_id)
+        if not candidate_names:
+            continue
+
+        for file_name in dict.fromkeys(candidate_names):
+            preview_path = preview_root / file_name
+            if preview_path.exists():
+                preview_path.unlink()
+                deleted_preview_files += 1
+
+            static_path = static_root / file_name
+            if static_path.exists():
+                static_path.unlink()
+                deleted_static_preview_files += 1
+
+    return deleted_preview_files, deleted_static_preview_files
+
+
+def cleanup_expired_competitions(
+    settings: Settings,
+    *,
+    retention_days: int | None = None,
+    limit: int = 500,
+) -> ExpiredCompetitionCleanupResult:
+    db_path = initialize_database(settings)
+    effective_retention_days = (
+        settings.expired_competition_retention_days if retention_days is None else retention_days
+    )
+    threshold = date.today() - timedelta(days=max(effective_retention_days, 0))
+    expired_ids = list_expired_competition_ids(
+        db_path,
+        expired_before=threshold,
+        limit=limit,
+    )
+    if not expired_ids:
+        return ExpiredCompetitionCleanupResult(
+            attempted=0,
+            deleted_competitions=0,
+            deleted_preview_files=0,
+            deleted_static_preview_files=0,
+            skipped=0,
+        )
+
+    deleted_preview_files, deleted_static_preview_files = _delete_expired_preview_files(
+        settings,
+        competition_ids=expired_ids,
+    )
+    deleted_competitions = delete_competitions(
+        db_path,
+        competition_ids=expired_ids,
+    )
+    refresh_review_queue(db_path)
+    return ExpiredCompetitionCleanupResult(
+        attempted=len(expired_ids),
+        deleted_competitions=deleted_competitions,
+        deleted_preview_files=deleted_preview_files,
+        deleted_static_preview_files=deleted_static_preview_files,
+        skipped=max(0, len(expired_ids) - deleted_competitions),
+    )
+
+
+def cleanup_expired_competitions_once_per_day(
+    settings: Settings,
+    *,
+    retention_days: int | None = None,
+    limit: int = 500,
+) -> ExpiredCompetitionCleanupResult:
+    state_path = settings.resolve_path(settings.expired_cleanup_state)
+    today_iso = date.today().isoformat()
+    state = _load_cleanup_state(state_path)
+    if state.get("last_run_date") == today_iso:
+        return ExpiredCompetitionCleanupResult(
+            attempted=0,
+            deleted_competitions=0,
+            deleted_preview_files=0,
+            deleted_static_preview_files=0,
+            skipped=0,
+            last_run_date=today_iso,
+        )
+
+    result = cleanup_expired_competitions(
+        settings,
+        retention_days=retention_days,
+        limit=limit,
+    )
+    _write_cleanup_state(
+        state_path,
+        {
+            "last_run_date": today_iso,
+            "deleted_competitions": result.deleted_competitions,
+            "deleted_preview_files": result.deleted_preview_files,
+            "deleted_static_preview_files": result.deleted_static_preview_files,
+            "retention_days": settings.expired_competition_retention_days
+            if retention_days is None
+            else retention_days,
+        },
+    )
+    result.last_run_date = today_iso
+    return result
+
+
 def _normalize_anac_source_trace_url(
     *,
     official_notice_id: str | None,
@@ -625,12 +803,22 @@ def ingest_source(
                     document.payload,
                     source_url=document.source_url,
                 )
+                if competition_is_stale_expired(
+                    record,
+                    retention_days=settings.expired_competition_retention_days,
+                ):
+                    continue
                 record = verify_record(
                     source=source,
                     payload=document.payload,
                     source_url=document.source_url,
                     record=record,
                 )
+                if competition_is_stale_expired(
+                    record,
+                    retention_days=settings.expired_competition_retention_days,
+                ):
+                    continue
                 record = enrich_record_geocode(
                     record,
                     cache_path=settings.resolve_path(settings.geocode_cache),

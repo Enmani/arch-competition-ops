@@ -5,13 +5,19 @@ import { feature } from "topojson-client";
 
 import {
   getOpportunityJurisdictionCode,
-  pickOpportunityExplicitCity,
+  pickOpportunityDisplayLocality,
 } from "./opportunity-location";
 
 type OpportunityPlaceholderInput = Pick<
   StoredOpportunityFeedItem,
   "authorityName" | "geoLat" | "geoLng" | "jurisdictionKey" | "jurisdictionLabel" | "locationLabel" | "title"
 >;
+
+export type OpportunityPlaceholderOverride = {
+  geoLat?: number | null;
+  geoLng?: number | null;
+  locationLabel?: string | null;
+};
 
 type CountryFeature = {
   geometry?: {
@@ -235,21 +241,30 @@ const resolveLocationAnchor = (
 
 export const buildOpportunityLocatorPlaceholderSvg = (
   opportunity?: OpportunityPlaceholderInput | null,
+  override?: OpportunityPlaceholderOverride | null,
 ) => {
-  const outline = resolveOutline(opportunity);
-  const jurisdictionKey = normalizeKey(opportunity?.jurisdictionKey) ?? "unknown";
+  const placeholderOpportunity =
+    opportunity && override
+      ? {
+          ...opportunity,
+          geoLat: override.geoLat ?? opportunity.geoLat,
+          geoLng: override.geoLng ?? opportunity.geoLng,
+          locationLabel: override.locationLabel ?? opportunity.locationLabel,
+        }
+      : opportunity;
+  const outline = resolveOutline(placeholderOpportunity);
+  const jurisdictionKey = normalizeKey(placeholderOpportunity?.jurisdictionKey) ?? "unknown";
   const jurisdictionCode = getOpportunityJurisdictionCode({
-    jurisdictionKey: opportunity?.jurisdictionKey ?? null,
-    jurisdictionLabel: opportunity?.jurisdictionLabel ?? null,
+    jurisdictionKey: placeholderOpportunity?.jurisdictionKey ?? null,
+    jurisdictionLabel: placeholderOpportunity?.jurisdictionLabel ?? null,
   });
-  const countryLabel = clampLabel(opportunity?.jurisdictionLabel ?? null, 20);
+  const countryLabel = clampLabel(placeholderOpportunity?.jurisdictionLabel ?? null, 20);
   const cityLabel = clampLabel(
-    opportunity?.locationLabel ?? (opportunity ? pickOpportunityExplicitCity(opportunity) : null),
+    placeholderOpportunity ? pickOpportunityDisplayLocality(placeholderOpportunity) : null,
     24,
   );
   const markerLabelY = cityLabel ? 610 : 628;
-  const labelConnectorY = markerLabelY - 28;
-  const anchor = resolveLocationAnchor(outline, opportunity);
+  const anchor = resolveLocationAnchor(outline, placeholderOpportunity);
   const anchorX = anchor.x;
   const anchorY = anchor.y;
   const gridCellOpacity = outline ? "0.038" : "0.09";
@@ -301,9 +316,6 @@ export const buildOpportunityLocatorPlaceholderSvg = (
     <circle r="20" fill="none" stroke="#285f47" stroke-width="4" />
     <path d="M0 -68V-24 M0 24V68 M-68 0H-24 M24 0H68" fill="none" stroke="#285f47" stroke-width="4" stroke-linecap="square" />
   </g>
-
-  <path d="M${anchorX} ${anchorY} C ${anchorX - 28} ${anchorY + 68}, 178 ${labelConnectorY}, 82 ${labelConnectorY}" fill="none" stroke="#285f47" stroke-width="3" />
-  <path d="M82 ${labelConnectorY}H266" fill="none" stroke="#285f47" stroke-width="3" />
 
   <rect x="82" y="82" width="118" height="54" fill="#f1efe3" fill-opacity="0.94" />
   <text x="96" y="120" fill="#21201b" font-family="'Arial Narrow', Arial, sans-serif" font-size="34" font-weight="700" letter-spacing="0.12em">${escapeXml(

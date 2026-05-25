@@ -1,11 +1,34 @@
-import { cp, mkdir, readdir, rm } from "node:fs/promises";
+import { cp, mkdir, rm, readdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { writeOpportunityPreviewRevisionModule } from "./lib/opportunity-preview-revision.mjs";
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(currentDirectory, "..");
 const sourceDirectory = path.join(repoRoot, "artifacts", "opportunity-card-satellite", "images");
 const targetDirectory = path.join(repoRoot, "apps", "web", "public", "opportunity-card-satellite");
+
+const legacyVersionSuffixPattern = /_v\d+$/i;
+const imageExtensionPattern = /\.jpg$/i;
+const { satellitePreviewRevision } = await writeOpportunityPreviewRevisionModule(repoRoot);
+
+const getSatellitePreviewStaticFileName = (slug) =>
+  `${slug.replace(/[^a-z0-9._-]+/gi, "_").slice(0, 180)}_${satellitePreviewRevision}.jpg`;
+
+const getCanonicalSatellitePreviewFileName = (fileName) => {
+  const baseName = fileName.replace(imageExtensionPattern, "");
+  const normalizedBaseName = baseName.replace(legacyVersionSuffixPattern, "");
+  return getSatellitePreviewStaticFileName(normalizedBaseName);
+};
+
+const getLegacyPreviewVersion = (fileName) => {
+  const versionMatch = fileName.match(/_v(\d+)\.jpg$/i);
+  if (versionMatch) {
+    return Number(versionMatch[1]);
+  }
+
+  return 0;
+};
 
 const syncSatellitePreviews = async () => {
   await rm(targetDirectory, { force: true, recursive: true });
@@ -23,11 +46,35 @@ const syncSatellitePreviews = async () => {
     throw error;
   }
 
-  const copyJobs = sourceEntries
-    .filter((entry) => entry.isFile())
-    .map((entry) =>
-      cp(path.join(sourceDirectory, entry.name), path.join(targetDirectory, entry.name)),
-    );
+  const imageEntries = sourceEntries.filter(
+    (entry) => entry.isFile() && imageExtensionPattern.test(entry.name),
+  );
+  const canonicalCopySources = new Map();
+
+  imageEntries.forEach((entry) => {
+    const canonicalFileName = getCanonicalSatellitePreviewFileName(entry.name);
+    const previousEntry = canonicalCopySources.get(canonicalFileName);
+
+    if (!previousEntry || getLegacyPreviewVersion(entry.name) > getLegacyPreviewVersion(previousEntry.name)) {
+      canonicalCopySources.set(canonicalFileName, entry);
+    }
+  });
+
+  const copyJobs = imageEntries.map(async (entry) => {
+    const sourcePath = path.join(sourceDirectory, entry.name);
+    const legacyTargetPath = path.join(targetDirectory, entry.name);
+    const canonicalFileName = getCanonicalSatellitePreviewFileName(entry.name);
+    const canonicalTargetPath = path.join(targetDirectory, canonicalFileName);
+
+    await cp(sourcePath, legacyTargetPath);
+
+    if (
+      canonicalTargetPath !== legacyTargetPath &&
+      canonicalCopySources.get(canonicalFileName)?.name === entry.name
+    ) {
+      await cp(sourcePath, canonicalTargetPath);
+    }
+  });
 
   await Promise.all(copyJobs);
   console.log(

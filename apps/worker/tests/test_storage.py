@@ -5,11 +5,14 @@ from arch_competition_ops.models import CompetitionRecord
 from arch_competition_ops.operations import run_doctor
 from arch_competition_ops.settings import Settings
 from arch_competition_ops.storage import (
+    competition_is_stale_expired,
+    delete_competitions,
     ensure_schema,
     list_anac_status_candidates,
     list_anac_source_trace_candidates,
     list_competitions,
     list_competitions_missing_geocodes,
+    list_expired_competition_ids,
     restore_legacy_competitions,
     update_competition_status,
     update_competition_source_url,
@@ -360,6 +363,7 @@ def test_anac_status_storage_helpers_list_and_update_candidates(tmp_path) -> Non
 
 def test_missing_geocode_rows_prioritize_visible_upcoming_deadlines(tmp_path) -> None:
     db_path = tmp_path / "competitions.sqlite"
+    today = date(2026, 5, 13)
     undated_id = upsert_competition(
         db_path,
         CompetitionRecord(
@@ -376,7 +380,7 @@ def test_missing_geocode_rows_prioritize_visible_upcoming_deadlines(tmp_path) ->
             organizer="PCSP",
             source_url="https://example.com/upcoming",
             jurisdiction="spain",
-            deadline_at=date(2026, 5, 11),
+            deadline_at=today,
         ),
     )
     expired_id = upsert_competition(
@@ -393,6 +397,134 @@ def test_missing_geocode_rows_prioritize_visible_upcoming_deadlines(tmp_path) ->
     missing_rows = list_competitions_missing_geocodes(db_path, limit=3)
 
     assert [row["id"] for row in missing_rows] == [upcoming_id, undated_id, expired_id]
+
+
+def test_list_expired_competition_ids_and_delete_competitions_cleanup_related_rows(tmp_path) -> None:
+    db_path = tmp_path / "competitions.sqlite"
+    ensure_schema(db_path)
+
+    expired_id = upsert_competition(
+        db_path,
+        CompetitionRecord(
+            competition_id="expired-opportunity",
+            title="Expired opportunity",
+            organizer="TED",
+            source_url="https://example.com/expired",
+            deadline_at=date(2026, 5, 1),
+        ),
+    )
+    active_id = upsert_competition(
+        db_path,
+        CompetitionRecord(
+            competition_id="active-opportunity",
+            title="Active opportunity",
+            organizer="TED",
+            source_url="https://example.com/active",
+            deadline_at=date(2026, 5, 20),
+        ),
+    )
+
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            """
+            INSERT INTO workspace_watchlist_entries (
+                workspace_key, opportunity_id, created_at, updated_at
+            ) VALUES (?, ?, ?, ?)
+            """,
+            ("workspace", expired_id, "2026-05-09T00:00:00+00:00", "2026-05-09T00:00:00+00:00"),
+        )
+        connection.execute(
+            """
+            INSERT INTO ops_review_queue_items (
+                queue_id, origin, reason_code, status, priority, title, summary, payload_json,
+                is_active, first_detected_at, last_detected_at, updated_at, competition_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "queue-expired",
+                "worker_diagnostic",
+                "duplicate_candidate",
+                "pending",
+                1,
+                "Expired queue",
+                "Expired queue item",
+                "{}",
+                1,
+                "2026-05-09T00:00:00+00:00",
+                "2026-05-09T00:00:00+00:00",
+                "2026-05-09T00:00:00+00:00",
+                expired_id,
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO ops_review_decisions (queue_id, decision, actor_label, note, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            ("queue-expired", "pending", "tester", None, "2026-05-09T00:00:00+00:00"),
+        )
+        connection.commit()
+
+    expired_ids = list_expired_competition_ids(
+        db_path,
+        expired_before=date(2026, 5, 13),
+        limit=10,
+    )
+    assert expired_ids == [expired_id]
+
+    deleted = delete_competitions(db_path, competition_ids=[expired_id])
+    assert deleted == 1
+
+    with sqlite3.connect(db_path) as connection:
+        remaining_competitions = connection.execute(
+            "SELECT id FROM competitions ORDER BY id ASC"
+        ).fetchall()
+        remaining_watchlist = connection.execute(
+            "SELECT opportunity_id FROM workspace_watchlist_entries"
+        ).fetchall()
+        remaining_queue = connection.execute(
+            "SELECT competition_id FROM ops_review_queue_items"
+        ).fetchall()
+        remaining_decisions = connection.execute(
+            "SELECT queue_id FROM ops_review_decisions"
+        ).fetchall()
+
+    assert [row[0] for row in remaining_competitions] == [active_id]
+    assert remaining_watchlist == []
+    assert remaining_queue == []
+    assert remaining_decisions == []
+
+
+def test_competition_is_stale_expired_respects_retention_window() -> None:
+    stale_record = CompetitionRecord(
+        title="Stale opportunity",
+        organizer="TED",
+        source_url="https://example.com/stale",
+        deadline_at=date(2026, 5, 1),
+    )
+    fresh_record = CompetitionRecord(
+        title="Fresh opportunity",
+        organizer="TED",
+        source_url="https://example.com/fresh",
+        deadline_at=date(2026, 5, 10),
+    )
+
+    assert (
+        competition_is_stale_expired(
+            stale_record,
+            retention_days=7,
+            today=date(2026, 5, 13),
+        )
+        is True
+    )
+    assert (
+        competition_is_stale_expired(
+            fresh_record,
+            retention_days=7,
+            today=date(2026, 5, 13),
+        )
+        is False
+    )
 
 
 def test_ensure_schema_creates_source_diagnostics_tables(tmp_path) -> None:

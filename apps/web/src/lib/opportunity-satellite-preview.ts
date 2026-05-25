@@ -1,5 +1,6 @@
 import path from "node:path";
-import { existsSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -7,12 +8,17 @@ import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 import type { StoredOpportunityFeedItem } from "@arch-competition/storage/cloudflare";
 
-import { pickOpportunityExplicitCity } from "./opportunity-location";
+import {
+  pickOpportunityDisplayLocality,
+  pickOpportunityExplicitCity,
+  sanitizeOpportunityLocationLabel,
+} from "./opportunity-location";
 import {
   getSatellitePreviewStaticFileName,
   sanitizeSatellitePreviewFileName,
-  satellitePreviewCacheVersion as previewCacheVersion,
 } from "./opportunity-satellite-preview-cache";
+import { satellitePreviewRevision } from "./opportunity-preview-revision";
+import { isInvalidSatellitePreviewBuffer } from "./opportunity-satellite-preview-quality";
 
 type SatellitePreviewInput = Pick<
   StoredOpportunityFeedItem,
@@ -55,12 +61,16 @@ type StructuredAddressRecord = {
 type GeocodeCacheEntry = {
   lat: number;
   lng: number;
+  precision?: SatellitePreviewPrecision;
 } | null;
 
 type GeocodeResult = {
   lat: number;
   lng: number;
+  precision: SatellitePreviewPrecision;
 };
+
+type SatellitePreviewPrecision = "address" | "street" | "site" | "square" | "locality" | "city";
 
 type NominatimSearchResult = {
   address?: Record<string, string>;
@@ -94,7 +104,121 @@ type PhotonSearchResult = {
   features?: PhotonFeature[];
 };
 
+type BaiduGeocodeResult = {
+  analys_level?: string;
+  confidence?: number | string;
+  comprehension?: number | string;
+  level?: string;
+  location?: {
+    lat?: number | string;
+    lng?: number | string;
+  };
+  precise?: number | string;
+};
+
+type BaiduGeocodeResponse = {
+  message?: string;
+  result?: BaiduGeocodeResult | null;
+  status?: number | string;
+};
+
+type AmapGeocodeResult = {
+  city?: string | string[];
+  citycode?: string;
+  district?: string;
+  formatted_address?: string;
+  level?: string;
+  location?: string;
+};
+
+type AmapGeocodeResponse = {
+  count?: number | string;
+  geocodes?: AmapGeocodeResult[];
+  info?: string;
+  status?: number | string;
+};
+
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
+const resolveRuntimeRepoRoot = () => {
+  const cwd = process.cwd();
+  const candidates = [
+    cwd,
+    path.resolve(cwd, ".."),
+    path.resolve(cwd, "../.."),
+    path.resolve(cwd, "../../.."),
+    path.resolve(currentDirectory, "../../.."),
+  ];
+
+  for (const candidate of candidates) {
+    if (
+      existsSync(path.join(candidate, "AGENTS.md")) &&
+      existsSync(path.join(candidate, "data")) &&
+      existsSync(path.join(candidate, "config"))
+    ) {
+      return candidate;
+    }
+  }
+
+  return path.resolve(currentDirectory, "../../..");
+};
+const runtimeRepoRoot = resolveRuntimeRepoRoot();
+
+const parseEnvAssignment = (line: string) => {
+  const trimmedLine = line.trim();
+  if (!trimmedLine || trimmedLine.startsWith("#")) {
+    return null;
+  }
+
+  const separatorIndex = trimmedLine.indexOf("=");
+  if (separatorIndex <= 0) {
+    return null;
+  }
+
+  const key = trimmedLine.slice(0, separatorIndex).trim();
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+    return null;
+  }
+
+  let value = trimmedLine.slice(separatorIndex + 1).trim();
+  if (
+    value.length >= 2 &&
+    ((value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'")))
+  ) {
+    value = value.slice(1, -1);
+  }
+
+  return { key, value };
+};
+
+const loadSatellitePreviewLocalEnv = () => {
+  const candidatePaths = [
+    path.join(runtimeRepoRoot, ".env"),
+    path.join(runtimeRepoRoot, "apps", "web", ".env.local"),
+  ];
+
+  candidatePaths.forEach((candidatePath) => {
+    if (!existsSync(candidatePath)) {
+      return;
+    }
+
+    try {
+      const payload = readFileSync(candidatePath, "utf8");
+      payload.split(/\r?\n/).forEach((line) => {
+        const assignment = parseEnvAssignment(line);
+        if (!assignment || process.env[assignment.key] !== undefined) {
+          return;
+        }
+
+        process.env[assignment.key] = assignment.value;
+      });
+    } catch {
+      // Local env loading is best-effort only.
+    }
+  });
+};
+
+loadSatellitePreviewLocalEnv();
 const imageContentType = "image/jpeg";
 const satelliteImageSize = 720;
 const satelliteTileSize = 256;
@@ -111,12 +235,31 @@ const pdfMaxBytes = 12 * 1024 * 1024;
 const pdfMaxCandidateUrlsPerOpportunity = 3;
 const pdfMaxExtractedTextLength = 24000;
 const pdfTextExtractionMaxBuffer = 512 * 1024;
+const satellitePreviewDebugEnabled = process.env.ARCH_SATELLITE_DEBUG === "1";
 const nominatimSearchUrl =
   process.env.ARCH_SATELLITE_GEOCODER_URL?.trim() ||
   "https://nominatim.openstreetmap.org/search";
 const photonSearchUrl =
   process.env.ARCH_SATELLITE_PHOTON_URL?.trim() ||
   "https://photon.komoot.io/api";
+const baiduGeocoderUrl =
+  process.env.ARCH_SATELLITE_BAIDU_GEOCODER_URL?.trim() ||
+  "https://api.map.baidu.com/geocoding/v3/";
+const baiduGeocoderAk =
+  process.env.ARCH_SATELLITE_BAIDU_AK?.trim() ||
+  process.env.BAIDU_MAPS_AK?.trim() ||
+  "";
+const baiduGeocoderSk =
+  process.env.ARCH_SATELLITE_BAIDU_SK?.trim() ||
+  process.env.BAIDU_MAPS_SK?.trim() ||
+  "";
+const amapGeocoderUrl =
+  process.env.ARCH_SATELLITE_AMAP_GEOCODER_URL?.trim() ||
+  "https://restapi.amap.com/v3/geocode/geo";
+const amapGeocoderKey =
+  process.env.ARCH_SATELLITE_AMAP_KEY?.trim() ||
+  process.env.AMAP_MAPS_KEY?.trim() ||
+  "";
 const satelliteTileUrlTemplate =
   process.env.ARCH_SATELLITE_TILE_URL_TEMPLATE?.trim() ||
   "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
@@ -161,15 +304,51 @@ const streetNumberPattern = new RegExp(
   String.raw`\b(?:n(?:[°ºo.]|\.)?\s*|no\.?\s*|nr\.?\s*|n\.\s*)?${streetNumberBodyPattern}\b`,
   "iu",
 );
-const addressPrefixPattern = String.raw`(?:c\/|c\.|via|viale|piazza|piazzale|corso|largo|vicolo|lungomare|strada|street|road|drive|lane|way|boulevard|avenue|avenida|avda\.?|av\.|rue|route|allee|gasse|platz|strasse|straße|calle|camino|carretera|ruta|plaza|paseo|ronda|rua|travessa|estrada|pra[çc]a|cal[çc]ada|rotunda|marginal|laan|plein|gracht|kade|singel|dreef|steiger|ul\.?|ulica|ulice|aleja|al\.?|bd\.?|bulevard(?:ul)?|bulvar|bulevar|str\.?|calea|sos\.?|șos\.?|ул\.?)`;
+const addressPrefixPattern = String.raw`(?:c\/|c\.|via|viale|piazza|piazzale|corso|largo|vicolo|lungomare|strada|street|road|drive|lane|way|boulevard|avenue|avenues|avenida|avda\.?|av\.|rue|route|chemin|all[eé]e|allee|impasse|quai|parvis|esplanade|gasse|platz|strasse|straße|calle|camino|carretera|ruta|plaza|paseo|ronda|rua|travessa|estrada|pra[çc]a|cal[çc]ada|rotunda|marginal|laan|plein|gracht|kade|singel|dreef|steiger|ul\.?|ulica|ulice|aleja|al\.|bd\.?|bulevard(?:ul)?|bulvar|bulevar|str\.?|calea|sos\.?|șos\.?|ул\.?)`;
 const addressBodyPattern = String.raw`[\p{L}\p{N}.'’/-]+(?:\s+[\p{L}\p{N}.'’/-]+){0,7}`;
 const localityPrefixPattern =
   String.raw`(?:località|localita|barrio|bairro|quartiere|frazione|hamlet|village|neighbourhood|neighborhood|suburb|district|distrito|urbanizaci[oó]n|freguesia|wijk|stadsdeel|bydel|campus)`;
 const placeNamePattern = String.raw`[\p{L}\p{N}.'’/-]+(?:\s+[\p{L}\p{N}.'’/-]+){0,5}`;
 const localityWrapperStripPattern =
-  /^(?:barrio|bairro|quartiere|frazione|hamlet|village|neighbourhood|neighborhood|suburb|district|distrito|urbanizaci[oó]n|freguesia|wijk|stadsdeel|bydel)\s+/iu;
+  /^(?:barrio|bairro|quartiere|frazione|hamlet|village|neighbourhood|neighborhood|suburb|district|distrito|urbanizaci[oó]n|freguesia|wijk|stadsdeel|bydel|quartier|lotissement|urbanizzazione|resid[eé]nce|residenza)\s+/iu;
 const sitePrefixPattern = String.raw`(?:campus)`;
 const siteBodyPattern = String.raw`[\p{L}\p{N}.'’/-]+(?:\s+(?:di|de|del|de la|de los|of)\s+)?(?:[\p{L}\p{N}.'’/-]+(?:\s+[\p{L}\p{N}.'’/-]+){0,5})`;
+const dashDelimitedLocalityTokenPattern = String.raw`[\p{L}\p{N}.'’/]+(?:-[\p{L}\p{N}.'’/]+)*`;
+const titleSitePrefixPattern =
+  String.raw`(?:campus|quartier|quartiers|lotissement|urbanizaci[oó]n|urbanizzazione|resid[eé]nce|residenza|parque(?:\s+empresarial)?|parco|groupe\s+scolaire|[eé]cole|coll[eè]ge|lyc[eé]e|gymnase|mus[eé]e|palais|complexe|centre\s+d['’]intervention|zac|zap|zone\s+d['’](?:am[eé]nagement|activit[eé]s?)|site(?:\s+pilote)?|[iî]lot|ilot|secteur|sous-secteur|lieu-dit)`;
+const frenchDashDelimitedSiteLeadPattern = new RegExp(
+  String.raw`\b(${dashDelimitedLocalityTokenPattern}(?:\s+${dashDelimitedLocalityTokenPattern}){0,4})\s*[-–—]\s+((?:${addressPrefixPattern}|${titleSitePrefixPattern})\s+[\p{L}\p{N}"«»'’/-]+(?:\s+[\p{L}\p{N}"«»'’/-]+){0,8})`,
+  "giu",
+);
+const frenchQuotedSiteLeadPattern = new RegExp(
+  String.raw`\b(${dashDelimitedLocalityTokenPattern}(?:\s+${dashDelimitedLocalityTokenPattern}){0,4})\s*[«"]\s*((?:${titleSitePrefixPattern})\s+[\p{L}\p{N}"'’/-]+(?:\s+[\p{L}\p{N}"'’/-]+){0,8})\s*[»"]`,
+  "giu",
+);
+const chineseInstitutionCampusPattern =
+  /((?:[\p{Script=Han}]{2,20}(?:大学|学院|学校|中学|医院))[\p{Script=Han}\p{L}\p{N}-]{0,20}?(?:校区|院区))/gu;
+const chineseRoadInsideSitePattern =
+  /([\p{Script=Han}]{1,8}(?:路|街|道))(?=(?:校区|院区|片区|小区))/u;
+const chineseShortSiteAnchorPattern =
+  /((?:[\p{Script=Han}\p{L}\p{N}-]{2,24}(?:片区|片小区|街区))|(?:[\p{Script=Han}\p{L}\p{N}-]{2,24}小区))(?:老旧(?:小区|街区)|改造工程|改造项目|修复改造|建设项目)?/u;
+const chineseStreetAsLocalityPattern =
+  /(?:^|\d{4}年|[^\p{Script=Han}])((?:[\p{Script=Han}]{1,12}(?:市|区|县)){0,3}[\p{Script=Han}]{1,12}街道)(?=[\p{Script=Han}\p{L}\p{N}-]{0,24}(?:老旧小区|改造工程|改造项目|建设项目))/u;
+const chineseAdministrativeSitePattern =
+  /(?:^|\d{4}年|[^\p{Script=Han}])((?:[\p{Script=Han}]{1,12}(?:市|区|县)){0,2}[\p{Script=Han}]{1,12}(?:街道|镇|乡)[\p{Script=Han}\p{L}\p{N}-]{0,16}(?:老旧小区|小区|片区|街区))/u;
+const chineseAdministrativeUnitPattern = String.raw`(?:[\p{Script=Han}]{1,12}(?:省|市|县|镇|乡|街道|新区|开发区|自治州|自治县)|[\p{Script=Han}]{1,12}(?<!街)(?<!院)(?<!校)(?<!园)(?<!片)(?<!社)(?<!小)区)`;
+const chineseCompoundPlacePattern =
+  String.raw`[\p{Script=Han}\p{L}\p{N}-]{1,40}(?:校区|院区|园区|片区|街区|地块|小区|社区|村\d+号|村|广场|公园|基地)`;
+const chineseRoadPattern =
+  String.raw`[\p{Script=Han}\p{L}\p{N}-]{1,30}(?:路|街(?!区)|道|巷|胡同|正街|大道)`;
+const chineseDirectionalRoadPattern =
+  String.raw`(${chineseRoadPattern})(?=\s*(?:以东|以西|以南|以北))`;
+const chinesePreciseSiteFieldPattern = new RegExp(
+  String.raw`(?:建设地点|工程地点|项目地点|实施地点)[：:]\s*((?:(?:${chineseAdministrativeUnitPattern}){0,4})[\p{Script=Han}\p{L}\p{N}-]{1,48}(?:校区|院区|园区|片区|街区|地块|小区|社区|村\d+号|村|广场|公园|基地|院内|院区内|校区内))`,
+  "gu",
+);
+const chinesePreciseStreetFieldPattern = new RegExp(
+  String.raw`(?:建设地点|工程地点|项目地点|实施地点)[：:]\s*((?:(?:(?:${chineseAdministrativeUnitPattern}){0,4})\s*)?${chineseRoadPattern}(?:\s*\d+\s*号)?)`,
+  "gu",
+);
 const trailingStreetTypePattern =
   String.raw`(?:straat|laan|plein|gracht|kade|singel|dreef|gade|gata|gatan|gate|torv|torget|plass|plassen|vei|veien|veg|vegen|v[aä]g|v[aä]gen|weg|ring|damm|ufer|allee|pfad|stieg|steig|tie|katu|kuja|polku|cesta|strasse|straße|ulica|n[aá]m[ěe]st[ií]|trg|utca)`;
 const compoundTrailingStreetWordPattern =
@@ -179,6 +358,39 @@ const multiWordCompoundTrailingStreetPattern =
 const spacedTrailingStreetPattern =
   String.raw`[\p{L}\p{N}.'’/-]+(?:\s+[\p{L}\p{N}.'’/-]+){0,4}\s+${trailingStreetTypePattern}`;
 const trailingStreetAddressPattern = String.raw`(?:${multiWordCompoundTrailingStreetPattern}|${spacedTrailingStreetPattern}|${compoundTrailingStreetWordPattern})`;
+const titleStreetTailBoundaryPattern = String.raw`(?=(?:\s*[-–—]\s+)|(?:\s*,\s*(?:${localityPrefixPattern}\s+${placeNamePattern}|${placeNamePattern}(?:\s*\((?:[A-Z]{2}|\d{2,5})\))?))|(?:\s+(?:à|au|aux|sur|sous|l[eè]s|en|em|w|v|u|im|am|bei|auf|nel|nella|in|na|no|te|i)\s+${placeNamePattern}(?:\s*\((?:[A-Z]{2}|\d{2,5})\))?)|(?:\s*\([A-Z0-9-]{2,}\))|[.;,)]|$)`;
+const titleSiteTailBoundaryPattern = String.raw`(?=(?:\s*[-–—]\s+)|(?:\s*,\s*(?:${placeNamePattern}(?:\s*\((?:[A-Z]{2}|\d{2,5})\))?))|(?:\s+(?:à|au|aux|sur|sous|l[eè]s|en|em|w|v|u|im|am|bei|auf|nel|nella|in|na|no|te|i)\s+${placeNamePattern}(?:\s*\((?:[A-Z]{2}|\d{2,5})\))?)|[.;,)]|$)`;
+const numberLeadingStreetAddressPattern = new RegExp(
+  String.raw`(?<![\p{L}\p{N}])(?:\d+(?:\s+(?:bis|ter|quater))?|${streetNumberBodyPattern})\s+${addressPrefixPattern}\s+${addressBodyPattern}${titleStreetTailBoundaryPattern}`,
+  "giu",
+);
+const titleAddressCandidatePatterns: Array<{ kind: AddressCandidateKind; pattern: RegExp }> = [
+  {
+    kind: "street_address",
+    pattern: numberLeadingStreetAddressPattern,
+  },
+  {
+    kind: "street",
+    pattern: new RegExp(
+      String.raw`\b${addressPrefixPattern}\s+${addressBodyPattern}${titleStreetTailBoundaryPattern}`,
+      "giu",
+    ),
+  },
+  {
+    kind: "street",
+    pattern: new RegExp(
+      String.raw`(?<![\p{L}\p{N}])${trailingStreetAddressPattern}${titleStreetTailBoundaryPattern}`,
+      "giu",
+    ),
+  },
+  {
+    kind: "site",
+    pattern: new RegExp(
+      String.raw`\b${titleSitePrefixPattern}\s+${placeNamePattern}${titleSiteTailBoundaryPattern}`,
+      "giu",
+    ),
+  },
+];
 const compoundAddressPattern = new RegExp(
   String.raw`^(${addressPrefixPattern}\s+${addressBodyPattern})\s+(?:con|with)\s+(${addressPrefixPattern}\s+${addressBodyPattern})$`,
   "iu",
@@ -188,7 +400,7 @@ const referencedAddressPattern = new RegExp(
   "iu",
 );
 const streetPrefixForGeocoderStripPattern = new RegExp(
-  String.raw`^(?:c\/|c\.|via|viale|piazza|piazzale|corso|largo|vicolo|lungomare|strada|street|road|drive|lane|way|boulevard|avenue|avenida|avda\.?|av\.|rue|route|allee|gasse|platz|strasse|straße|calle|camino|carretera|ruta|plaza|paseo|ronda|rua|travessa|estrada|pra[çc]a|cal[çc]ada|rotunda|marginal|laan|plein|gracht|kade|singel|dreef|steiger|ul\.?|ulica|ulice|aleja|al\.?|bd\.?|bulevard(?:ul)?|bulvar|bulevar|str\.?|calea|sos\.?|șos\.?|ул\.?)\s+`,
+  String.raw`^(?:c\/|c\.|via|viale|piazza|piazzale|corso|largo|vicolo|lungomare|strada|street|road|drive|lane|way|boulevard|avenue|avenida|avda\.?|av\.|rue|route|allee|gasse|platz|strasse|straße|calle|camino|carretera|ruta|plaza|paseo|ronda|rua|travessa|estrada|pra[çc]a|cal[çc]ada|rotunda|marginal|laan|plein|gracht|kade|singel|dreef|steiger|ul\.?|ulica|ulice|aleja|al\.|bd\.?|bulevard(?:ul)?|bulvar|bulevar|str\.?|calea|sos\.?|șos\.?|ул\.?)\s+`,
   "iu",
 );
 const addressCandidatePatterns: Array<{ kind: AddressCandidateKind; pattern: RegExp }> = [
@@ -245,9 +457,14 @@ const addressCandidatePatterns: Array<{ kind: AddressCandidateKind; pattern: Reg
 const rejectedAddressMarkers =
   /\b(?:cup|cig|codice|missione|lotto|pnrr|investimento|procedura|intervento|progetto|servizio|lavori|adeguamento|bando|pratica)\b/iu;
 const rejectedAddressCandidatePattern =
-  /^(?:c\.?\s*\d+|art\.?\s*\d+|co\.?\s*\d+|comma\s+\d+|lett\.?\s*[a-z]|strasse\s+\d[\p{L}\p{N}/-]*|straße\s+\d[\p{L}\p{N}/-]*)$/iu;
+  /^(?:al|c\.?\s*\d+|art\.?\s*\d+|co\.?\s*\d+|comma\s+\d+|lett\.?\s*[a-z]|strasse\s+\d[\p{L}\p{N}/-]*|straße\s+\d[\p{L}\p{N}/-]*)$/iu;
+const rejectedProceduralAddressPattern =
+  /\b(?:coordinatore\s+per\s+la\s+sicurezza|patrimonio\s+del\s+comune|direzione\s+lavori|servizi?\s+tecnici|servizi?\s+di\s+ingegneria|affidamento|progettazione|redazione|fachplanung|projektsteuerung|obras|contrataci[oó]n|concesi[oó]n|servicios?\s+de|lavori\s+di)\b/iu;
 const rejectedLocalityMarkers =
   /\b(?:esta localidad|questa località|this locality|questo comune|distrito suroeste de esta localidad)\b/iu;
+const rejectedBroadChineseLocalityPattern = /(?:省|自治区|特别行政区)$/u;
+const multiLocalityConnectorPattern =
+  /\b(?:and|et|y|e)\b|(?:ayuntamientos\s+de)|(?:captages?\s+de)|(?:,\s*[\p{L}\p{Script=Han}]{2,}){2,}/iu;
 const rejectedGeocodeAddressTypes = new Set([
   "city",
   "county",
@@ -283,8 +500,24 @@ const acceptedExactGeocodeAddressTypes = new Set([
   "suburb",
   "village",
 ]);
+const acceptedBroadGeocodeAddressTypes = new Set([
+  "city",
+  "hamlet",
+  "locality",
+  "municipality",
+  "neighbourhood",
+  "neighborhood",
+  "place",
+  "quarter",
+  "road",
+  "square",
+  "suburb",
+  "town",
+  "village",
+]);
 const acceptedGeocodeCategories = new Set(["building", "highway", "landuse", "place"]);
 const acceptedSiteGeocodeCategories = new Set(["amenity", "building", "landuse"]);
+const acceptedLocalityGeocodeCategories = new Set(["boundary", "place"]);
 const streetComparisonNoiseTokens = new Set([
   "a",
   "al",
@@ -431,27 +664,35 @@ const countryComparisonVariantsByJurisdiction: Record<string, string[]> = {
 
 const satellitePreviewMemoryCache = new Map<string, Buffer | null>();
 const geocodeMemoryCache = new Map<string, GeocodeCacheEntry>();
+const satellitePreviewDebugTraceBySlug = new Map<string, string[]>();
 let geocodeCacheLoaded = false;
 let geocodeLastRequestAt = 0;
 
-const resolveRepoRoot = () => {
-  const cwd = process.cwd();
-  const candidates = [
-    cwd,
-    path.resolve(cwd, ".."),
-    path.resolve(cwd, "../.."),
-    path.resolve(cwd, "../../.."),
-    path.resolve(currentDirectory, "../../.."),
-  ];
-
-  for (const candidate of candidates) {
-    if (existsSync(path.join(candidate, "AGENTS.md")) && existsSync(path.join(candidate, "artifacts"))) {
-      return candidate;
-    }
+const debugSatellitePreview = (...values: unknown[]) => {
+  const slug = typeof values[0] === "string" ? values[0] : null;
+  if (slug) {
+    const trace = satellitePreviewDebugTraceBySlug.get(slug) ?? [];
+    trace.push(
+      values
+        .map((value) =>
+          typeof value === "string" ? value : JSON.stringify(value),
+        )
+        .join(" "),
+    );
+    satellitePreviewDebugTraceBySlug.set(slug, trace.slice(-24));
   }
 
-  return path.resolve(currentDirectory, "../../..");
+  if (!satellitePreviewDebugEnabled) {
+    return;
+  }
+
+  console.log("[satellite-preview]", ...values);
 };
+
+export const getSatellitePreviewDebugTrace = (slug: string) =>
+  satellitePreviewDebugTraceBySlug.get(slug) ?? [];
+
+const resolveRepoRoot = () => runtimeRepoRoot;
 
 const previewRoot = path.join(resolveRepoRoot(), "artifacts", "opportunity-card-satellite");
 const previewImageDirectory = path.join(previewRoot, "images");
@@ -527,6 +768,24 @@ const trailingAddressFieldStopPattern =
   /\s+(?:projektnummer|quartier|grundst[üu]cksnummer|wirtschaftseinheit|baujahr|bautyp|bgf|bestand|potenzial|objekt(?:daten)?|adresse|flurst[üu]ck|flurst[üu]cksnummer|bezirk|plan(?:nummer|-nummer|nr)?|maßstab|datum|leistungsumfang|dates?\s+and\s+deadlines|period|expiration(?:\s+time)?|seite)\s*[:=-]?[\s\S]*$/iu;
 const localityTailNoisePattern =
   /\b(?:projektnummer|quartier|grundst[üu]cksnummer|wirtschaftseinheit|baujahr|bautyp|bgf|bestand|potenzial|objekt(?:daten)?|adresse|flurst[üu]ck|flurst[üu]cksnummer|plan(?:nummer|-nummer|nr)?|maßstab|datum|leistungsumfang|period|expiration|seite)\b/iu;
+const preservedChineseAdministrativeSitePattern =
+  /(?:[\p{Script=Han}]{1,12}(?:市|区|县)){0,2}[\p{Script=Han}]{1,12}(?:街道|镇|乡)[\p{Script=Han}\p{L}\p{N}-]{0,16}(?:老旧小区|小区|片区|街区)$/u;
+const genericChineseRegenerationSitePattern = /^老旧(?:小区|街区)$/u;
+const chineseAddressNoiseLeadPattern =
+  /^(?:本招标项目|本项目|项目业主|招标人为|招标代理机构为|发改委关于|省发改委关于|对(?:产业基地|项目|地块)?|主要建设内容为)/u;
+const chineseLocalityNoiseLeadPattern =
+  /^(?:招标代理机构为|项目业主|招标人为|本工程场地位于|本项目位于|本项目建设地点为|本项目建设地点位于)/u;
+const chineseFacilityCorePattern =
+  /((?:[\p{Script=Han}]{2,24}(?:大学|学院|学校|中学|小学|医院|人民医院|第一中学|第二中学|第三中学))(?:[\p{Script=Han}\p{L}\p{N}-]{0,20}?(?:校区|院区))?)/u;
+const chineseRoadWithNumberPattern =
+  /([\p{Script=Han}\p{L}\p{N}-]{1,30}(?:路|街(?!区)|道|巷|胡同|正街|大道)\s*\d+\s*号)/u;
+const chineseRoadOnlyPattern =
+  /([\p{Script=Han}\p{L}\p{N}-]{1,30}(?:路|街(?!区)|道|巷|胡同|正街|大道))/u;
+const chineseInstitutionSiteTailPattern =
+  /((?:[\p{Script=Han}]{2,24}(?:大学|学院|学校|中学|小学|医院))[\p{Script=Han}\p{L}\p{N}-]{0,24}?(?:校区|院区|新校区))/u;
+const chineseWeakSiteNoisePattern =
+  /^(?:拟规划建设中试基地|创新创业基地|实验实训基地|主要建设内容为小区|弱电设计需接驳到校区)$/u;
+const chineseDirectionalSuffixPattern = /(?:内|院内|校区内|校园内|北侧|南侧|东侧|西侧|及其周边区域|及其周边区|周边区域)$/u;
 
 const extractPdfUrlsFromText = (value: string, baseUrl: string) => {
   const pdfCandidates: Array<{ score: number; url: string }> = [];
@@ -1078,6 +1337,42 @@ const getAddressCandidateComparisonKey = (candidate: AddressCandidate) =>
   normalizeComparisonText(`${candidate.kind}|${candidate.address}|${candidate.localityHint ?? ""}`);
 
 const dedupeAddressCandidates = (candidates: AddressCandidate[]) => {
+  const deduped: AddressCandidate[] = [];
+  const seen = new Set<string>();
+
+  for (const candidate of candidates) {
+    const baseKey = normalizeComparisonText(`${candidate.kind}|${candidate.address}`);
+    const existingIndex = deduped.findIndex(
+      (entry) => normalizeComparisonText(`${entry.kind}|${entry.address}`) === baseKey,
+    );
+    if (existingIndex >= 0) {
+      const existing = deduped[existingIndex];
+      const mergedLocalityHint = pickMoreSpecificLocalityHint(
+        existing.localityHint,
+        candidate.localityHint,
+      );
+      if (mergedLocalityHint !== existing.localityHint) {
+        deduped[existingIndex] = {
+          ...existing,
+          localityHint: mergedLocalityHint,
+        };
+      }
+      continue;
+    }
+
+    const key = getAddressCandidateComparisonKey(candidate);
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    deduped.push(candidate);
+  }
+
+  return deduped;
+};
+
+const dedupeRawAddressCandidates = (candidates: AddressCandidate[]) => {
   const seen = new Set<string>();
   const deduped: AddressCandidate[] = [];
 
@@ -1094,20 +1389,52 @@ const dedupeAddressCandidates = (candidates: AddressCandidate[]) => {
   return deduped;
 };
 
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const extractTrailingDashLocality = (value: string) => {
+  const segments = value
+    .split(/\s*[-–—]\s*/u)
+    .map((segment) => cleanLocalityHint(segment))
+    .filter((segment): segment is string => Boolean(segment));
+  return segments.at(-1) ?? null;
+};
+
 const cleanAddressCandidate = (value: string) => {
   const cleaned = normalizeWhitespace(
     value
       .replace(/[“”]/g, '"')
       .replace(/[‘’]/g, "'")
       .replace(/[–—]/g, "-")
+      .replace(/^(?:位于|坐落于|建设地点[：:]?|东至|南至|西至|北至)\s*/u, "")
+      .replace(chineseAddressNoiseLeadPattern, "")
       .replace(/^(?:action)\s+/iu, "")
       .replace(/^.*?\b(?:projekt|project|projet|progetto)\s+/iu, "")
       .replace(/^.*?\b(?:przy|na\s+naslovu|sito\s+en|ubicado\s+en|situado\s+en)\s+/iu, "")
       .replace(/^(?:aan|på|pa)\s+/iu, "")
+      .replace(/^.*?\b(?:fachplanung|werkraum|schule)\s+(?=[\p{L}\p{N}.'’/-]+\s+straße\b)/iu, "")
+      .replace(new RegExp(String.raw`^(?:${chineseAdministrativeUnitPattern}){1,3}`, "u"), "")
       .replace(trailingAddressFieldStopPattern, "")
+      .replace(
+        new RegExp(
+          String.raw`^((?:piazza|piazzale|plaza|platz|square|place)\s+${addressBodyPattern})\s+(?:in|a|à|en|em|nel|nella|na|no)\s+${placeNamePattern}\s*$`,
+          "iu",
+        ),
+        "$1",
+      )
+      .replace(/\s*[-–—]\s*(?:lotto|lot\b|projekt(?:steuerung)?|project|projet|construction|mission|objektplanung|fachplanung|planung|raum(?:-| und )|ma[iî]trise|proc[eé]dure|procedura)\b[\s\S]*$/iu, "")
+      .replace(/\s+nel\s+comune\s+di\b[\s\S]*$/iu, "")
+      .replace(/\s*\([A-Z0-9-]{2,}\)\s*$/u, "")
       .replace(/\s+-\s+lot\s+\d+\b[\s\S]*$/iu, "")
       .replace(/,\s*\d+\s+logements?\b[\s\S]*$/iu, "")
+      .replace(/\.\s+Nell'ambito dell['’ ]Avviso Pubblico\b[\s\S]*$/iu, "")
+      .replace(/\s+finalizzat[oa]?\s+al(?:la)?\b[\s\S]*$/iu, "")
+      .replace(/\s+urbanistic[oa]\b[\s\S]*$/iu, "")
+      .replace(/\s+certificato\s+di\s+regolare\s+esecuzione\b[\s\S]*$/iu, "")
+      .replace(/\s+N\.?C\.?E\.?U\.?\b[\s\S]*$/iu, "")
+      .replace(/\b(?:项目|工程|招标公告|招标|建设项目|方案设计|初步设计|施工图设计|设计服务)\b[\s\S]*$/u, "")
+      .replace(chineseDirectionalSuffixPattern, "")
       .replace(/\s+(?:w|v|u)\s+[\p{L}\p{N}.'’/-]+(?:\s+[\p{L}\p{N}.'’/-]+){0,4}\s*$/iu, "")
+      .replace(/\s+\b(?:al\s+patrimonio\s+del\s+comune\s+di|al\s+massimo\s+\d+\s+caratteri|indietro|avanti|grazie)\b[\s\S]*$/iu, "")
       .replace(/\s+pour\s+l['’][\p{L}\p{N}.'’/-]+(?:\s+[\p{L}\p{N}.'’/-]+){0,6}\s*$/iu, "")
       .replace(/^[,;:\-.\s]+|[,;:\-.\s]+$/g, ""),
   );
@@ -1120,6 +1447,24 @@ const cleanAddressCandidate = (value: string) => {
     cleaned.length > 96 ||
     rejectedAddressMarkers.test(cleaned) ||
     rejectedAddressCandidatePattern.test(cleaned)
+  ) {
+    return null;
+  }
+
+  if (
+    !new RegExp(
+      String.raw`(?:\b${streetNumberBodyPattern}\b|${trailingStreetTypePattern}\b|${chineseCompoundPlacePattern}|${chineseRoadPattern})`,
+      "iu",
+    ).test(cleaned) &&
+    rejectedProceduralAddressPattern.test(cleaned)
+  ) {
+    return null;
+  }
+
+  if (
+    new RegExp(String.raw`^(?:${addressPrefixPattern}|${trailingStreetTypePattern})$`, "iu").test(
+      cleaned,
+    )
   ) {
     return null;
   }
@@ -1138,25 +1483,65 @@ const cleanLocalityCandidate = (value: string) => {
 };
 
 const cleanSiteCandidate = (value: string) =>
-  cleanAddressCandidate(
-    value
-      .replace(/\s+(?:comprensivo|incluye|including)\b[\s\S]*$/iu, "")
-      .replace(/\s*\([^)]+\)\s*$/u, ""),
-  );
+  (() => {
+    const normalizedValue = value.replace(/^\d{4}年/u, "").replace(/(?:[«»"“”])/gu, "");
+    if (preservedChineseAdministrativeSitePattern.test(normalizedValue)) {
+      const preservedCleaned = normalizeWhitespace(
+        normalizedValue
+          .replace(/\b(?:项目|工程|招标公告|招标|建设项目|方案设计|初步设计|施工图设计|设计服务)\b[\s\S]*$/u, "")
+          .replace(/^[,;:\-.\s]+|[,;:\-.\s]+$/g, ""),
+      );
+      if (
+        !preservedCleaned ||
+        preservedCleaned.length > 96 ||
+        rejectedAddressMarkers.test(preservedCleaned) ||
+        rejectedAddressCandidatePattern.test(preservedCleaned)
+      ) {
+        return null;
+      }
+
+      return preservedCleaned;
+    }
+
+    return cleanAddressCandidate(
+      normalizedValue
+        .replace(new RegExp(String.raw`^(?:${chineseAdministrativeUnitPattern}){1,3}`, "u"), "")
+        .replace(/^[\p{Script=Han}]{2,12}(?:医院|学校)/u, "")
+        .replace(/((?:片区|片小区|小区|街区))\d{4}年老旧(?:小区|街区)$/u, "$1")
+        .replace(/((?:片区|片小区|小区|街区))(?:改造工程|改造项目|修复改造|建设项目)[\s\S]*$/u, "$1")
+        .replace(/\s+(?:à|en|em|w|v|u|im|am|bei|auf|nel|nella|in|na|no|te|i)\s+[\p{L}\p{N}.'’/-]+(?:\s+[\p{L}\p{N}.'’/-]+){0,5}\s*(?:\([A-Z]{2}\))?$/iu, "")
+        .replace(/\s+(?:comprensivo|incluye|including)\b[\s\S]*$/iu, "")
+        .replace(/\s+(?:mission|ma[iî]trise|travaux|construction|consultation|lot|n[°ºo]\s*op[\p{L}\p{N}-]*)\b[\s\S]*$/iu, "")
+        .replace(/\s*\([^)]+\)\s*$/u, ""),
+    );
+  })();
 
 const cleanLocalityHint = (value: string) => {
   const cleaned = normalizeWhitespace(
     value
+      .replace(/^\d{4}年/u, "")
+      .replace(/^年/u, "")
       .replace(/[“”]/g, '"')
       .replace(/[‘’]/g, "'")
       .replace(/[–—]/g, "-")
+      .replace(chineseLocalityNoiseLeadPattern, "")
+      .replace(/^(?:nel|nella|nello|nei|negli|in|a)\s+comune\s+di\s+/iu, "")
+      .replace(/^comune\s+di\s+/iu, "")
+      .replace(/^(?:nel|nella|nello|nei|negli|in|a)\s+/iu, "")
       .replace(trailingAddressFieldStopPattern, "")
+      .replace(/\d+号棚户区[\s\S]*$/u, "")
+      .replace(/棚户区改造项目[\s\S]*$/u, "")
+      .replace(/棚户区[\s\S]*$/u, "")
+      .replace(/号$/u, "")
       .replace(/,\s*(?:district|distrito)\b[\s\S]*$/iu, "")
       .replace(/,\s*[^,]*\b(?:district|distrito)\b[\s\S]*$/iu, "")
       .replace(/\s+de\s+esta\s+localidad\b[\s\S]*$/iu, "")
       .replace(/\s+di\s+questa\s+localit[aà]\b[\s\S]*$/iu, "")
       .replace(/\s+desta\s+localidade\b[\s\S]*$/iu, "")
+      .replace(/号及其周边(?:区域|区)$/u, "")
       .replace(/\s*\([A-Z]{2}\)\s*$/u, "")
+      .replace(/\s*\((?:\d{2,5})\)\s*$/u, "")
+      .replace(/\s+\d{2,5}\s*$/u, "")
       .replace(/^[,;:\-.\s]+|[,;:\-.\s]+$/g, ""),
   );
 
@@ -1169,6 +1554,10 @@ const cleanLocalityHint = (value: string) => {
   }
 
   if (localityTailNoisePattern.test(cleaned)) {
+    return null;
+  }
+
+  if (rejectedBroadChineseLocalityPattern.test(cleaned) || multiLocalityConnectorPattern.test(cleaned)) {
     return null;
   }
 
@@ -1256,9 +1645,15 @@ const extractLocalityHintFromTail = (value: string) => {
     new RegExp(String.raw`^\s+(?:w|v|u)\s+(${placeNamePattern})`, "iu"),
     new RegExp(String.raw`^\s*,\s*em\s+(${placeNamePattern})`, "iu"),
     new RegExp(String.raw`^\s+em\s+(${placeNamePattern})`, "iu"),
+    new RegExp(String.raw`^\s*,\s*à\s+(${placeNamePattern})`, "iu"),
+    new RegExp(String.raw`^\s+à\s+(${placeNamePattern})`, "iu"),
+    new RegExp(String.raw`^\s*,\s*(?:au|aux|sur|sous|l[eè]s)\s+(${placeNamePattern})(?:\s*\((?:\d{2,5}|[A-Z]{2})\))?`, "iu"),
+    new RegExp(String.raw`^\s+(?:au|aux|sur|sous|l[eè]s)\s+(${placeNamePattern})(?:\s*\((?:\d{2,5}|[A-Z]{2})\))?`, "iu"),
     new RegExp(String.raw`^\s+(?:nel|in|a|na|no|te|i)\s+(${placeNamePattern})\s*\([A-Z]{2}\)`, "iu"),
     new RegExp(String.raw`^\s+(?:nel|in|a|na|no|te|i)\s+(${placeNamePattern})`, "iu"),
+    new RegExp(String.raw`^\s+(?:im|am|bei|auf)\s+(${placeNamePattern})`, "iu"),
     new RegExp(String.raw`^\s*-\s*(${placeNamePattern})\s*\([A-Z]{2}\)`, "u"),
+    new RegExp(String.raw`^\s*-\s*(${placeNamePattern})\s*\((?:\d{2,5}|[A-Z]{2})\)`, "u"),
     new RegExp(String.raw`^\s*,\s*(${placeNamePattern})\s*\([A-Z]{2}\)`, "u"),
   ];
 
@@ -1279,7 +1674,12 @@ const extractLocalityHintFromTail = (value: string) => {
 
 const extractInlineLocalityHintFromAddress = (value: string) => {
   const patterns = [
+    new RegExp(
+      String.raw`^(?:piazza|piazzale|plaza|platz|square|place)\s+${addressBodyPattern}\s+(?:in|a|à|en|em|nel|nella|na|no)\s+(${placeNamePattern})\s*$`,
+      "iu",
+    ),
     new RegExp(String.raw`\s+(?:w|v|u)\s+(${placeNamePattern})\s*$`, "iu"),
+    new RegExp(String.raw`((?:${chineseAdministrativeUnitPattern}){1,3})\s*[\p{Script=Han}\p{L}\p{N}-]{1,40}(?:校区|院区|园区|片区|街区|地块|小区|社区|村\d+号|村|广场|公园|基地|路|街|道|巷|胡同|正街|大道)\s*$`, "u"),
   ];
 
   for (const pattern of patterns) {
@@ -1295,6 +1695,532 @@ const extractInlineLocalityHintFromAddress = (value: string) => {
   }
 
   return null;
+};
+
+const extractChineseContextLocalityHint = (
+  normalizedText: string,
+  matchIndex: number,
+  rawAddress: string,
+) => {
+  const normalizeChineseLocalityParts = (parts: string[]) =>
+    cleanLocalityHint(
+      [...new Set(parts.filter((value) => value && !/\d/.test(value) && value !== "棚户区"))].join(""),
+    );
+
+  const contextBefore = normalizedText.slice(Math.max(0, matchIndex - 96), matchIndex);
+  const nearbyContext = normalizedText.slice(
+    Math.max(0, matchIndex - 140),
+    Math.min(normalizedText.length, matchIndex + rawAddress.length + 40),
+  );
+  const explicitLocationLeadMatch = nearbyContext.match(
+    new RegExp(String.raw`((?:${chineseAdministrativeUnitPattern}){1,3})[^。；;\n]{0,40}?(?:位于|建设地点[：:]?)`, "u"),
+  );
+  if (explicitLocationLeadMatch?.[1]) {
+    return cleanLocalityHint(explicitLocationLeadMatch[1]);
+  }
+
+  const nearbyAdministrativeMatches = [
+    ...nearbyContext.matchAll(new RegExp(chineseAdministrativeUnitPattern, "gu")),
+  ]
+    .map((entry) => normalizeWhitespace(entry[0] ?? ""));
+  if (nearbyAdministrativeMatches.length > 0) {
+    const normalizedHint = normalizeChineseLocalityParts(nearbyAdministrativeMatches.slice(0, 4));
+    if (normalizedHint) {
+      return normalizedHint;
+    }
+  }
+
+  const directAdministrativeMatches = [
+    ...contextBefore.matchAll(new RegExp(chineseAdministrativeUnitPattern, "gu")),
+  ].map((entry) => normalizeWhitespace(entry[0] ?? ""));
+
+  if (directAdministrativeMatches.length > 0) {
+    const normalizedHint = normalizeChineseLocalityParts(directAdministrativeMatches.slice(-4));
+    if (normalizedHint) {
+      return normalizedHint;
+    }
+  }
+
+  const inlineMatch = normalizedText
+    .slice(Math.max(0, matchIndex - 120), Math.min(normalizedText.length, matchIndex + rawAddress.length + 40))
+    .match(new RegExp(String.raw`((?:${chineseAdministrativeUnitPattern}){1,3})[^。；;，,\n]{0,40}${rawAddress}`, "u"));
+
+  return inlineMatch?.[1] ? cleanLocalityHint(inlineMatch[1]) : null;
+};
+
+const extractChineseStreetRoadFromSite = (value: string) => {
+  const embeddedRoadMatch = value.match(chineseRoadInsideSitePattern);
+  if (!embeddedRoadMatch?.[1]) {
+    return null;
+  }
+
+  const road = normalizeWhitespace(embeddedRoadMatch[1]);
+  const narrowedRoad = road.replace(/^.*(?=(?:[\p{Script=Han}]{2,6}(?:路|街|道)$))/u, "");
+  return cleanAddressCandidate(narrowedRoad || road);
+};
+
+const extractChineseFacilityCore = (value: string) => {
+  const facilityMatch = normalizeWhitespace(value).match(chineseFacilityCorePattern);
+  return facilityMatch?.[1] ? cleanSiteCandidate(facilityMatch[1]) : null;
+};
+
+const extractChineseInstitutionBaseName = (value: string) => {
+  const normalizedValue = normalizeWhitespace(value);
+  const baseInstitutionMatch = normalizedValue.match(
+    /((?:[\p{Script=Han}]{2,24}(?:大学|学院|学校|中学|小学|医院|人民医院)))/u,
+  );
+  return baseInstitutionMatch?.[1] ? cleanSiteCandidate(baseInstitutionMatch[1]) : null;
+};
+
+const expandChineseRoadNumberVariant = (value: string) => {
+  const normalizedValue = normalizeWhitespace(value);
+  if (!/[\p{Script=Han}]/u.test(normalizedValue)) {
+    return null;
+  }
+
+  const spacedVariant = normalizedValue.replace(
+    /((?:[\p{Script=Han}\p{L}\p{N}-]{1,30}(?:路|街(?!区)|道|巷|胡同|正街|大道)))(\d+)号/u,
+    "$1 $2 号",
+  );
+  return spacedVariant !== normalizedValue ? spacedVariant : null;
+};
+
+const extractChineseRoadCandidates = (value: string) => {
+  const normalizedValue = normalizeWhitespace(value);
+  const results: string[] = [];
+  const normalizeChineseRoadNumberAddress = (candidateValue: string) =>
+    normalizeWhitespace(candidateValue).replace(
+      /((?:[\p{Script=Han}\p{L}\p{N}-]{1,30}(?:路|街(?!区)|道|巷|胡同|正街|大道)))\s*(\d+)\s*号/u,
+      "$1$2号",
+    );
+  const pushRoad = (candidateValue: string | null | undefined) => {
+    const cleaned = candidateValue ? cleanAddressCandidate(candidateValue) : null;
+    if (!cleaned || results.includes(cleaned)) {
+      return;
+    }
+
+    results.push(cleaned);
+  };
+
+  normalizedValue
+    .split(/[、，,；;]/u)
+    .map((segment) => normalizeWhitespace(segment))
+    .filter(Boolean)
+    .forEach((segment) => {
+      const preciseMatch = segment.match(chineseRoadWithNumberPattern);
+      if (preciseMatch?.[1]) {
+        pushRoad(normalizeChineseRoadNumberAddress(preciseMatch[1]));
+      }
+
+      const roadOnlyMatch = segment.match(chineseRoadOnlyPattern);
+      if (roadOnlyMatch?.[1]) {
+        pushRoad(roadOnlyMatch[1]);
+      }
+    });
+
+  return results;
+};
+
+const deriveLocalityHintFromChineseAddress = (value: string) => {
+  const localityParts = [...value.matchAll(new RegExp(chineseAdministrativeUnitPattern, "gu"))]
+    .map((match) => normalizeWhitespace(match[0] ?? ""))
+    .filter(Boolean);
+  if (localityParts.length === 0) {
+    return null;
+  }
+
+  return cleanLocalityHint(localityParts.join(""));
+};
+
+const isInvalidChineseStreetCandidate = (rawAddress: string, address: string) =>
+  /(?:片区|街区)/u.test(rawAddress) || /(?:片区|街区)/u.test(address);
+
+const extractGlobalChineseLocalityHint = (normalizedText: string) => {
+  const directConstructionLocationMatch = normalizedText.match(
+    new RegExp(String.raw`建设地点[：:]?\s*((?:${chineseAdministrativeUnitPattern}){1,4})`, "u"),
+  );
+  if (directConstructionLocationMatch?.[1]) {
+    return cleanLocalityHint(directConstructionLocationMatch[1]);
+  }
+
+  const broaderLocationLeadMatch = normalizedText.match(
+    new RegExp(String.raw`((?:${chineseAdministrativeUnitPattern}){1,4})[^。；;\n]{0,40}?(?:位于|建设地点[：:]?)`, "u"),
+  );
+  if (broaderLocationLeadMatch?.[1]) {
+    return cleanLocalityHint(broaderLocationLeadMatch[1]);
+  }
+
+  const titleAdministrativeLeadMatch = normalizedText.match(
+    new RegExp(String.raw`^(?:\d{4}年)?((?:${chineseAdministrativeUnitPattern}){1,4})`, "u"),
+  );
+  if (titleAdministrativeLeadMatch?.[1]) {
+    return cleanLocalityHint(titleAdministrativeLeadMatch[1]);
+  }
+
+  return null;
+};
+
+const pickMoreSpecificLocalityHint = (
+  leftValue: string | null | undefined,
+  rightValue: string | null | undefined,
+) => {
+  if (typeof leftValue !== "string" || leftValue.length === 0) {
+    return typeof rightValue === "string" && rightValue.length > 0 ? rightValue : null;
+  }
+
+  if (typeof rightValue !== "string" || rightValue.length === 0) {
+    return leftValue;
+  }
+
+  const leftKey = normalizeComparisonText(leftValue);
+  const rightKey = normalizeComparisonText(rightValue);
+  if (leftKey === rightKey) {
+    return leftValue.length >= rightValue.length ? leftValue : rightValue;
+  }
+
+  if (rightKey.includes(leftKey)) {
+    return rightValue;
+  }
+
+  if (leftKey.includes(rightKey)) {
+    return leftValue;
+  }
+
+  return leftValue.length >= rightValue.length ? leftValue : rightValue;
+};
+
+const isChineseCandidateProbablyTooBroad = (address: string, kind: AddressCandidateKind) => {
+  if (chineseWeakSiteNoisePattern.test(address)) {
+    return true;
+  }
+
+  if (kind === "site") {
+    return /(?:位于|建设地点)/u.test(address) || address.length > 26;
+  }
+
+  return /(?:位于|建设地点|街区)/u.test(address) || address.length > 18;
+};
+
+const extractChineseAddressCandidatesFromText = (
+  normalizedText: string,
+  source: AddressCandidate["source"],
+) => {
+  const candidates: AddressCandidate[] = [];
+  const seen = new Set<string>();
+  const globalLocalityHint = extractGlobalChineseLocalityHint(normalizedText);
+  const sentenceLocalityHint = (
+    rawAddress: string,
+    matchIndex: number,
+    fallbackLocalityHint?: string | null,
+  ) =>
+    pickMoreSpecificLocalityHint(
+      extractChineseContextLocalityHint(normalizedText, matchIndex, rawAddress),
+      fallbackLocalityHint ?? globalLocalityHint,
+    );
+
+  const pushCandidate = (
+    rawAddress: string,
+    kind: AddressCandidateKind,
+    matchIndex: number,
+    forcedLocalityHint?: string | null,
+  ) => {
+    const address =
+      kind === "site" ? cleanSiteCandidate(rawAddress) : cleanAddressCandidate(rawAddress);
+    if (!address) {
+      return;
+    }
+
+    const localityHint = sentenceLocalityHint(rawAddress, matchIndex, forcedLocalityHint);
+    const candidate = {
+      address,
+      kind,
+      localityHint,
+      source,
+    } satisfies AddressCandidate;
+    if (kind === "street" && isInvalidChineseStreetCandidate(rawAddress, address)) {
+      return;
+    }
+    if (isChineseCandidateProbablyTooBroad(candidate.address, candidate.kind)) {
+      return;
+    }
+    const key = getAddressCandidateComparisonKey(candidate);
+    if (seen.has(key)) {
+      return;
+    }
+
+    seen.add(key);
+    candidates.push(candidate);
+  };
+
+  for (const match of normalizedText.matchAll(chinesePreciseSiteFieldPattern)) {
+    const rawAddress = normalizeWhitespace(match[1] ?? "");
+    if (!rawAddress || match.index === undefined) {
+      continue;
+    }
+
+    const localityHint = deriveLocalityHintFromChineseAddress(rawAddress);
+    pushCandidate(rawAddress, "site", match.index, localityHint);
+  }
+
+  for (const match of normalizedText.matchAll(chinesePreciseStreetFieldPattern)) {
+    const rawAddress = normalizeWhitespace(match[1] ?? "");
+    if (!rawAddress || match.index === undefined) {
+      continue;
+    }
+
+    const localityHint = deriveLocalityHintFromChineseAddress(rawAddress);
+    const roadCandidates = extractChineseRoadCandidates(rawAddress);
+    if (roadCandidates.length > 0) {
+      const preciseRoadCandidate =
+        roadCandidates.find((candidateValue) => /\d+\s*号$/u.test(candidateValue)) ??
+        roadCandidates[0];
+      pushCandidate(
+        preciseRoadCandidate,
+        /\d+\s*号$/u.test(preciseRoadCandidate) ? "street_address" : "street",
+        match.index ?? 0,
+        localityHint,
+      );
+      continue;
+    }
+
+    pushCandidate(rawAddress, /\d+号$/u.test(rawAddress) ? "street_address" : "street", match.index, localityHint);
+  }
+
+  for (const match of normalizedText.matchAll(
+    new RegExp(
+      String.raw`(?:建设地点[：:]?|位于|坐落于)?(?:((?:${chineseAdministrativeUnitPattern}){1,3}))?[^。；;\n]{0,24}?(${chineseCompoundPlacePattern})`,
+      "gu",
+    ),
+  )) {
+    const rawAddress = normalizeWhitespace(match[2] ?? "");
+    if (!rawAddress || match.index === undefined) {
+      continue;
+    }
+
+    const explicitLocalityHint = cleanLocalityHint(match[1] ?? "");
+    const address = cleanSiteCandidate(rawAddress);
+    if (!address || isChineseCandidateProbablyTooBroad(address, "site")) {
+      continue;
+    }
+
+    const candidate = {
+      address,
+      kind: "site" as const,
+      localityHint: pickMoreSpecificLocalityHint(
+        pickMoreSpecificLocalityHint(
+          explicitLocalityHint,
+          extractChineseContextLocalityHint(normalizedText, match.index, rawAddress),
+        ),
+        sentenceLocalityHint(rawAddress, match.index),
+      ),
+      source,
+    } satisfies AddressCandidate;
+    const key = getAddressCandidateComparisonKey(candidate);
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    candidates.push(candidate);
+
+    const embeddedRoad = extractChineseStreetRoadFromSite(candidate.address);
+    if (embeddedRoad) {
+      pushCandidate(embeddedRoad, "street", match.index);
+    }
+  }
+
+  for (const match of normalizedText.matchAll(chineseInstitutionCampusPattern)) {
+    const rawAddress = normalizeWhitespace(match[1] ?? "");
+    if (!rawAddress || match.index === undefined) {
+      continue;
+    }
+
+    const cleanedAddress = cleanSiteCandidate(rawAddress);
+    if (!cleanedAddress) {
+      continue;
+    }
+
+    const localityHint =
+      pickMoreSpecificLocalityHint(
+        extractChineseContextLocalityHint(normalizedText, match.index, rawAddress),
+        sentenceLocalityHint(rawAddress, match.index),
+      ) ?? rawAddress;
+    const candidate = {
+      address: cleanedAddress,
+      kind: "site" as const,
+      localityHint,
+      source,
+    } satisfies AddressCandidate;
+    const key = getAddressCandidateComparisonKey(candidate);
+    if (!seen.has(key)) {
+      seen.add(key);
+      candidates.push(candidate);
+    }
+
+    const embeddedRoad = extractChineseStreetRoadFromSite(rawAddress);
+    if (embeddedRoad) {
+      const roadCandidate = {
+        address: embeddedRoad,
+        kind: "street" as const,
+        localityHint,
+        source,
+      } satisfies AddressCandidate;
+      if (roadCandidate.address) {
+        const roadKey = getAddressCandidateComparisonKey(roadCandidate);
+        if (!seen.has(roadKey)) {
+          seen.add(roadKey);
+          candidates.push(roadCandidate);
+        }
+      }
+    }
+  }
+
+  for (const match of normalizedText.matchAll(new RegExp(chineseAdministrativeSitePattern, "gu"))) {
+    const rawAddress = normalizeWhitespace(match[1] ?? "");
+    if (!rawAddress || match.index === undefined) {
+      continue;
+    }
+
+    const cleanedAddress = cleanSiteCandidate(rawAddress);
+    if (!cleanedAddress || genericChineseRegenerationSitePattern.test(cleanedAddress)) {
+      continue;
+    }
+
+    const localityLead = normalizeWhitespace(
+      rawAddress.match(/^(.*?(?:街道|镇|乡))/u)?.[1] ?? "",
+    );
+    const candidate = {
+      address: cleanedAddress,
+      kind: "site" as const,
+      localityHint:
+        pickMoreSpecificLocalityHint(
+          cleanLocalityHint(localityLead),
+          sentenceLocalityHint(rawAddress, match.index),
+        ) ?? cleanLocalityHint(localityLead),
+      source,
+    } satisfies AddressCandidate;
+
+    const key = getAddressCandidateComparisonKey(candidate);
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    candidates.push(candidate);
+  }
+
+  for (const match of normalizedText.matchAll(new RegExp(chineseShortSiteAnchorPattern, "gu"))) {
+    const rawAddress = normalizeWhitespace(match[1] ?? "");
+    if (!rawAddress || match.index === undefined) {
+      continue;
+    }
+
+    const largerAnchorExists = candidates.some(
+      (candidate) =>
+        candidate.kind === "site" &&
+        normalizeComparisonText(candidate.address).includes(normalizeComparisonText(rawAddress)) &&
+        normalizeComparisonText(candidate.address) !== normalizeComparisonText(rawAddress),
+    );
+    if (largerAnchorExists) {
+      continue;
+    }
+
+    const address = cleanSiteCandidate(rawAddress);
+    if (!address || genericChineseRegenerationSitePattern.test(address)) {
+      continue;
+    }
+
+    pushCandidate(address, "site", match.index);
+  }
+
+  for (const match of normalizedText.matchAll(new RegExp(chineseStreetAsLocalityPattern, "gu"))) {
+    const rawAddress = normalizeWhitespace(match[1] ?? "");
+    if (!rawAddress || match.index === undefined) {
+      continue;
+    }
+
+    const candidate = {
+      address: rawAddress.replace(/^\d{4}年/u, ""),
+      kind: "locality" as const,
+      localityHint: pickMoreSpecificLocalityHint(
+        extractChineseContextLocalityHint(normalizedText, match.index, rawAddress),
+        globalLocalityHint,
+      ),
+      source,
+    } satisfies AddressCandidate;
+    const key = getAddressCandidateComparisonKey(candidate);
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    candidates.push(candidate);
+  }
+
+  for (const match of normalizedText.matchAll(
+    /((?:[A-Z]{1,6}\d{0,2}(?:-\d{2,6}){2,}[A-Z0-9-]*)(?:、[A-Z]{1,6}\d{0,2}(?:-\d{2,6}){2,}[A-Z0-9-]*)*)地块/gu,
+  )) {
+    const codes = (match[1] ?? "")
+      .split("、")
+      .map((value) => normalizeWhitespace(value))
+      .filter(Boolean);
+    for (const code of codes) {
+      const rawAddress = `${code}地块`;
+      if (!rawAddress || match.index === undefined) {
+        continue;
+      }
+
+      const candidate = {
+        address: rawAddress,
+        kind: "site" as const,
+        localityHint: sentenceLocalityHint(rawAddress, match.index),
+        source,
+      } satisfies AddressCandidate;
+      const key = getAddressCandidateComparisonKey(candidate);
+      if (seen.has(key)) {
+        continue;
+      }
+
+      seen.add(key);
+      candidates.push(candidate);
+    }
+  }
+
+  for (const match of normalizedText.matchAll(
+    new RegExp(String.raw`(?:东至|南至|西至|北至)\s*(${chineseRoadPattern})`, "gu"),
+  )) {
+    const rawAddress = normalizeWhitespace(match[1] ?? "");
+    if (!rawAddress || match.index === undefined) {
+      continue;
+    }
+
+    pushCandidate(rawAddress, "street", match.index);
+  }
+
+  for (const match of normalizedText.matchAll(new RegExp(chineseDirectionalRoadPattern, "gu"))) {
+    const rawAddress = normalizeWhitespace(match[1] ?? "");
+    if (!rawAddress || match.index === undefined) {
+      continue;
+    }
+
+    pushCandidate(rawAddress, "street", match.index);
+  }
+
+  for (const match of normalizedText.matchAll(
+    new RegExp(
+      String.raw`(?:建设地点[：:]|建设地点|位于|坐落于)[^。；;\n]{0,80}?(${chineseRoadPattern})`,
+      "gu",
+    ),
+  )) {
+    const rawAddress = normalizeWhitespace(match[1] ?? "");
+    if (!rawAddress || match.index === undefined) {
+      continue;
+    }
+
+    pushCandidate(rawAddress, "street", match.index);
+  }
+
+  return dedupeAddressCandidates(dedupeRawAddressCandidates(candidates));
 };
 
 const buildAddressCandidate = (
@@ -1327,19 +2253,57 @@ const buildAddressCandidate = (
 
   const tail = normalizedText.slice(match.index + match[0].length);
   const tailLocalityHint = extractLocalityHintFromTail(tail);
+  const chineseContextLocalityHint = extractChineseContextLocalityHint(
+    normalizedText,
+    match.index,
+    rawAddress,
+  );
   return {
     address,
     kind,
-    localityHint: tailLocalityHint ?? extractInlineLocalityHintFromAddress(rawAddress),
+    localityHint:
+      tailLocalityHint ??
+      extractInlineLocalityHintFromAddress(rawAddress) ??
+      chineseContextLocalityHint,
     source,
   } satisfies AddressCandidate;
+};
+
+const enrichTitleCandidatesWithDashLocalities = (candidates: AddressCandidate[], normalizedText: string) => {
+  if (!/\s[-–—]\s/u.test(normalizedText)) {
+    return candidates;
+  }
+
+  return candidates.map((candidate) => {
+    if (candidate.localityHint || candidate.source !== "title") {
+      return candidate;
+    }
+
+    const cityStreetMatch = normalizedText.match(
+      new RegExp(
+        String.raw`\b(${dashDelimitedLocalityTokenPattern}(?:\s+${dashDelimitedLocalityTokenPattern}){0,4})\s*[-–—]\s+${escapeRegExp(candidate.address)}\b`,
+        "iu",
+      ),
+    );
+    if (!cityStreetMatch?.[1]) {
+      return candidate;
+    }
+
+    const localityHint = extractTrailingDashLocality(cityStreetMatch[1]);
+    return localityHint
+      ? {
+          ...candidate,
+          localityHint,
+        }
+      : candidate;
+  });
 };
 
 const extractAddressCandidatesFromText = (
   value: string,
   source: AddressCandidate["source"],
 ): AddressCandidate[] => {
-  const normalized = normalizeWhitespace(value);
+  const normalized = normalizeWhitespace(value.replace(/[–—]/g, "-"));
   if (!normalized) {
     return [];
   }
@@ -1364,7 +2328,104 @@ const extractAddressCandidatesFromText = (
     }
   }
 
-  return candidates;
+  for (const candidate of extractChineseAddressCandidatesFromText(normalized, source)) {
+    const key = getAddressCandidateComparisonKey(candidate);
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    candidates.push(candidate);
+  }
+
+  if (source === "title") {
+    for (const match of normalized.matchAll(frenchDashDelimitedSiteLeadPattern)) {
+      if (match.index === undefined) {
+        continue;
+      }
+
+      const localityHint = extractTrailingDashLocality(match[1] ?? "");
+      const address = cleanSiteCandidate(match[2] ?? "");
+      if (!address) {
+        continue;
+      }
+
+      const candidate = {
+        address,
+        kind: /^(?:chemin|rue|route|avenue|avenues|boulevard|all[eé]e|impasse|quai|parvis|esplanade)\b/iu.test(
+          address,
+        )
+          ? ("street" as const)
+          : ("site" as const),
+        localityHint,
+        source,
+      } satisfies AddressCandidate;
+      const key = getAddressCandidateComparisonKey(candidate);
+      if (seen.has(key)) {
+        continue;
+      }
+
+      seen.add(key);
+      candidates.push(candidate);
+    }
+
+    for (const match of normalized.matchAll(frenchQuotedSiteLeadPattern)) {
+      if (match.index === undefined) {
+        continue;
+      }
+
+      const localityHint = extractTrailingDashLocality(match[1] ?? "");
+      const address = cleanSiteCandidate(match[2] ?? "");
+      if (!address) {
+        continue;
+      }
+
+      const candidate = {
+        address,
+        kind: "site" as const,
+        localityHint,
+        source,
+      } satisfies AddressCandidate;
+      const key = getAddressCandidateComparisonKey(candidate);
+      if (seen.has(key)) {
+        continue;
+      }
+
+      seen.add(key);
+      candidates.push(candidate);
+    }
+
+    for (const { kind, pattern } of titleAddressCandidatePatterns) {
+      for (const match of normalized.matchAll(pattern)) {
+        const candidate = buildAddressCandidate(normalized, match, kind, source);
+        if (!candidate) {
+          continue;
+        }
+
+        if (
+          candidate.kind === "street" &&
+          candidates.some(
+            (existingCandidate) =>
+              existingCandidate.kind === "street_address" &&
+              normalizeComparisonText(existingCandidate.address) ===
+                normalizeComparisonText(candidate.address),
+          )
+        ) {
+          continue;
+        }
+
+        const key = getAddressCandidateComparisonKey(candidate);
+        if (seen.has(key)) {
+          continue;
+        }
+
+        seen.add(key);
+        candidates.push(candidate);
+      }
+    }
+  }
+
+  return dedupeAddressCandidates(dedupeRawAddressCandidates(enrichTitleCandidatesWithDashLocalities(candidates, normalized)));
 };
 
 const normalizePdfTextForAddressExtraction = (value: string) => {
@@ -1771,10 +2832,10 @@ const loadGeocodeCache = async () => {
   try {
     const payload = JSON.parse(await readFile(geocodeCachePath, "utf8")) as {
       entries?: Record<string, GeocodeCacheEntry>;
-      version?: number;
+      version?: string;
     };
 
-    if (payload.version !== previewCacheVersion || !payload.entries) {
+    if (payload.version !== satellitePreviewRevision || !payload.entries) {
       return;
     }
 
@@ -1794,7 +2855,7 @@ const saveGeocodeCache = async () => {
       `${JSON.stringify(
         {
           entries: Object.fromEntries(geocodeMemoryCache),
-          version: previewCacheVersion,
+          version: satellitePreviewRevision,
         },
         null,
         2,
@@ -1817,6 +2878,7 @@ const waitForNominatimWindow = async () => {
 const normalizeAddressForGeocoder = (value: string) =>
   normalizeWhitespace(
     value
+      .replace(/[–—]/g, "-")
       .replace(/^c\/\s*/iu, "Calle ")
       .replace(/^c\.(?=\s)/iu, "Calle")
       .replace(/^r\.(?=\s)/iu, "Rua")
@@ -1879,7 +2941,11 @@ const normalizeLocalityHintForGeocoder = (value: string | null | undefined) => {
   }
 
   return normalizeWhitespace(
-    value.replace(localityWrapperStripPattern, ""),
+    value
+      .replace(localityWrapperStripPattern, "")
+      .replace(/^(?:nel|nella|nello|nei|negli|in|a)\s+comune\s+di\s+/iu, "")
+      .replace(/^comune\s+di\s+/iu, "")
+      .replace(/^(?:nel|nella|nello|nei|negli|in|a)\s+/iu, ""),
   );
 };
 
@@ -1952,6 +3018,98 @@ const expandAddressVariantsForGeocoder = (value: string) => {
     pushVariant(`Institut Universitaire de Technologie de ${instituteSiteMatch[1]}`);
   }
 
+  const numericLeadingStreetMatch = normalizedValue.match(
+    new RegExp(
+      String.raw`^((?:\d+(?:\s+(?:bis|ter|quater))?|${streetNumberBodyPattern}))\s+(${addressPrefixPattern}\s+${addressBodyPattern})$`,
+      "iu",
+    ),
+  );
+  if (numericLeadingStreetMatch) {
+    pushVariant(`${numericLeadingStreetMatch[2]} ${numericLeadingStreetMatch[1]}`);
+  }
+
+  const trailingStreetCoreMatch = normalizedValue.match(
+    new RegExp(
+      String.raw`(?:^|[\s,;:-])(${compoundTrailingStreetWordPattern}|[\p{L}\p{N}.'’/-]+\s+${trailingStreetTypePattern})$`,
+      "iu",
+    ),
+  );
+  if (trailingStreetCoreMatch?.[1]) {
+    pushVariant(trailingStreetCoreMatch[1]);
+  }
+
+  const strippedSiteWrapper = normalizeWhitespace(
+    normalizedValue.replace(
+      /^(?:quartier|quartiers|lotissement|urbanizaci[oó]n|urbanizzazione|resid[eé]nce|residenza|parque(?:\s+empresarial)?|parco|zac|zap|zone\s+d['’](?:am[eé]nagement|activit[eé]s?)|site(?:\s+pilote)?|[iî]lot|ilot|secteur|sous-secteur|lieu-dit|groupe\s+scolaire|[eé]cole|coll[eè]ge|lyc[eé]e|gymnase|mus[eé]e|palais|complexe|centre\s+d['’]intervention)\s+(?:(?:de|del|de la|des|du|la|le|los|las)\s+)?/iu,
+      "",
+    ),
+  );
+  if (strippedSiteWrapper && strippedSiteWrapper !== normalizedValue) {
+    pushVariant(strippedSiteWrapper);
+  }
+
+  const frenchSiteWithCityMatch = normalizedValue.match(
+    /^(.*?)(?:\s+(?:a|à|au|aux|sur|sous|l[eè]s)\s+)([\p{L}\p{N}.'’/-]+(?:\s+[\p{L}\p{N}.'’/-]+){0,4})$/iu,
+  );
+  if (
+    frenchSiteWithCityMatch &&
+    !new RegExp(String.raw`^${addressPrefixPattern}\b`, "iu").test(normalizedValue)
+  ) {
+    pushVariant(frenchSiteWithCityMatch[1]);
+    pushVariant(`${frenchSiteWithCityMatch[1]} ${frenchSiteWithCityMatch[2]}`);
+  }
+
+  const chineseSiteMatch = normalizedValue.match(
+    /^([\p{Script=Han}\p{L}\p{N}-]{1,40}(?:校区|院区|园区|片区|街区|地块|小区|社区|村\d+号|村|广场|公园|基地))$/u,
+  );
+  if (chineseSiteMatch) {
+    pushVariant(chineseSiteMatch[1]);
+  }
+
+  const chineseFacilityCore = extractChineseFacilityCore(normalizedValue);
+  if (chineseFacilityCore) {
+    pushVariant(chineseFacilityCore);
+  }
+
+  const chineseInstitutionBaseName = extractChineseInstitutionBaseName(normalizedValue);
+  if (chineseInstitutionBaseName) {
+    pushVariant(chineseInstitutionBaseName);
+  }
+
+  const chineseInstitutionSiteMatch = normalizedValue.match(chineseInstitutionSiteTailPattern);
+  if (chineseInstitutionSiteMatch?.[1]) {
+    pushVariant(chineseInstitutionSiteMatch[1]);
+  }
+
+  const spacedChineseRoadNumberVariant = expandChineseRoadNumberVariant(normalizedValue);
+  if (spacedChineseRoadNumberVariant) {
+    pushVariant(spacedChineseRoadNumberVariant);
+  }
+
+  for (const roadCandidate of extractChineseRoadCandidates(normalizedValue)) {
+    pushVariant(roadCandidate);
+    const spacedRoadCandidate = expandChineseRoadNumberVariant(roadCandidate);
+    if (spacedRoadCandidate) {
+      pushVariant(spacedRoadCandidate);
+    }
+  }
+
+  const chineseAdministrativeLeadMatch = normalizedValue.match(
+    /^((?:[\p{Script=Han}]{1,12}(?:省|市|区|县|镇|乡|街道|新区)){1,4})([\p{Script=Han}\p{L}\p{N}-]{1,40}(?:村\d+号|村|地块|街区|片区|园区|基地))$/u,
+  );
+  if (chineseAdministrativeLeadMatch) {
+    pushVariant(chineseAdministrativeLeadMatch[0]);
+    pushVariant(chineseAdministrativeLeadMatch[2]);
+  }
+
+  const chineseVillageNumberMatch = normalizedValue.match(
+    /^([\p{Script=Han}]{2,20}村\d+号)$/u,
+  );
+  if (chineseVillageNumberMatch) {
+    pushVariant(chineseVillageNumberMatch[1]);
+    pushVariant(chineseVillageNumberMatch[1].replace(/\d+号$/u, ""));
+  }
+
   return variants;
 };
 
@@ -1969,19 +3127,86 @@ const normalizeLocalityForGeocoderSearch = (value: string | null | undefined) =>
       .replace(/\b(?:w|v|u)\s+([\p{L}\p{N}.'’/-]+(?:\s+[\p{L}\p{N}.'’/-]+){0,4})$/iu, "$1"),
   );
 
-  return normalized || null;
+  if (!normalized) {
+    return null;
+  }
+
+  const chineseCityMatch = normalized.match(/^([\p{Script=Han}]{2,12})(?:城市|市)$/u);
+  if (chineseCityMatch?.[1]) {
+    return chineseCityMatch[1];
+  }
+
+  return normalized;
 };
 
-const resolveGeocodeQueries = (
+const buildLocalityCandidate = (
+  value: string | null | undefined,
+  source: AddressCandidate["source"],
+): AddressCandidate | null => {
+  const sanitizedLocation = sanitizeOpportunityLocationLabel(value);
+  if (!sanitizedLocation) {
+    return null;
+  }
+
+  if (multiLocalityConnectorPattern.test(sanitizedLocation) || rejectedBroadChineseLocalityPattern.test(sanitizedLocation)) {
+    return null;
+  }
+
+  return {
+    address: sanitizedLocation,
+    kind: "locality",
+    localityHint: null,
+    source,
+  } satisfies AddressCandidate;
+};
+
+const buildLocalityCandidatesFromAddressHints = (candidates: AddressCandidate[]) =>
+  dedupeAddressCandidates(
+    candidates.flatMap((candidate) => {
+      const localityCandidate = buildLocalityCandidate(cleanLocalityHint(candidate.localityHint ?? ""), candidate.source);
+      if (!localityCandidate) {
+        return [];
+      }
+
+      return normalizeComparisonText(localityCandidate.address) ===
+        normalizeComparisonText(candidate.address)
+        ? []
+        : [localityCandidate];
+    }),
+  );
+
+const resolveOpportunityLocalityCandidates = (opportunity: SatellitePreviewInput) =>
+  dedupeAddressCandidates(
+    [
+      buildLocalityCandidate(pickOpportunityDisplayLocality(opportunity), "title"),
+      sanitizeOpportunityLocationLabel(opportunity.locationLabel) &&
+      sanitizeOpportunityLocationLabel(opportunity.locationLabel) !== opportunity.locationLabel
+        ? buildLocalityCandidate(sanitizeOpportunityLocationLabel(opportunity.locationLabel), "page")
+        : null,
+      buildLocalityCandidate(pickOpportunityExplicitCity(opportunity), "title"),
+    ].flatMap((candidate) => (candidate ? [candidate] : [])),
+  );
+
+type GeocodeQueryOptions = {
+  includeExplicitCity?: boolean;
+  includeLocationLabel?: boolean;
+  includeJurisdictionLabel?: boolean;
+};
+
+const buildGeocodeQueries = (
   opportunity: SatellitePreviewInput,
   candidate: AddressCandidate,
+  options: GeocodeQueryOptions = {},
 ) => {
-  const explicitCity = pickOpportunityExplicitCity(opportunity);
+  const explicitCity =
+    options.includeExplicitCity === false ? null : pickOpportunityDisplayLocality(opportunity);
   const addressVariants = expandAddressVariantsForGeocoder(candidate.address);
   const localityVariants = expandLocalityVariantsForGeocoder(candidate.localityHint);
   const localityOptions = localityVariants.length > 0 ? localityVariants : [null];
   const seenQueries = new Set<string>();
   const queries: string[] = [];
+  const includeLocationLabel = options.includeLocationLabel !== false;
+  const includeJurisdictionLabel = options.includeJurisdictionLabel !== false;
 
   for (const addressVariant of addressVariants) {
     for (const localityVariant of localityOptions) {
@@ -2007,11 +3232,19 @@ const resolveGeocodeQueries = (
         parts.push(normalizedValue);
       };
 
-      pushPart(addressVariant);
+      if (candidate.kind === "locality") {
+        pushPart(normalizeLocalityForGeocoderSearch(addressVariant));
+      } else {
+        pushPart(addressVariant);
+      }
       pushPart(normalizeLocalityForGeocoderSearch(normalizeLocalityHintForGeocoder(localityVariant)));
       pushPart(normalizeLocalityForGeocoderSearch(explicitCity));
-      pushPart(opportunity.locationLabel);
-      pushPart(opportunity.jurisdictionLabel);
+      if (includeLocationLabel) {
+        pushPart(normalizeLocalityForGeocoderSearch(sanitizeOpportunityLocationLabel(opportunity.locationLabel)));
+      }
+      if (includeJurisdictionLabel) {
+        pushPart(opportunity.jurisdictionLabel);
+      }
 
       const query = normalizeWhitespace(parts.join(", "));
       const queryKey = normalizeComparisonText(query);
@@ -2027,12 +3260,17 @@ const resolveGeocodeQueries = (
   return queries;
 };
 
+const resolveGeocodeQueries = (
+  opportunity: SatellitePreviewInput,
+  candidate: AddressCandidate,
+) => buildGeocodeQueries(opportunity, candidate);
+
 const resolveFallbackGeocodeQueries = (
   opportunity: SatellitePreviewInput,
   candidate: AddressCandidate,
 ) => {
   const strippedAddress = stripLeadingStreetPrefixForGeocoder(candidate.address);
-  const explicitCity = normalizeLocalityForGeocoderSearch(pickOpportunityExplicitCity(opportunity));
+  const explicitCity = normalizeLocalityForGeocoderSearch(pickOpportunityDisplayLocality(opportunity));
   const normalizedLocalityHint = normalizeLocalityForGeocoderSearch(
     normalizeLocalityHintForGeocoder(candidate.localityHint),
   );
@@ -2060,9 +3298,26 @@ const resolveFallbackGeocodeQueries = (
                 ? null
                 : candidate.localityHint,
           }
-        : candidate;
+    : candidate;
 
-  const fallbackQueries = resolveGeocodeQueries(opportunity, fallbackCandidate);
+  const fallbackQueries = [
+    ...buildGeocodeQueries(opportunity, fallbackCandidate),
+    ...buildGeocodeQueries(opportunity, fallbackCandidate, {
+      includeJurisdictionLabel: false,
+    }),
+    ...buildGeocodeQueries(opportunity, fallbackCandidate, {
+      includeJurisdictionLabel: false,
+      includeLocationLabel: false,
+    }),
+    ...(candidate.kind === "locality"
+      ? []
+      : buildGeocodeQueries(opportunity, fallbackCandidate, {
+          includeExplicitCity: false,
+          includeJurisdictionLabel: false,
+          includeLocationLabel: false,
+        })),
+  ];
+
   return fallbackQueries.filter((query) => query.length > 0);
 };
 
@@ -2089,6 +3344,32 @@ const normalizePhotonLocalityValue = (feature: PhotonFeature) =>
       .join(" "),
   );
 
+const normalizeChinesePlaceStem = (value: string | null | undefined) => {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  return normalizeWhitespace(value)
+    .replace(/[^\p{Script=Han}\p{N}]+/gu, "")
+    .replace(/\d+号?$/u, "")
+    .replace(/(?:管委会|政务中心|医疗服务中心|第一实验学校|中学|学校|南口|西口|东口|北口)$/u, "")
+    .replace(/(?:托幼用地|二类居住用地|产业园区|科技园区|建设项目|项目)$/u, "")
+    .replace(/(?:地块.*|片区.*|街区.*|园区.*|基地.*)$/u, "");
+};
+
+const haveChineseLoosePlaceMatch = (
+  leftValue: string | null | undefined,
+  rightValue: string | null | undefined,
+) => {
+  const left = normalizeChinesePlaceStem(leftValue);
+  const right = normalizeChinesePlaceStem(rightValue);
+  if (!left || !right) {
+    return false;
+  }
+
+  return left.includes(right) || right.includes(left);
+};
+
 const doesPhotonFeatureMatchCandidate = (
   feature: PhotonFeature,
   candidate: AddressCandidate,
@@ -2102,13 +3383,32 @@ const doesPhotonFeatureMatchCandidate = (
   const featureStreet = feature.properties?.street ?? feature.properties?.name ?? null;
   const localityHint =
     normalizeLocalityForGeocoderSearch(normalizeLocalityHintForGeocoder(candidate.localityHint)) ??
-    normalizeLocalityForGeocoderSearch(pickOpportunityExplicitCity(opportunity)) ??
-    normalizeLocalityForGeocoderSearch(opportunity.locationLabel);
+    normalizeLocalityForGeocoderSearch(pickOpportunityDisplayLocality(opportunity)) ??
+    normalizeLocalityForGeocoderSearch(sanitizeOpportunityLocationLabel(opportunity.locationLabel));
   const featureLocality = normalizePhotonLocalityValue(feature);
+  const candidateLooksChinese =
+    /[\p{Script=Han}]/u.test(candidate.address) ||
+    /[\p{Script=Han}]/u.test(candidate.localityHint ?? "");
   const candidateHouseNumber = extractComparableHouseNumber(candidate.address);
   const featureHouseNumber = extractComparableHouseNumber(feature.properties?.housenumber ?? null);
   const countryTokens = resolveCountryComparisonTokens(opportunity.jurisdictionKey);
   const featureCountryTokens = splitComparisonTokens(feature.properties?.country ?? "");
+  const featureName = feature.properties?.name ?? null;
+
+  if (candidate.kind === "locality") {
+    if (countryTokens.length > 0 && !countryTokens.some((token) => featureCountryTokens.includes(token))) {
+      return false;
+    }
+
+    if (
+      haveLocalityTokenMatch(candidate.address, featureName) ||
+      (candidateLooksChinese && haveChineseLoosePlaceMatch(candidate.address, featureName))
+    ) {
+      return true;
+    }
+
+    return localityHint ? haveLocalityTokenMatch(localityHint, featureLocality) : true;
+  }
 
   if (candidateHouseNumber && featureHouseNumber && candidateHouseNumber !== featureHouseNumber) {
     return false;
@@ -2119,10 +3419,23 @@ const doesPhotonFeatureMatchCandidate = (
   }
 
   if (!haveStreetCoreTokenMatch(candidate.address, featureStreet)) {
-    return false;
+    if (
+      !(
+        candidateLooksChinese &&
+        (haveStreetCoreTokenMatch(candidate.address, featureName) ||
+          haveLocalityTokenMatch(candidate.address, featureName) ||
+          haveChineseLoosePlaceMatch(candidate.address, featureName))
+      )
+    ) {
+      return false;
+    }
   }
 
-  if (localityHint && !haveLocalityTokenMatch(localityHint, featureLocality)) {
+  if (
+    localityHint &&
+    !haveLocalityTokenMatch(localityHint, featureLocality) &&
+    !(candidateLooksChinese && haveChineseLoosePlaceMatch(localityHint, featureLocality))
+  ) {
     return false;
   }
 
@@ -2133,72 +3446,96 @@ const geocodeViaPhoton = async (
   opportunity: SatellitePreviewInput,
   candidate: AddressCandidate,
 ): Promise<GeocodeResult | null> => {
-  const query = normalizeWhitespace(
-    [
-      candidate.address,
-      normalizeLocalityForGeocoderSearch(normalizeLocalityHintForGeocoder(candidate.localityHint)),
-      normalizeLocalityForGeocoderSearch(pickOpportunityExplicitCity(opportunity)),
-      normalizeLocalityForGeocoderSearch(opportunity.locationLabel),
-      opportunity.jurisdictionLabel,
-    ]
-      .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-      .join(" "),
-  );
+  const addressVariants =
+    candidate.kind === "locality"
+      ? expandLocalityVariantsForGeocoder(candidate.address)
+      : expandAddressVariantsForGeocoder(candidate.address);
 
-  if (!query) {
-    return null;
-  }
-
-  const cacheKey = buildProviderGeocodeCacheKey("photon", query);
-  if (geocodeMemoryCache.has(cacheKey)) {
-    const cached = geocodeMemoryCache.get(cacheKey);
-    return cached ? { lat: cached.lat, lng: cached.lng } : null;
-  }
-
-  try {
-    const params = new URLSearchParams({
-      limit: "5",
-      q: query,
-    });
-    const response = await fetch(`${photonSearchUrl}?${params.toString()}`, {
-      headers: {
-        accept: "application/json",
-        "user-agent": "arch-competition-ops/0.1 satellite-preview",
-      },
-      signal: AbortSignal.timeout(geocodeRequestTimeoutMs),
-    });
-
-    if (!response.ok) {
-      geocodeMemoryCache.set(cacheKey, null);
-      await saveGeocodeCache();
-      return null;
-    }
-
-    const payload = (await response.json()) as PhotonSearchResult | undefined;
-    const firstMatchingFeature = payload?.features?.find((feature) =>
-      doesPhotonFeatureMatchCandidate(feature, candidate, opportunity),
+  for (const addressVariant of addressVariants) {
+    const query = normalizeWhitespace(
+      [
+        normalizeLocalityForGeocoderSearch(addressVariant) ?? addressVariant,
+        normalizeLocalityForGeocoderSearch(normalizeLocalityHintForGeocoder(candidate.localityHint)),
+        normalizeLocalityForGeocoderSearch(pickOpportunityDisplayLocality(opportunity)),
+        normalizeLocalityForGeocoderSearch(sanitizeOpportunityLocationLabel(opportunity.locationLabel)),
+        opportunity.jurisdictionLabel,
+      ]
+        .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+        .join(" "),
     );
-    const coordinates = firstMatchingFeature?.geometry?.coordinates;
-    if (!coordinates || coordinates.length < 2) {
-      geocodeMemoryCache.set(cacheKey, null);
-      await saveGeocodeCache();
-      return null;
+
+    if (!query) {
+      continue;
     }
 
-    const [lng, lat] = coordinates;
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-      geocodeMemoryCache.set(cacheKey, null);
-      await saveGeocodeCache();
-      return null;
+    const cacheKey = buildProviderGeocodeCacheKey("photon", query);
+    if (geocodeMemoryCache.has(cacheKey)) {
+      const cached = geocodeMemoryCache.get(cacheKey);
+      if (cached) {
+        return {
+          lat: cached.lat,
+          lng: cached.lng,
+          precision: cached.precision ?? getDefaultPrecisionForCandidate(candidate),
+        };
+      }
+
+      continue;
     }
 
-    const result = { lat, lng };
-    geocodeMemoryCache.set(cacheKey, result);
-    await saveGeocodeCache();
-    return result;
-  } catch {
-    return null;
+    try {
+      const params = new URLSearchParams({
+        limit: "5",
+        q: query,
+      });
+      const response = await fetch(`${photonSearchUrl}?${params.toString()}`, {
+        headers: {
+          accept: "application/json",
+          "user-agent": "arch-competition-ops/0.1 satellite-preview",
+        },
+        signal: AbortSignal.timeout(geocodeRequestTimeoutMs),
+      });
+
+      if (!response.ok) {
+        debugSatellitePreview(opportunity.slug, "photon-non-ok", query, response.status);
+        geocodeMemoryCache.set(cacheKey, null);
+        await saveGeocodeCache();
+        continue;
+      }
+
+      const payload = (await response.json()) as PhotonSearchResult | undefined;
+      const firstMatchingFeature = payload?.features?.find((feature) =>
+        doesPhotonFeatureMatchCandidate(feature, candidate, opportunity),
+      );
+      const coordinates = firstMatchingFeature?.geometry?.coordinates;
+      if (!coordinates || coordinates.length < 2) {
+        debugSatellitePreview(opportunity.slug, "photon-no-coordinates", query);
+        geocodeMemoryCache.set(cacheKey, null);
+        await saveGeocodeCache();
+        continue;
+      }
+
+      const [lng, lat] = coordinates;
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        geocodeMemoryCache.set(cacheKey, null);
+        await saveGeocodeCache();
+        continue;
+      }
+
+      const result = {
+        lat,
+        lng,
+        precision: getDefaultPrecisionForCandidate(candidate),
+      } satisfies GeocodeResult;
+      debugSatellitePreview(opportunity.slug, "photon-hit", query, result);
+      geocodeMemoryCache.set(cacheKey, result);
+      await saveGeocodeCache();
+      return result;
+    } catch {
+      debugSatellitePreview(opportunity.slug, "photon-error", query);
+    }
   }
+
+  return null;
 };
 
 const calculateBoundingBoxDiagonalKm = (boundingBox: string[] | undefined) => {
@@ -2217,6 +3554,222 @@ const calculateBoundingBoxDiagonalKm = (boundingBox: string[] | undefined) => {
   return Math.sqrt(latitudeSpanKm ** 2 + longitudeSpanKm ** 2);
 };
 
+const resolveGeocodePrecision = (
+  result: Pick<NominatimSearchResult, "addresstype" | "type">,
+  candidate: AddressCandidate,
+): SatellitePreviewPrecision => {
+  const addresstype = result.addresstype?.toLowerCase() ?? "";
+  const type = result.type?.toLowerCase() ?? "";
+  const kind = addresstype || type;
+
+  if (candidate.kind === "locality") {
+    return kind === "city" || kind === "town" || kind === "municipality" ? "locality" : "locality";
+  }
+
+  if (candidate.kind === "site") {
+    return kind === "square" ? "square" : "site";
+  }
+
+  if (kind === "square") {
+    return "square";
+  }
+
+  if (kind === "city" || kind === "town" || kind === "municipality") {
+    return "city";
+  }
+
+  if (candidate.kind === "street_address") {
+    return "address";
+  }
+
+  return "street";
+};
+
+const isBroadStreetLikeResult = (result: NominatimSearchResult) => {
+  const addresstype = result.addresstype?.toLowerCase() ?? "";
+  const type = result.type?.toLowerCase() ?? "";
+  return acceptedBroadGeocodeAddressTypes.has(addresstype) || acceptedBroadGeocodeAddressTypes.has(type);
+};
+
+const getDefaultPrecisionForCandidate = (
+  candidate: Pick<AddressCandidate, "address" | "kind">,
+): SatellitePreviewPrecision => {
+  if (candidate.kind === "locality") {
+    return "locality";
+  }
+
+  if (candidate.kind === "site") {
+    return "site";
+  }
+
+  if (candidate.kind === "street_address") {
+    return "address";
+  }
+
+  return hasStreetNumber(candidate.address) ? "address" : "street";
+};
+
+const parseFiniteCoordinate = (value: number | string | null | undefined) => {
+  const numericValue =
+    typeof value === "number" ? value : typeof value === "string" ? Number(value) : Number.NaN;
+  return Number.isFinite(numericValue) ? numericValue : null;
+};
+
+const buildBaiduSignedUrl = (
+  baseUrl: string,
+  params: URLSearchParams,
+) => {
+  const url = new URL(baseUrl);
+  const requestPath = url.pathname || "/";
+  const unsignedQuery = params.toString();
+  if (!baiduGeocoderSk) {
+    return `${baseUrl}?${unsignedQuery}`;
+  }
+
+  const rawSignature = `${requestPath}?${unsignedQuery}${baiduGeocoderSk}`;
+  const encodedSignatureSeed = encodeURIComponent(rawSignature);
+  const sn = createHash("md5").update(encodedSignatureSeed).digest("hex");
+  return `${baseUrl}?${unsignedQuery}&sn=${sn}`;
+};
+
+const resolveChineseGeocodePrecision = (
+  candidate: AddressCandidate,
+  level: string | null | undefined,
+) => {
+  const normalizedLevel = level?.trim().toLowerCase() ?? "";
+  if (
+    normalizedLevel === "门址" ||
+    normalizedLevel === "门牌号" ||
+    normalizedLevel === "house number" ||
+    normalizedLevel === "门址点"
+  ) {
+    return "address";
+  }
+
+  if (
+    normalizedLevel === "道路" ||
+    normalizedLevel === "street" ||
+    normalizedLevel === "road" ||
+    normalizedLevel === "乡镇街道"
+  ) {
+    return candidate.kind === "locality" ? "locality" : "street";
+  }
+
+  if (
+    normalizedLevel === "兴趣点" ||
+    normalizedLevel === "poi" ||
+    normalizedLevel === "开发区" ||
+    normalizedLevel === "村庄" ||
+    normalizedLevel === "landmark"
+  ) {
+    return candidate.kind === "locality" ? "locality" : "site";
+  }
+
+  if (
+    normalizedLevel === "区县" ||
+    normalizedLevel === "city" ||
+    normalizedLevel === "city区" ||
+    normalizedLevel === "乡镇" ||
+    normalizedLevel === "district" ||
+    normalizedLevel === "country"
+  ) {
+    return candidate.kind === "locality" ? "locality" : "city";
+  }
+
+  return getDefaultPrecisionForCandidate(candidate);
+};
+
+const isAcceptableBaiduGeocodeResult = (
+  result: BaiduGeocodeResult,
+  candidate: AddressCandidate,
+) => {
+  const lat = parseFiniteCoordinate(result.location?.lat);
+  const lng = parseFiniteCoordinate(result.location?.lng);
+  if (lat === null || lng === null) {
+    return false;
+  }
+
+  const confidence = parseFiniteCoordinate(result.confidence);
+  const precise = parseFiniteCoordinate(result.precise);
+  const level = result.level?.trim().toLowerCase() ?? "";
+
+  if (candidate.kind === "locality") {
+    return true;
+  }
+
+  if (candidate.kind === "street_address") {
+    if (precise === 1) {
+      return true;
+    }
+
+    return (confidence ?? 0) >= 45;
+  }
+
+  if (candidate.kind === "site") {
+    if (level.includes("poi") || level.includes("兴趣点")) {
+      return true;
+    }
+
+    return (confidence ?? 0) >= 30;
+  }
+
+  if (candidate.kind === "street") {
+    if (
+      level.includes("road") ||
+      level.includes("street") ||
+      level.includes("道路") ||
+      level.includes("乡镇街道")
+    ) {
+      return true;
+    }
+
+    return (confidence ?? 0) >= 30;
+  }
+
+  return true;
+};
+
+const isAcceptableAmapGeocodeResult = (
+  result: AmapGeocodeResult,
+  candidate: AddressCandidate,
+) => {
+  const location = result.location?.split(",");
+  if (!location || location.length < 2) {
+    return false;
+  }
+
+  const lng = parseFiniteCoordinate(location[0]);
+  const lat = parseFiniteCoordinate(location[1]);
+  if (lat === null || lng === null) {
+    return false;
+  }
+
+  const level = result.level?.trim().toLowerCase() ?? "";
+  if (candidate.kind === "locality") {
+    return true;
+  }
+
+  if (candidate.kind === "street_address") {
+    return (
+      level === "门牌号" ||
+      level === "道路" ||
+      level === "street" ||
+      level === "road" ||
+      hasStreetNumber(candidate.address)
+    );
+  }
+
+  if (candidate.kind === "street") {
+    return level !== "省" && level !== "city" && level !== "区县";
+  }
+
+  if (candidate.kind === "site") {
+    return level !== "省";
+  }
+
+  return true;
+};
+
 const isAcceptableGeocodeResult = (
   result: NominatimSearchResult,
   candidate: AddressCandidate,
@@ -2226,12 +3779,16 @@ const isAcceptableGeocodeResult = (
   const type = result.type?.toLowerCase() ?? "";
   const diagonalKm = calculateBoundingBoxDiagonalKm(result.boundingbox);
   const hasHouseNumber = Boolean(result.address?.house_number);
+  const isLocalityCandidate = candidate.kind === "locality";
 
-  if (rejectedGeocodeAddressTypes.has(addresstype) || rejectedGeocodeAddressTypes.has(type)) {
+  if (!isLocalityCandidate && (rejectedGeocodeAddressTypes.has(addresstype) || rejectedGeocodeAddressTypes.has(type))) {
     return false;
   }
 
   if (category && !acceptedGeocodeCategories.has(category)) {
+    if (candidate.kind === "locality" && acceptedLocalityGeocodeCategories.has(category)) {
+      // Administrative boundary results are expected for city/locality lookups.
+    } else
     if (candidate.kind !== "site" || !acceptedSiteGeocodeCategories.has(category)) {
       return false;
     }
@@ -2243,7 +3800,9 @@ const isAcceptableGeocodeResult = (
     !acceptedExactGeocodeAddressTypes.has(addresstype) &&
     candidate.kind !== "locality"
   ) {
-    return false;
+    if (!(candidate.kind === "street" && isBroadStreetLikeResult(result))) {
+      return false;
+    }
   }
 
   if (diagonalKm === null) {
@@ -2251,18 +3810,224 @@ const isAcceptableGeocodeResult = (
   }
 
   if (candidate.kind === "locality") {
-    return diagonalKm <= 8;
+    if (addresstype === "city" || type === "city" || addresstype === "town" || type === "town") {
+      return diagonalKm <= 14;
+    }
+
+    if (addresstype === "municipality" || type === "municipality") {
+      return diagonalKm <= 10;
+    }
+
+    return diagonalKm <= 18;
   }
 
   if (candidate.kind === "site") {
-    return diagonalKm <= 3.5;
+    return diagonalKm <= 8;
   }
 
   if (candidate.kind === "street_address") {
     return diagonalKm <= 4;
   }
 
-  return diagonalKm <= 6;
+  return diagonalKm <= 18;
+};
+
+const geocodeViaBaidu = async (
+  opportunity: SatellitePreviewInput,
+  candidate: AddressCandidate,
+  query: string,
+): Promise<GeocodeResult | null> => {
+  if (!baiduGeocoderAk) {
+    return null;
+  }
+
+  const cacheKey = buildProviderGeocodeCacheKey("baidu", query);
+  if (geocodeMemoryCache.has(cacheKey)) {
+    const cached = geocodeMemoryCache.get(cacheKey);
+    if (cached) {
+      return {
+        lat: cached.lat,
+        lng: cached.lng,
+        precision: cached.precision ?? getDefaultPrecisionForCandidate(candidate),
+      };
+    }
+
+    return null;
+  }
+
+  try {
+    const params = new URLSearchParams({
+      address: query,
+      ak: baiduGeocoderAk,
+      output: "json",
+      ret_coordtype: "bd09ll",
+    });
+    const response = await fetch(buildBaiduSignedUrl(baiduGeocoderUrl, params), {
+      headers: {
+        accept: "application/json",
+        "user-agent": "arch-competition-ops/0.1 satellite-preview",
+      },
+      signal: AbortSignal.timeout(geocodeRequestTimeoutMs),
+    });
+
+    if (!response.ok) {
+      debugSatellitePreview(opportunity.slug, "baidu-non-ok", query, response.status);
+      geocodeMemoryCache.set(cacheKey, null);
+      await saveGeocodeCache();
+      return null;
+    }
+
+    const payload = (await response.json()) as BaiduGeocodeResponse | undefined;
+    const accepted = payload?.status === 0 || payload?.status === "0"
+      ? payload.result ?? null
+      : null;
+    if (!accepted || !isAcceptableBaiduGeocodeResult(accepted, candidate)) {
+      debugSatellitePreview(
+        opportunity.slug,
+        "baidu-rejected",
+        query,
+        payload?.status ?? null,
+        accepted?.level ?? null,
+      );
+      geocodeMemoryCache.set(cacheKey, null);
+      await saveGeocodeCache();
+      return null;
+    }
+
+    const rawLat = parseFiniteCoordinate(accepted.location?.lat);
+    const rawLng = parseFiniteCoordinate(accepted.location?.lng);
+    if (rawLat === null || rawLng === null) {
+      geocodeMemoryCache.set(cacheKey, null);
+      await saveGeocodeCache();
+      return null;
+    }
+
+    const normalizedCoordinates = bd09ToWgs84(rawLat, rawLng);
+    const result = {
+      lat: normalizedCoordinates.lat,
+      lng: normalizedCoordinates.lng,
+      precision: resolveChineseGeocodePrecision(candidate, accepted.level),
+    } satisfies GeocodeResult;
+    debugSatellitePreview(opportunity.slug, "baidu-hit", query, result);
+    geocodeMemoryCache.set(cacheKey, result);
+    await saveGeocodeCache();
+    return result;
+  } catch {
+    debugSatellitePreview(opportunity.slug, "baidu-error", query);
+    return null;
+  }
+};
+
+const geocodeViaAmap = async (
+  opportunity: SatellitePreviewInput,
+  candidate: AddressCandidate,
+  query: string,
+): Promise<GeocodeResult | null> => {
+  if (!amapGeocoderKey) {
+    return null;
+  }
+
+  const cacheKey = buildProviderGeocodeCacheKey("amap", query);
+  if (geocodeMemoryCache.has(cacheKey)) {
+    const cached = geocodeMemoryCache.get(cacheKey);
+    if (cached) {
+      return {
+        lat: cached.lat,
+        lng: cached.lng,
+        precision: cached.precision ?? getDefaultPrecisionForCandidate(candidate),
+      };
+    }
+
+    return null;
+  }
+
+  try {
+    const params = new URLSearchParams({
+      address: query,
+      key: amapGeocoderKey,
+      output: "json",
+    });
+    const response = await fetch(`${amapGeocoderUrl}?${params.toString()}`, {
+      headers: {
+        accept: "application/json",
+        "user-agent": "arch-competition-ops/0.1 satellite-preview",
+      },
+      signal: AbortSignal.timeout(geocodeRequestTimeoutMs),
+    });
+
+    if (!response.ok) {
+      debugSatellitePreview(opportunity.slug, "amap-non-ok", query, response.status);
+      geocodeMemoryCache.set(cacheKey, null);
+      await saveGeocodeCache();
+      return null;
+    }
+
+    const payload = (await response.json()) as AmapGeocodeResponse | undefined;
+    const first = payload?.geocodes?.[0];
+    if (
+      !first ||
+      !(payload?.status === "1" || payload?.status === 1) ||
+      !isAcceptableAmapGeocodeResult(first, candidate)
+    ) {
+      debugSatellitePreview(
+        opportunity.slug,
+        "amap-rejected",
+        query,
+        payload?.status ?? null,
+        first?.level ?? null,
+      );
+      geocodeMemoryCache.set(cacheKey, null);
+      await saveGeocodeCache();
+      return null;
+    }
+
+    const [rawLngValue, rawLatValue] = first.location?.split(",") ?? [];
+    const rawLat = parseFiniteCoordinate(rawLatValue);
+    const rawLng = parseFiniteCoordinate(rawLngValue);
+    if (rawLat === null || rawLng === null) {
+      geocodeMemoryCache.set(cacheKey, null);
+      await saveGeocodeCache();
+      return null;
+    }
+
+    const normalizedCoordinates = gcj02ToWgs84(rawLat, rawLng);
+    const result = {
+      lat: normalizedCoordinates.lat,
+      lng: normalizedCoordinates.lng,
+      precision: resolveChineseGeocodePrecision(candidate, first.level),
+    } satisfies GeocodeResult;
+    debugSatellitePreview(opportunity.slug, "amap-hit", query, result);
+    geocodeMemoryCache.set(cacheKey, result);
+    await saveGeocodeCache();
+    return result;
+  } catch {
+    debugSatellitePreview(opportunity.slug, "amap-error", query);
+    return null;
+  }
+};
+
+const geocodeViaChinaProviders = async (
+  opportunity: SatellitePreviewInput,
+  candidate: AddressCandidate,
+  queries: string[],
+) => {
+  if (!isChinaJurisdiction(opportunity)) {
+    return null;
+  }
+
+  for (const query of queries) {
+    const baiduResult = await geocodeViaBaidu(opportunity, candidate, query);
+    if (baiduResult) {
+      return baiduResult;
+    }
+
+    const amapResult = await geocodeViaAmap(opportunity, candidate, query);
+    if (amapResult) {
+      return amapResult;
+    }
+  }
+
+  return null;
 };
 
 const geocodePreciseAddress = async (
@@ -2276,14 +4041,24 @@ const geocodePreciseAddress = async (
     candidate.kind === "street_address" || candidate.kind === "street"
       ? resolveFallbackGeocodeQueries(opportunity, candidate)
       : [];
+  const allQueries = [...queries, ...fallbackQueries];
   const countryCode = countryCodeByJurisdiction[normalizeJurisdictionKey(opportunity.jurisdictionKey) ?? ""];
 
-  for (const query of [...queries, ...fallbackQueries]) {
+  const chinaProviderResult = await geocodeViaChinaProviders(opportunity, candidate, allQueries);
+  if (chinaProviderResult) {
+    return chinaProviderResult;
+  }
+
+  for (const query of allQueries) {
     const cacheKey = buildProviderGeocodeCacheKey("nominatim", query);
     if (geocodeMemoryCache.has(cacheKey)) {
       const cached = geocodeMemoryCache.get(cacheKey);
       if (cached) {
-        return { lat: cached.lat, lng: cached.lng };
+        return {
+          lat: cached.lat,
+          lng: cached.lng,
+          precision: cached.precision ?? getDefaultPrecisionForCandidate(candidate),
+        };
       }
 
       continue;
@@ -2313,6 +4088,7 @@ const geocodePreciseAddress = async (
       geocodeLastRequestAt = Date.now();
 
       if (!response.ok) {
+        debugSatellitePreview(opportunity.slug, "nominatim-non-ok", query, response.status);
         geocodeMemoryCache.set(cacheKey, null);
         await saveGeocodeCache();
         continue;
@@ -2320,15 +4096,20 @@ const geocodePreciseAddress = async (
 
       const payload = (await response.json()) as NominatimSearchResult[] | undefined;
       const first = Array.isArray(payload) ? payload[0] : undefined;
-      if (!first || !isAcceptableGeocodeResult(first, candidate)) {
+      const accepted = Array.isArray(payload)
+        ? payload.find((entry) => isAcceptableGeocodeResult(entry, candidate))
+        : undefined;
+      if (!accepted) {
+        debugSatellitePreview(opportunity.slug, "nominatim-rejected", query, first?.display_name ?? null);
         geocodeMemoryCache.set(cacheKey, null);
         await saveGeocodeCache();
         continue;
       }
 
-      const lat = Number(first?.lat);
-      const lng = Number(first?.lon);
+      const lat = Number(accepted?.lat);
+      const lng = Number(accepted?.lon);
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        debugSatellitePreview(opportunity.slug, "nominatim-invalid-coordinates", query);
         geocodeMemoryCache.set(cacheKey, null);
         await saveGeocodeCache();
         continue;
@@ -2337,16 +4118,24 @@ const geocodePreciseAddress = async (
       const result = {
         lat,
         lng,
+        precision: resolveGeocodePrecision(accepted, candidate),
       };
+      debugSatellitePreview(opportunity.slug, "nominatim-hit", query, result);
       geocodeMemoryCache.set(cacheKey, result);
       await saveGeocodeCache();
       return result;
     } catch {
+      debugSatellitePreview(opportunity.slug, "nominatim-error", query);
       continue;
     }
   }
 
-  if (candidate.kind === "street_address" || candidate.kind === "street") {
+  if (
+    candidate.kind === "street_address" ||
+    candidate.kind === "street" ||
+    candidate.kind === "site" ||
+    candidate.kind === "locality"
+  ) {
     return geocodeViaPhoton(opportunity, candidate);
   }
 
@@ -2369,6 +4158,184 @@ const buildSatelliteTileUrl = (zoom: number, tileY: number, tileX: number) =>
     .replace("{y}", String(tileY))
     .replace("{x}", String(tileX));
 
+const getPrecisionZoom = (
+  candidate: AddressCandidate,
+  precision: SatellitePreviewPrecision,
+) => {
+  if (precision === "city") {
+    return 13;
+  }
+
+  if (precision === "locality") {
+    return satelliteZoomWithLocality;
+  }
+
+  if (precision === "square") {
+    return 16;
+  }
+
+  if (precision === "site") {
+    return 16;
+  }
+
+  if (precision === "street") {
+    return 16;
+  }
+
+  return hasStreetNumber(candidate.address)
+    ? satelliteZoomWithStreetNumber
+    : satelliteZoomWithoutStreetNumber;
+};
+
+const getPrecisionCircleRadiusPx = (precision: SatellitePreviewPrecision) => {
+  switch (precision) {
+    case "city":
+      return 118;
+    case "locality":
+      return 92;
+    case "square":
+      return 58;
+    case "site":
+      return 52;
+    case "street":
+      return 40;
+    default:
+      return 28;
+  }
+};
+
+const isChinaJurisdiction = (opportunity: SatellitePreviewInput) =>
+  normalizeJurisdictionKey(opportunity.jurisdictionKey) === "china";
+
+const degreesToRadians = (value: number) => value * (Math.PI / 180);
+
+const chinaCoordinateTransformLat = (
+  lngOffset: number,
+  latOffset: number,
+) => {
+  let result =
+    -100 +
+    2 * lngOffset +
+    3 * latOffset +
+    0.2 * latOffset * latOffset +
+    0.1 * lngOffset * latOffset +
+    0.2 * Math.sqrt(Math.abs(lngOffset));
+  result +=
+    ((20 * Math.sin(6 * lngOffset * Math.PI) + 20 * Math.sin(2 * lngOffset * Math.PI)) * 2) /
+    3;
+  result +=
+    ((20 * Math.sin(latOffset * Math.PI) + 40 * Math.sin((latOffset / 3) * Math.PI)) * 2) / 3;
+  result +=
+    ((160 * Math.sin((latOffset / 12) * Math.PI) + 320 * Math.sin((latOffset * Math.PI) / 30)) *
+      2) /
+    3;
+  return result;
+};
+
+const chinaCoordinateTransformLng = (
+  lngOffset: number,
+  latOffset: number,
+) => {
+  let result =
+    300 +
+    lngOffset +
+    2 * latOffset +
+    0.1 * lngOffset * lngOffset +
+    0.1 * lngOffset * latOffset +
+    0.1 * Math.sqrt(Math.abs(lngOffset));
+  result +=
+    ((20 * Math.sin(6 * lngOffset * Math.PI) + 20 * Math.sin(2 * lngOffset * Math.PI)) * 2) /
+    3;
+  result +=
+    ((20 * Math.sin(lngOffset * Math.PI) + 40 * Math.sin((lngOffset / 3) * Math.PI)) * 2) / 3;
+  result +=
+    ((150 * Math.sin((lngOffset / 12) * Math.PI) + 300 * Math.sin((lngOffset / 30) * Math.PI)) *
+      2) /
+    3;
+  return result;
+};
+
+const isOutsideChina = (lat: number, lng: number) =>
+  lng < 72.004 || lng > 137.8347 || lat < 0.8293 || lat > 55.8271;
+
+const gcj02ToWgs84 = (lat: number, lng: number) => {
+  if (isOutsideChina(lat, lng)) {
+    return { lat, lng };
+  }
+
+  const a = 6378245;
+  const ee = 0.00669342162296594323;
+  const lngOffset = lng - 105;
+  const latOffset = lat - 35;
+  let deltaLat = chinaCoordinateTransformLat(lngOffset, latOffset);
+  let deltaLng = chinaCoordinateTransformLng(lngOffset, latOffset);
+  const radLat = degreesToRadians(lat);
+  let magic = Math.sin(radLat);
+  magic = 1 - ee * magic * magic;
+  const sqrtMagic = Math.sqrt(magic);
+  deltaLat =
+    (deltaLat * 180) /
+    (((a * (1 - ee)) / (magic * sqrtMagic)) * Math.PI);
+  deltaLng =
+    (deltaLng * 180) /
+    ((a / sqrtMagic) * Math.cos(radLat) * Math.PI);
+
+  return {
+    lat: lat - deltaLat,
+    lng: lng - deltaLng,
+  };
+};
+
+const bd09ToGcj02 = (lat: number, lng: number) => {
+  const x = lng - 0.0065;
+  const y = lat - 0.006;
+  const z = Math.sqrt(x * x + y * y) - 0.00002 * Math.sin(y * Math.PI * 3000 / 180);
+  const theta = Math.atan2(y, x) - 0.000003 * Math.cos(x * Math.PI * 3000 / 180);
+  return {
+    lat: z * Math.sin(theta),
+    lng: z * Math.cos(theta),
+  };
+};
+
+const bd09ToWgs84 = (lat: number, lng: number) => {
+  const gcj02 = bd09ToGcj02(lat, lng);
+  return gcj02ToWgs84(gcj02.lat, gcj02.lng);
+};
+
+const buildPrecisionCircleOverlay = (precision: SatellitePreviewPrecision) => {
+  const radius = getPrecisionCircleRadiusPx(precision);
+  const center = satelliteImageSize / 2;
+  const haloRadius = radius + 18;
+  const label =
+    precision === "city"
+      ? "CITY"
+      : precision === "locality"
+        ? "LOCALITY"
+        : precision === "square"
+          ? "SQUARE"
+          : precision === "site"
+            ? "SITE"
+            : precision === "street"
+              ? "STREET"
+              : "ADDRESS";
+
+  return Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${satelliteImageSize}" height="${satelliteImageSize}" viewBox="0 0 ${satelliteImageSize} ${satelliteImageSize}">
+      <defs>
+        <filter id="ring-shadow" x="-50%" y="-50%" width="200%" height="200%">
+          <feDropShadow dx="0" dy="0" stdDeviation="5" flood-color="#09110d" flood-opacity="0.28" />
+        </filter>
+      </defs>
+      <circle cx="${center}" cy="${center}" r="${haloRadius}" fill="#d9f2de" fill-opacity="0.06" />
+      <circle cx="${center}" cy="${center}" r="${radius}" fill="none" stroke="#f3f1e6" stroke-opacity="0.96" stroke-width="3.5" filter="url(#ring-shadow)" />
+      <circle cx="${center}" cy="${center}" r="${Math.max(radius - 18, 10)}" fill="none" stroke="#2f7f5a" stroke-opacity="0.82" stroke-width="1.75" stroke-dasharray="10 8" />
+      <circle cx="${center}" cy="${center}" r="4.5" fill="#f3f1e6" />
+      <rect x="${center - 58}" y="${center + radius + 20}" width="116" height="28" rx="4" fill="#0e1813" fill-opacity="0.72" />
+      <text x="${center}" y="${center + radius + 39}" fill="#f3f1e6" font-family="Arial, sans-serif" font-size="11" font-weight="700" letter-spacing="0.18em" text-anchor="middle">${label}</text>
+    </svg>`,
+  );
+};
+
 const fetchSatelliteTile = async (zoom: number, tileY: number, tileX: number) => {
   try {
     const response = await fetch(buildSatelliteTileUrl(zoom, tileY, tileX), {
@@ -2382,12 +4349,15 @@ const fetchSatelliteTile = async (zoom: number, tileY: number, tileX: number) =>
 
     const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
     if (!response.ok || !contentType.startsWith("image/")) {
+      debugSatellitePreview("tile-miss", { zoom, tileY, tileX, status: response.status, contentType });
       return null;
     }
 
     const payload = Buffer.from(await response.arrayBuffer());
+    debugSatellitePreview("tile-hit", { zoom, tileY, tileX, bytes: payload.length });
     return payload.length > 0 ? payload : null;
   } catch {
+    debugSatellitePreview("tile-error", { zoom, tileY, tileX });
     return null;
   }
 };
@@ -2396,15 +4366,9 @@ const renderSatellitePreview = async (
   latitude: number,
   longitude: number,
   candidate: AddressCandidate,
+  precision: SatellitePreviewPrecision,
 ) => {
-  const zoom =
-    candidate.kind === "locality"
-      ? satelliteZoomWithLocality
-      : candidate.kind === "site"
-        ? 16
-      : hasStreetNumber(candidate.address)
-        ? satelliteZoomWithStreetNumber
-        : satelliteZoomWithoutStreetNumber;
+  const zoom = getPrecisionZoom(candidate, precision);
   const center = projectToWorldPixels(latitude, longitude, zoom);
   const halfSize = satelliteImageSize / 2;
   const minX = center.x - halfSize;
@@ -2449,10 +4413,17 @@ const renderSatellitePreview = async (
   const composites = compositeCandidates.flatMap((candidate) => (candidate ? [candidate] : []));
 
   if (composites.length < 6) {
+    debugSatellitePreview("render-insufficient-tiles", {
+      composites: composites.length,
+      latitude,
+      longitude,
+      precision,
+      zoom,
+    });
     return null;
   }
 
-  return sharp({
+  const baseComposite = await sharp({
     create: {
       background: "#dad5ca",
       channels: 3,
@@ -2461,7 +4432,12 @@ const renderSatellitePreview = async (
     },
   })
     .composite(composites)
+    .png()
+    .toBuffer();
+
+  return sharp(baseComposite)
     .modulate({ brightness: 1.02, saturation: 1.04 })
+    .composite([{ input: buildPrecisionCircleOverlay(precision), left: 0, top: 0 }])
     .sharpen()
     .jpeg({ mozjpeg: true, quality: 84 })
     .toBuffer();
@@ -2481,7 +4457,9 @@ export const isStadtZurichOpportunitySource = (opportunity: SatellitePreviewInpu
 export const resolveOpportunitySatellitePreview = async (
   opportunity: SatellitePreviewInput,
 ) => {
+  debugSatellitePreview(opportunity.slug, "start");
   if (satellitePreviewMemoryCache.has(opportunity.slug)) {
+    debugSatellitePreview(opportunity.slug, "memory-cache-hit");
     return satellitePreviewMemoryCache.get(opportunity.slug) ?? null;
   }
 
@@ -2489,20 +4467,35 @@ export const resolveOpportunitySatellitePreview = async (
   if (existsSync(previewPath)) {
     try {
       const cachedPreview = await readFile(previewPath);
-      satellitePreviewMemoryCache.set(opportunity.slug, cachedPreview);
-      return cachedPreview;
+      if (await isInvalidSatellitePreviewBuffer(cachedPreview)) {
+        debugSatellitePreview(opportunity.slug, "disk-cache-invalid");
+        await rm(previewPath, { force: true });
+      } else {
+        debugSatellitePreview(opportunity.slug, "disk-cache-hit");
+        satellitePreviewMemoryCache.set(opportunity.slug, cachedPreview);
+        return cachedPreview;
+      }
     } catch {
       // Fall through and attempt regeneration.
     }
   }
 
   const persistPreviewBuffer = async (previewBuffer: Buffer | null) => {
-    satellitePreviewMemoryCache.set(opportunity.slug, previewBuffer);
     if (!previewBuffer) {
+      debugSatellitePreview(opportunity.slug, "persist-null");
+      satellitePreviewMemoryCache.set(opportunity.slug, null);
       return null;
     }
 
     try {
+      if (await isInvalidSatellitePreviewBuffer(previewBuffer)) {
+        debugSatellitePreview(opportunity.slug, "persist-invalid-buffer", previewBuffer.length);
+        satellitePreviewMemoryCache.set(opportunity.slug, null);
+        return null;
+      }
+
+      debugSatellitePreview(opportunity.slug, "persist-buffer", previewBuffer.length);
+      satellitePreviewMemoryCache.set(opportunity.slug, previewBuffer);
       await mkdir(previewImageDirectory, { recursive: true });
       await writeFile(previewPath, previewBuffer);
     } catch {
@@ -2513,24 +4506,40 @@ export const resolveOpportunitySatellitePreview = async (
   };
 
   const tryRenderFromCandidates = async (candidates: AddressCandidate[]) => {
+    debugSatellitePreview(opportunity.slug, "try-render-candidates", candidates.length);
     for (const candidate of candidates) {
+      debugSatellitePreview(opportunity.slug, "candidate", candidate);
       const geocode = await geocodePreciseAddress(opportunity, candidate);
       if (!geocode) {
+        debugSatellitePreview(opportunity.slug, "candidate-no-geocode", candidate.address);
         continue;
       }
 
-      const previewBuffer = await renderSatellitePreview(geocode.lat, geocode.lng, candidate);
+      const previewBuffer = await renderSatellitePreview(
+        geocode.lat,
+        geocode.lng,
+        candidate,
+        geocode.precision,
+      );
       if (previewBuffer) {
+        debugSatellitePreview(opportunity.slug, "candidate-rendered", candidate.address, previewBuffer.length);
         return previewBuffer;
       }
+
+      debugSatellitePreview(opportunity.slug, "candidate-render-null", candidate.address);
     }
 
     return null;
   };
 
   const titleCandidates = extractAddressCandidatesFromText(opportunity.title, "title");
-  const titlePreview = await tryRenderFromCandidates(titleCandidates);
+  const localityCandidates = resolveOpportunityLocalityCandidates(opportunity);
+  const titleHintLocalityCandidates = buildLocalityCandidatesFromAddressHints(titleCandidates);
+  const titlePreview = await tryRenderFromCandidates(
+    dedupeAddressCandidates([...titleCandidates, ...localityCandidates, ...titleHintLocalityCandidates]),
+  );
   if (titlePreview) {
+    debugSatellitePreview(opportunity.slug, "title-preview-hit");
     return persistPreviewBuffer(titlePreview);
   }
 
@@ -2539,16 +4548,28 @@ export const resolveOpportunitySatellitePreview = async (
     ...pageLocationSignals.structuredCandidates,
     ...pageLocationSignals.textCandidates,
   ]);
-  const seenKeys = new Set(titleCandidates.map((candidate) => getAddressCandidateComparisonKey(candidate)));
+  const pageHintLocalityCandidates = buildLocalityCandidatesFromAddressHints(pageSignalCandidates);
+  const seenKeys = new Set(
+    [...titleCandidates, ...localityCandidates, ...titleHintLocalityCandidates].map((candidate) =>
+      getAddressCandidateComparisonKey(candidate),
+    ),
+  );
   const pageCandidates = pageSignalCandidates.filter(
+    (candidate) => !seenKeys.has(getAddressCandidateComparisonKey(candidate)),
+  );
+  const pageLocalityCandidates = pageHintLocalityCandidates.filter(
     (candidate) => !seenKeys.has(getAddressCandidateComparisonKey(candidate)),
   );
   pageCandidates.forEach((candidate) => {
     seenKeys.add(getAddressCandidateComparisonKey(candidate));
   });
+  pageLocalityCandidates.forEach((candidate) => {
+    seenKeys.add(getAddressCandidateComparisonKey(candidate));
+  });
 
-  const previewBuffer = await tryRenderFromCandidates(pageCandidates);
+  const previewBuffer = await tryRenderFromCandidates([...pageCandidates, ...pageLocalityCandidates]);
   if (previewBuffer) {
+    debugSatellitePreview(opportunity.slug, "page-preview-hit");
     return persistPreviewBuffer(previewBuffer);
   }
 
@@ -2560,20 +4581,87 @@ export const resolveOpportunitySatellitePreview = async (
   );
   const pdfPreview = await tryRenderFromCandidates(pdfCandidates);
   if (!pdfPreview) {
+    debugSatellitePreview(opportunity.slug, "no-preview");
     return persistPreviewBuffer(null);
   }
 
+  debugSatellitePreview(opportunity.slug, "pdf-preview-hit");
   return persistPreviewBuffer(pdfPreview);
+};
+
+export const resolveOpportunitySatelliteLocator = async (
+  opportunity: SatellitePreviewInput,
+) => {
+  const titleCandidates = extractAddressCandidatesFromText(opportunity.title, "title");
+  const localityCandidates = resolveOpportunityLocalityCandidates(opportunity);
+
+  for (const candidate of dedupeAddressCandidates([...titleCandidates, ...localityCandidates])) {
+    const geocode = await geocodePreciseAddress(opportunity, candidate);
+    if (geocode) {
+      return {
+        lat: geocode.lat,
+        lng: geocode.lng,
+        locationLabel: candidate.localityHint ?? candidate.address,
+        precision: geocode.precision,
+      };
+    }
+  }
+
+  const pageLocationSignals = await fetchOpportunityPageLocationSignals(opportunity);
+  const pageCandidates = dedupeAddressCandidates([
+    ...pageLocationSignals.structuredCandidates,
+    ...pageLocationSignals.textCandidates,
+  ]);
+
+  for (const candidate of pageCandidates) {
+    const geocode = await geocodePreciseAddress(opportunity, candidate);
+    if (geocode) {
+      return {
+        lat: geocode.lat,
+        lng: geocode.lng,
+        locationLabel: candidate.localityHint ?? candidate.address,
+        precision: geocode.precision,
+      };
+    }
+  }
+
+  const pdfCandidates = await extractAddressCandidatesFromPdfUrls(
+    pageLocationSignals.pdfCandidates.map((candidate) => candidate.url),
+  );
+  for (const candidate of pdfCandidates) {
+    const geocode = await geocodePreciseAddress(opportunity, candidate);
+    if (geocode) {
+      return {
+        lat: geocode.lat,
+        lng: geocode.lng,
+        locationLabel: candidate.localityHint ?? candidate.address,
+        precision: geocode.precision,
+      };
+    }
+  }
+
+  return null;
 };
 
 export const satellitePreviewContentType = imageContentType;
 export const satellitePreviewTestUtils = {
+  bd09ToWgs84,
+  buildBaiduSignedUrl,
+  calculateBoundingBoxDiagonalKm,
+  buildGeocodeQueries,
   expandAddressVariantsForGeocoder,
+  gcj02ToWgs84,
+  isAcceptableGeocodeResult,
+  isAcceptableAmapGeocodeResult,
+  isAcceptableBaiduGeocodeResult,
+  isInvalidSatellitePreviewBuffer,
   expandLocalityVariantsForGeocoder,
   extractAddressCandidatesFromText,
   extractAddressCandidatesFromPdfText,
   extractPdfUrlsFromHtml,
   extractStructuredAddressCandidatesFromHtml,
+  resolveChineseGeocodePrecision,
+  resolveGeocodePrecision,
   resolveGeocodeQueries,
   stripHtmlToText,
 };

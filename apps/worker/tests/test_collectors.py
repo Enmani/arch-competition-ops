@@ -3260,6 +3260,39 @@ def test_prewarm_card_previews_command_reports_generated_counts(tmp_path, monkey
     assert "skipped=1" in output
 
 
+def test_cleanup_expired_competitions_command_reports_deleted_counts(tmp_path, monkeypatch, capsys) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        "arch_competition_ops.cli.cleanup_expired_competitions",
+        lambda settings, *, retention_days, limit: SimpleNamespace(
+            attempted=3,
+            deleted_competitions=2,
+            deleted_preview_files=2,
+            deleted_static_preview_files=4,
+            skipped=1,
+        ),
+    )
+
+    exit_code = main(
+        [
+            "cleanup-expired-competitions",
+            "--retention-days",
+            "7",
+            "--limit",
+            "50",
+        ]
+    )
+
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "attempted=3" in output
+    assert "deleted=2" in output
+    assert "preview_files=2" in output
+    assert "static_preview_files=4" in output
+    assert "skipped=1" in output
+
+
 def test_ingest_source_prewarms_card_previews_for_ingested_records(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     (tmp_path / "config").mkdir()

@@ -1,10 +1,13 @@
 from .database import (
+    competition_is_stale_expired,
+    delete_competitions,
     ensure_schema,
     find_duplicate_records,
     list_anac_status_candidates,
     list_anac_source_trace_candidates,
     list_competitions,
     list_competitions_missing_geocodes,
+    list_expired_competition_ids,
     list_gets_preannouncement_candidates,
     record_review_queue_decision,
     record_source_run,
@@ -17,12 +20,15 @@ from .database import (
 )
 
 __all__ = [
+    "competition_is_stale_expired",
+    "delete_competitions",
     "ensure_schema",
     "find_duplicate_records",
     "list_anac_status_candidates",
     "list_anac_source_trace_candidates",
     "list_competitions",
     "list_competitions_missing_geocodes",
+    "list_expired_competition_ids",
     "list_gets_preannouncement_candidates",
     "record_review_queue_decision",
     "record_source_run",

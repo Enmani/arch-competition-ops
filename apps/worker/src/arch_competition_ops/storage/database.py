@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -678,6 +678,77 @@ def list_gets_preannouncement_candidates(db_path: Path, limit: int = 500) -> lis
             (limit,),
         ).fetchall()
     return rows
+
+
+def list_expired_competition_ids(
+    db_path: Path,
+    *,
+    expired_before: date,
+    limit: int = 500,
+) -> list[str]:
+    ensure_schema(db_path)
+    with connect(db_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT id
+            FROM competitions
+            WHERE deadline_at IS NOT NULL
+              AND deadline_at < ?
+            ORDER BY deadline_at ASC, updated_at ASC, id ASC
+            LIMIT ?
+            """,
+            (expired_before.isoformat(), limit),
+        ).fetchall()
+    return [str(row["id"]) for row in rows]
+
+
+def delete_competitions(
+    db_path: Path,
+    *,
+    competition_ids: list[str],
+) -> int:
+    ensure_schema(db_path)
+    unique_ids = [competition_id for competition_id in dict.fromkeys(competition_ids) if competition_id]
+    if not unique_ids:
+        return 0
+
+    placeholders = ", ".join("?" for _ in unique_ids)
+    with connect(db_path) as connection:
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute(
+            f"DELETE FROM workspace_watchlist_entries WHERE opportunity_id IN ({placeholders})",
+            unique_ids,
+        )
+        connection.execute(
+            f"DELETE FROM ops_review_decisions WHERE queue_id IN (SELECT queue_id FROM ops_review_queue_items WHERE competition_id IN ({placeholders}))",
+            unique_ids,
+        )
+        connection.execute(
+            f"DELETE FROM ops_review_queue_items WHERE competition_id IN ({placeholders})",
+            unique_ids,
+        )
+        cursor = connection.execute(
+            f"DELETE FROM competitions WHERE id IN ({placeholders})",
+            unique_ids,
+        )
+        deleted_count = int(cursor.rowcount or 0)
+        connection.commit()
+
+    return deleted_count
+
+
+def competition_is_stale_expired(
+    record: CompetitionRecord,
+    *,
+    retention_days: int,
+    today: date | None = None,
+) -> bool:
+    if record.deadline_at is None:
+        return False
+
+    comparison_day = today or date.today()
+    expiry_threshold = comparison_day - timedelta(days=max(retention_days, 0))
+    return record.deadline_at < expiry_threshold
 
 
 def update_competition_geocode_fields(
