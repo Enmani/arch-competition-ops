@@ -2500,7 +2500,6 @@ export type StoredAuthSessionCreateInput = {
 const authSessionDurationMs = 30 * 24 * 60 * 60 * 1000;
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const passwordMinLength = 8;
-const pbkdf2Iterations = 120_000;
 const textEncoder = new TextEncoder();
 
 const normalizeEmail = (email: string) => email.trim().toLowerCase();
@@ -2551,33 +2550,43 @@ const digestBase64Url = async (value: string) => {
   return base64UrlFromBytes(new Uint8Array(digest));
 };
 
+const scryptCost = 16_384;
+const scryptBlockSize = 8;
+const scryptParallelization = 1;
+const scryptKeyLength = 64;
+
 const createPasswordHash = async (password: string) => {
   const salt = new Uint8Array(16);
   crypto.getRandomValues(salt);
-  const key = await crypto.subtle.importKey(
-    "raw",
-    textEncoder.encode(password),
-    "PBKDF2",
-    false,
-    ["deriveBits"],
-  );
-  const derivedBits = await crypto.subtle.deriveBits(
-    {
-      hash: "SHA-256",
-      iterations: pbkdf2Iterations,
-      name: "PBKDF2",
-      salt,
-    },
-    key,
-    256,
-  );
+
+  const { scrypt } = await import("node:crypto");
+  const derivedBytes = await new Promise<Uint8Array>((resolve, reject) => {
+    scrypt(
+      password,
+      Buffer.from(salt),
+      scryptKeyLength,
+      {
+        N: scryptCost,
+        p: scryptParallelization,
+        r: scryptBlockSize,
+      },
+      (error, derivedKey) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(new Uint8Array(derivedKey));
+      },
+    );
+  });
 
   return [
-    "pbkdf2",
-    pbkdf2Iterations,
-    "sha256",
+    "scrypt",
+    scryptCost,
+    scryptBlockSize,
+    scryptParallelization,
     base64UrlFromBytes(salt),
-    base64UrlFromBytes(new Uint8Array(derivedBits)),
+    base64UrlFromBytes(derivedBytes),
   ].join("$");
 };
 
@@ -2594,36 +2603,55 @@ const timingSafeEqualBytes = (left: Uint8Array, right: Uint8Array) => {
 };
 
 const verifyPasswordHash = async (password: string, storedHash: string) => {
-  const [scheme, rawIterations, algorithm, salt, hash] = storedHash.split("$");
-  if (scheme !== "pbkdf2" || algorithm !== "sha256" || !rawIterations || !salt || !hash) {
+  const [scheme, rawCost, rawBlockSize, rawParallelization, salt, hash] = storedHash.split("$");
+  if (
+    scheme !== "scrypt" ||
+    !rawCost ||
+    !rawBlockSize ||
+    !rawParallelization ||
+    !salt ||
+    !hash
+  ) {
     return false;
   }
 
-  const iterations = Number.parseInt(rawIterations, 10);
-  if (!Number.isFinite(iterations) || iterations < 1) {
+  const cost = Number.parseInt(rawCost, 10);
+  const blockSize = Number.parseInt(rawBlockSize, 10);
+  const parallelization = Number.parseInt(rawParallelization, 10);
+  if (
+    !Number.isFinite(cost) ||
+    !Number.isFinite(blockSize) ||
+    !Number.isFinite(parallelization) ||
+    cost < 2 ||
+    blockSize < 1 ||
+    parallelization < 1
+  ) {
     return false;
   }
 
   const expectedHash = bytesFromBase64Url(hash);
-  const key = await crypto.subtle.importKey(
-    "raw",
-    textEncoder.encode(password),
-    "PBKDF2",
-    false,
-    ["deriveBits"],
-  );
-  const derivedBits = await crypto.subtle.deriveBits(
-    {
-      hash: "SHA-256",
-      iterations,
-      name: "PBKDF2",
-      salt: bytesFromBase64Url(salt),
-    },
-    key,
-    expectedHash.length * 8,
-  );
+  const { scrypt } = await import("node:crypto");
+  const derivedBytes = await new Promise<Uint8Array>((resolve, reject) => {
+    scrypt(
+      password,
+      Buffer.from(bytesFromBase64Url(salt)),
+      expectedHash.length,
+      {
+        N: cost,
+        p: parallelization,
+        r: blockSize,
+      },
+      (error, derivedKey) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(new Uint8Array(derivedKey));
+      },
+    );
+  });
 
-  return timingSafeEqualBytes(expectedHash, new Uint8Array(derivedBits));
+  return timingSafeEqualBytes(expectedHash, derivedBytes);
 };
 
 const mapAuthUserRow = (row: AuthUserRow): StoredAuthUser => ({

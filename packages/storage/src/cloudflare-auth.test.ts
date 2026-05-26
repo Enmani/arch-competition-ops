@@ -4,6 +4,7 @@ import test from "node:test";
 
 import type { D1DatabaseLike } from "./cloudflare";
 import {
+  authenticateD1AuthUser,
   countD1AuthUsers,
   createD1AuthSession,
   createD1AuthUser,
@@ -59,4 +60,25 @@ test("D1 auth registration bootstraps auth tables and creates a session", async 
   assert.equal(await countD1AuthUsers(database), 1);
   assert.equal(session?.user.id, user.id);
   assert.equal(session?.user.email, "studio@example.com");
+});
+
+test("D1 auth users can authenticate with the stored password hash", async () => {
+  const database = createD1Database();
+
+  const user = await createD1AuthUser(database, {
+    email: "login-check@example.com",
+    password: "correct-password",
+  });
+
+  const authenticatedUser = await authenticateD1AuthUser(database, {
+    email: "login-check@example.com",
+    password: "correct-password",
+  });
+  const rejectedUser = await authenticateD1AuthUser(database, {
+    email: "login-check@example.com",
+    password: "wrong-password",
+  });
+
+  assert.equal(authenticatedUser?.id, user.id);
+  assert.equal(rejectedUser, null);
 });
