@@ -8,6 +8,7 @@
     "packages/storage"
   ],
   "scripts": {
+    "prepare:web": "npm --workspace apps/web run prepare:opportunity-previews",
     "dev:web": "npm --workspace apps/web run dev",
     "dev:web:up": "powershell -ExecutionPolicy Bypass -File .\\dev-port.ps1 up",
     "dev:web:restart": "powershell -ExecutionPolicy Bypass -File .\\dev-port.ps1 restart",

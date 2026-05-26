@@ -40,6 +40,7 @@ npm run dev:web:up
 
 The web app defaults to `http://localhost:3400` so it does not collide with Trinity's `3000/3001` pair.
 Use `npm run dev:web:up` when possible so the repo can perform a health check and explain port-binding failures, including Windows excluded port ranges that block `3400`.
+The repo now auto-prepares opportunity preview image revisions and static satellite assets before `dev`, `build`, `start`, and Cloudflare builds, so local and production image URLs stay aligned without a separate manual sync step.
 
 ## Default Conventions
 
@@ -128,6 +129,7 @@ uv run python apps/worker/scripts/ingest_batch.py --batch-id official_daytime
 # web
 npm run dev:web
 npm run dev:web:up
+npm run prepare:web
 npm run build:web
 npm run lint:web
 npm run test:storage
