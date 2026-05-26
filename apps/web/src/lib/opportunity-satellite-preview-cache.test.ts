@@ -45,3 +45,22 @@ test("getSatellitePreviewStaticAssetPaths mirrors fallback candidates under the 
     "/opportunity-card-satellite/sample_slug.jpg",
   ]);
 });
+
+test("getSatellitePreviewStaticFileNameCandidates falls back to legacy hashed file names", () => {
+  const candidates = getSatellitePreviewStaticFileNameCandidates(
+    "march_-de-ma_trise-d-oeuvre-pour-l-op_ration-de-restructuration-et-extension-du-groupe-scolaire-de-no_-31__boamp-design-and-public-procurement-notices__2026-05-26_h27c1460be1",
+  );
+
+  assert.deepEqual(candidates, [
+    `march_-de-ma_trise-d-oeuvre-pour-l-op_ration-de-restructuration-et-extension-du-groupe-scolaire-de-no_-31__boamp-design-and-public-procurement-notices__2026-05-26_h27c1460be1_${satellitePreviewRevision}.jpg`,
+    `march_-de-ma_trise-d-oeuvre-pour-l-op_ration-de-restructuration-et-extension-du-groupe-scolaire-de-no_-31__boamp-design-and-public-procurement-notices__2026-05-26_${satellitePreviewRevision}.jpg`,
+    "march_-de-ma_trise-d-oeuvre-pour-l-op_ration-de-restructuration-et-extension-du-groupe-scolaire-de-no_-31__boamp-design-and-public-procurement-notices__2026-05-26_h27c1460be1.jpg",
+    "march_-de-ma_trise-d-oeuvre-pour-l-op_ration-de-restructuration-et-extension-du-groupe-scolaire-de-no_-31__boamp-design-and-public-procurement-notices__2026-05-26_v6.jpg",
+    "march_-de-ma_trise-d-oeuvre-pour-l-op_ration-de-restructuration-et-extension-du-groupe-scolaire-de-no_-31__boamp-design-and-public-procurement-notices__2026-05-26_v5.jpg",
+    "march_-de-ma_trise-d-oeuvre-pour-l-op_ration-de-restructuration-et-extension-du-groupe-scolaire-de-no_-31__boamp-design-and-public-procurement-notices__2026-05-26_v4.jpg",
+    "march_-de-ma_trise-d-oeuvre-pour-l-op_ration-de-restructuration-et-extension-du-groupe-scolaire-de-no_-31__boamp-design-and-public-procurement-notices__2026-05-26_v3.jpg",
+    "march_-de-ma_trise-d-oeuvre-pour-l-op_ration-de-restructuration-et-extension-du-groupe-scolaire-de-no_-31__boamp-design-and-public-procurement-notices__2026-05-26_v2.jpg",
+    "march_-de-ma_trise-d-oeuvre-pour-l-op_ration-de-restructuration-et-extension-du-groupe-scolaire-de-no_-31__boamp-design-and-public-procurement-notices__2026-05-26_v1.jpg",
+    "march_-de-ma_trise-d-oeuvre-pour-l-op_ration-de-restructuration-et-extension-du-groupe-scolaire-de-no_-31__boamp-design-and-public-procurement-notices__2026-05-26.jpg",
+  ]);
+});

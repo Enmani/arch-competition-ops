@@ -1,2 +1,2 @@
-export const satellitePreviewRevision = "hcaff69acd1";
-export const opportunityImageRevision = "h418cb3090b";
+export const satellitePreviewRevision = "hffba2abd61";
+export const opportunityImageRevision = "h7b82d85481";

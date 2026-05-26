@@ -9,6 +9,7 @@ const sourceDirectory = path.join(repoRoot, "artifacts", "opportunity-card-satel
 const targetDirectory = path.join(repoRoot, "apps", "web", "public", "opportunity-card-satellite");
 
 const legacyVersionSuffixPattern = /_v\d+$/i;
+const revisionHashSuffixPattern = /_h[0-9a-f]{10}$/i;
 const imageExtensionPattern = /\.jpg$/i;
 const { satellitePreviewRevision } = await writeOpportunityPreviewRevisionModule(repoRoot);
 
@@ -17,7 +18,9 @@ const getSatellitePreviewStaticFileName = (slug) =>
 
 const getCanonicalSatellitePreviewFileName = (fileName) => {
   const baseName = fileName.replace(imageExtensionPattern, "");
-  const normalizedBaseName = baseName.replace(legacyVersionSuffixPattern, "");
+  const normalizedBaseName = baseName
+    .replace(legacyVersionSuffixPattern, "")
+    .replace(revisionHashSuffixPattern, "");
   return getSatellitePreviewStaticFileName(normalizedBaseName);
 };
 
