@@ -1415,6 +1415,37 @@ test("getStoredOpportunityFeedItemBySlug returns localized-feed fields for detai
   }
 });
 
+test("getStoredOpportunityFeedItemBySlug accepts percent-encoded non-ASCII slugs", async () => {
+  const { dbPath, cleanup } = createTempDb();
+  const database = new Database(dbPath);
+  database
+    .prepare("UPDATE competitions SET id = ?, dedup_key = ?, title = ? WHERE id = ?")
+    .run(
+      "servicio-de-asistencia-técnica-para-la-redacción__pcsp-syndicated-notices__2026-06-08",
+      "servicio-de-asistencia-técnica-para-la-redacción__pcsp-syndicated-notices__2026-06-08",
+      "Servicio de asistencia técnica para la redacción",
+      "switzerland-campus",
+    );
+  database.close();
+  process.env.ARCH_COMPETITION_DB_PATH = dbPath;
+
+  try {
+    const { getStoredOpportunityFeedItemBySlug } = await loadStorageModule();
+    const opportunity = getStoredOpportunityFeedItemBySlug(
+      "servicio-de-asistencia-t%C3%A9cnica-para-la-redacci%C3%B3n__pcsp-syndicated-notices__2026-06-08",
+    );
+
+    assert.equal(
+      opportunity?.id,
+      "servicio-de-asistencia-técnica-para-la-redacción__pcsp-syndicated-notices__2026-06-08",
+    );
+    assert.equal(opportunity?.title, "Servicio de asistencia técnica para la redacción");
+  } finally {
+    delete process.env.ARCH_COMPETITION_DB_PATH;
+    cleanup();
+  }
+});
+
 test("storage falls back to raw contract value text when eur normalization is unavailable", async () => {
   const { dbPath, cleanup } = createTempDb();
   process.env.ARCH_COMPETITION_DB_PATH = dbPath;

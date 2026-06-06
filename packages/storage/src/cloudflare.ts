@@ -288,6 +288,21 @@ const compactText = (value: string | null | undefined) => {
   return collapsed.length > 0 ? collapsed : null;
 };
 
+const normalizeOpportunitySlugLookup = (slug: string) => {
+  const candidates = [slug];
+
+  try {
+    const decodedSlug = decodeURIComponent(slug);
+    if (decodedSlug !== slug) {
+      candidates.push(decodedSlug);
+    }
+  } catch {
+    // Keep the original slug when a request contains malformed percent encoding.
+  }
+
+  return candidates;
+};
+
 const normalizeLookupKey = (value: string | null | undefined) => {
   const compacted = compactText(value);
   if (!compacted) {
@@ -1353,12 +1368,18 @@ export const getD1OpportunityFeedItemBySlug = async (
   }
 
   const selectList = await buildOpportunitySelectList(database);
-  const row = await readRow<OpportunityRow>(
-    database,
-    `SELECT ${selectList} FROM competitions WHERE id = ?`,
-    [slug],
-  );
-  return row ? toOpportunityFeedItem(row) : undefined;
+  for (const slugCandidate of normalizeOpportunitySlugLookup(slug)) {
+    const row = await readRow<OpportunityRow>(
+      database,
+      `SELECT ${selectList} FROM competitions WHERE id = ?`,
+      [slugCandidate],
+    );
+    if (row) {
+      return toOpportunityFeedItem(row);
+    }
+  }
+
+  return undefined;
 };
 
 export const getD1OpsSnapshot = async (database: D1DatabaseLike) => {

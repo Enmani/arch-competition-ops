@@ -296,6 +296,21 @@ const compactText = (value: string | null | undefined) => {
   return collapsed.length > 0 ? collapsed : null;
 };
 
+const normalizeOpportunitySlugLookup = (slug: string) => {
+  const candidates = [slug];
+
+  try {
+    const decodedSlug = decodeURIComponent(slug);
+    if (decodedSlug !== slug) {
+      candidates.push(decodedSlug);
+    }
+  } catch {
+    // Keep the original slug when a request contains malformed percent encoding.
+  }
+
+  return candidates;
+};
+
 const normalizeLookupKey = (value: string | null | undefined) => {
   const compacted = compactText(value);
   if (!compacted) {
@@ -1362,11 +1377,17 @@ export const getStoredOpportunityFeedItemBySlug = (slug: string) => {
     return undefined;
   }
 
-  const row = readRow<OpportunityRow>(
-    `SELECT ${buildOpportunitySelectList()} FROM competitions WHERE id = ?`,
-    [slug],
-  );
-  return row ? toOpportunityFeedItem(row) : undefined;
+  for (const slugCandidate of normalizeOpportunitySlugLookup(slug)) {
+    const row = readRow<OpportunityRow>(
+      `SELECT ${buildOpportunitySelectList()} FROM competitions WHERE id = ?`,
+      [slugCandidate],
+    );
+    if (row) {
+      return toOpportunityFeedItem(row);
+    }
+  }
+
+  return undefined;
 };
 
 export const getStoredOpportunityBySlug = (slug: string) => {
