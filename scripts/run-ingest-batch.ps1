@@ -23,9 +23,32 @@ if (-not (Test-Path $cleanupStateDir)) {
     New-Item -ItemType Directory -Path $cleanupStateDir -Force | Out-Null
 }
 
+$uvPath = $null
 $uvCommand = Get-Command uv -ErrorAction SilentlyContinue
-if (-not $uvCommand) {
-    Write-Error "uv is not available on PATH."
+if ($uvCommand) {
+    $uvPath = $uvCommand.Source
+}
+else {
+    $uvCandidatePaths = @()
+    if ($env:USERPROFILE) {
+        $uvCandidatePaths += (Join-Path $env:USERPROFILE ".local\bin\uv.exe")
+    }
+    if ($env:LOCALAPPDATA) {
+        $uvCandidatePaths += (Join-Path $env:LOCALAPPDATA "Programs\uv\uv.exe")
+    }
+
+    foreach ($candidatePath in $uvCandidatePaths) {
+        if (Test-Path $candidatePath) {
+            $uvPath = $candidatePath
+            break
+        }
+    }
+}
+
+if (-not $uvPath) {
+    "uv is not available on PATH or in the expected user install locations." |
+        Tee-Object -FilePath $logPath -Append
+    exit 1
 }
 
 $commandArgs = @(
@@ -66,7 +89,7 @@ try {
 
     if (-not $cleanupAlreadyRan) {
         Write-Output "[INFO] Running expired competition cleanup"
-        & $uvCommand.Source run arch-competition-ops cleanup-expired-competitions 2>&1 | Tee-Object -FilePath $logPath -Append
+        & $uvPath run arch-competition-ops cleanup-expired-competitions 2>&1 | Tee-Object -FilePath $logPath -Append
         if ($LASTEXITCODE -ne 0) {
             throw "Expired competition cleanup failed."
         }
@@ -77,7 +100,7 @@ try {
 
     Write-Output "[INFO] Running auto-ingest batch $BatchId"
     Write-Output "[INFO] Log file $logPath"
-    & $uvCommand.Source @commandArgs 2>&1 | Tee-Object -FilePath $logPath -Append
+    & $uvPath @commandArgs 2>&1 | Tee-Object -FilePath $logPath -Append
     $exitCode = $LASTEXITCODE
 }
 finally {
@@ -89,6 +112,7 @@ if ($null -eq $exitCode) {
 }
 if ($exitCode -ne 0) {
     Write-Error ("Batch {0} failed with exit code {1}. See {2}" -f $BatchId, $exitCode, $logPath)
+    exit $exitCode
 }
 
 Write-Output "[OK] Batch completed"

@@ -906,12 +906,14 @@ test("queryStoredOpportunities filters stored records by jurisdiction and qualif
   process.env.ARCH_COMPETITION_DB_PATH = dbPath;
 
   try {
-    const { queryStoredOpportunities } = await loadStorageModule();
-    const opportunities = queryStoredOpportunities({
-      jurisdiction: "italy",
-      licensedArchitectRequired: true,
-      minQualificationScore: 0.9,
-      limit: 10,
+    const opportunities = await withToday("2026-04-19", async () => {
+      const { queryStoredOpportunities } = await loadStorageModule();
+      return queryStoredOpportunities({
+        jurisdiction: "italy",
+        licensedArchitectRequired: true,
+        minQualificationScore: 0.9,
+        limit: 10,
+      });
     });
 
     assert.equal(opportunities.length, 1);

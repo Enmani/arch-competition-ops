@@ -29,6 +29,13 @@
       "lng": -116.9547299,
       "provider": "nominatim"
     },
+    "canada:rondeau": {
+      "confidence": 0.82,
+      "label": "Rondeau",
+      "lat": 42.3280346,
+      "lng": -81.8453366,
+      "provider": "nominatim"
+    },
     "finland:varkauden kaupunki": null,
     "france:bastia": {
       "confidence": 0.75,
@@ -56,6 +63,13 @@
       "label": "Ceillac",
       "lat": 44.6683282,
       "lng": 6.7780124,
+      "provider": "nominatim"
+    },
+    "france:chagny": {
+      "confidence": 0.75,
+      "label": "Chagny",
+      "lat": 46.910578,
+      "lng": 4.7523461,
       "provider": "nominatim"
     },
     "france:champagne sur seine": {
@@ -334,6 +348,13 @@
       "lng": 13.4324541,
       "provider": "nominatim"
     },
+    "germany:12099 berlin": {
+      "confidence": 0.72,
+      "label": "Berlin",
+      "lat": 52.4639497,
+      "lng": 13.4029018,
+      "provider": "nominatim"
+    },
     "germany:12203 berlin": {
       "confidence": 0.72,
       "label": "Berlin",
@@ -409,6 +430,13 @@
       "label": "Alsfeld",
       "lat": 50.76522,
       "lng": 9.30144,
+      "provider": "nominatim"
+    },
+    "germany:altheim": {
+      "confidence": 0.73,
+      "label": "Altheim (Alb",
+      "lat": 48.5808015,
+      "lng": 10.0271338,
       "provider": "nominatim"
     },
     "germany:anlagengruppe 1 und 2": null,
@@ -515,6 +543,13 @@
       "lng": 12.8753411,
       "provider": "nominatim"
     },
+    "germany:reilingen": {
+      "confidence": 0.73,
+      "label": "Reilingen",
+      "lat": 49.2945507,
+      "lng": 8.5739147,
+      "provider": "nominatim"
+    },
     "germany:steinach": {
       "confidence": 0.73,
       "label": "Steinach",
@@ -529,6 +564,7 @@
       "lng": 8.4929618,
       "provider": "nominatim"
     },
+    "ireland:ballybunion south beach": null,
     "ireland:co donegal": {
       "confidence": 0.72,
       "label": "Co. Donegal",
@@ -585,6 +621,13 @@
       "label": "Arco",
       "lat": 45.9318708,
       "lng": 10.9171966,
+      "provider": "nominatim"
+    },
+    "italy:ardore": {
+      "confidence": 0.74,
+      "label": "Ardore",
+      "lat": 38.19097,
+      "lng": 16.1682218,
       "provider": "nominatim"
     },
     "italy:argenta": {
@@ -662,6 +705,13 @@
       "label": "Boscoreale",
       "lat": 40.7740398,
       "lng": 14.4774318,
+      "provider": "nominatim"
+    },
+    "italy:budoni": {
+      "confidence": 0.74,
+      "label": "Budune/Budoni",
+      "lat": 40.7076313,
+      "lng": 9.6994897,
       "provider": "nominatim"
     },
     "italy:bussolengo": {
@@ -1022,6 +1072,13 @@
       "lng": 11.6627796,
       "provider": "nominatim"
     },
+    "italy:maccastorna": {
+      "confidence": 0.73,
+      "label": "Maccastorna",
+      "lat": 45.1443305,
+      "lng": 9.855215,
+      "provider": "nominatim"
+    },
     "italy:manerbio": {
       "confidence": 0.75,
       "label": "Manerbio",
@@ -1247,6 +1304,13 @@
       "lng": 10.0979869,
       "provider": "nominatim"
     },
+    "italy:patti": {
+      "confidence": 0.74,
+      "label": "Patti",
+      "lat": 38.1389007,
+      "lng": 14.9648163,
+      "provider": "nominatim"
+    },
     "italy:pesche": {
       "confidence": 0.73,
       "label": "Pesche",
@@ -1346,6 +1410,13 @@
       "lng": 11.7882736,
       "provider": "nominatim"
     },
+    "italy:s carlo canavese": {
+      "confidence": 0.75,
+      "label": "San Carlo Canavese",
+      "lat": 45.2553966,
+      "lng": 7.6152173,
+      "provider": "nominatim"
+    },
     "italy:salsomaggiore terme": {
       "confidence": 0.74,
       "label": "Salsomaggiore Terme",
@@ -1414,6 +1485,13 @@
       "label": "Sèligas/Selegas",
       "lat": 39.567844,
       "lng": 9.10414,
+      "provider": "nominatim"
+    },
+    "italy:serravalle scrivia": {
+      "confidence": 0.75,
+      "label": "Serravalle Scrivia",
+      "lat": 44.7255798,
+      "lng": 8.8547001,
       "provider": "nominatim"
     },
     "italy:serrenti": {
@@ -1536,6 +1614,13 @@
       "lng": 8.2969866,
       "provider": "nominatim"
     },
+    "italy:ulassai": {
+      "confidence": 0.73,
+      "label": "Ulassa/Ulassai",
+      "lat": 39.810552,
+      "lng": 9.499045,
+      "provider": "nominatim"
+    },
     "italy:valdieri": {
       "confidence": 0.75,
       "label": "Valdieri",
@@ -1543,7 +1628,21 @@
       "lng": 7.284307,
       "provider": "nominatim"
     },
+    "italy:vallo di nera": {
+      "confidence": 0.74,
+      "label": "Vallo di Nera",
+      "lat": 42.7546212,
+      "lng": 12.8637598,
+      "provider": "nominatim"
+    },
     "italy:variante urbanistica": null,
+    "italy:venarotta": {
+      "confidence": 0.73,
+      "label": "Venarotta",
+      "lat": 42.8917055,
+      "lng": 13.4932114,
+      "provider": "nominatim"
+    },
     "italy:venosa": {
       "confidence": 0.74,
       "label": "Venosa",
@@ -1594,6 +1693,7 @@
       "lng": 24.1051846,
       "provider": "nominatim"
     },
+    "netherlands:locatie macropedius": null,
     "new_zealand:bell block primary school": null,
     "new_zealand:central otago": {
       "confidence": 0.72,
@@ -1654,6 +1754,7 @@
     "norway:prosjekteringstjenester": null,
     "norway:skisseprosjekt og forprosjekt": null,
     "norway:strandebarm i hardanger": null,
+    "slovenia:s projektiranjem povezane storitve": null,
     "spain:39 madrid": {
       "confidence": 0.72,
       "label": "València",
@@ -1767,6 +1868,13 @@
       "label": "Bunyola",
       "lat": 39.6961887,
       "lng": 2.6989574,
+      "provider": "nominatim"
+    },
+    "spain:cades": {
+      "confidence": 0.72,
+      "label": "Herrerías",
+      "lat": 43.3039739,
+      "lng": -4.4685066,
       "provider": "nominatim"
     },
     "spain:camporrobles": {

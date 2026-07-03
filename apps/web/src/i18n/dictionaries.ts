@@ -109,6 +109,7 @@ export type AppDictionary = {
     };
     placeholders: {
       search: string;
+      dateIso: string;
     };
     buttons: {
       applyScreen: string;
@@ -598,6 +599,7 @@ export const dictionaries: Record<AppLocale, AppDictionary> = {
       },
       placeholders: {
         search: "机构、主办方、公告编号、标题",
+        dateIso: "YYYY-MM-DD",
       },
       buttons: {
         applyScreen: "筛选",
@@ -1256,8 +1258,8 @@ export const dictionaries: Record<AppLocale, AppDictionary> = {
         en: "EN",
       },
       localeNames: {
-        zh: "中文",
-        en: "英文",
+        zh: "Chinese",
+        en: "English",
       },
     },
     discover: {
@@ -1304,6 +1306,7 @@ export const dictionaries: Record<AppLocale, AppDictionary> = {
       },
       placeholders: {
         search: "Authority, organizer, notice ID, title",
+        dateIso: "YYYY-MM-DD",
       },
       buttons: {
         applyScreen: "Filter",

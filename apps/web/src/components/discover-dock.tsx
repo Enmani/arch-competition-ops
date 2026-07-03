@@ -172,8 +172,12 @@ export const DiscoverDock = ({
             <input
               aria-label={dictionary.discover.filterLabels.deadlineBefore}
               defaultValue={filters.deadlineBefore ?? ""}
+              inputMode="numeric"
+              maxLength={10}
               name="deadlineBefore"
-              type="date"
+              pattern="\d{4}-\d{2}-\d{2}"
+              placeholder={dictionary.discover.placeholders.dateIso}
+              type="text"
             />
           </label>
 
@@ -315,8 +319,12 @@ export const DiscoverDock = ({
                 <input
                   aria-label={dictionary.discover.filterLabels.deadlineAfter}
                   defaultValue={filters.deadlineAfter ?? ""}
+                  inputMode="numeric"
+                  maxLength={10}
                   name="deadlineAfter"
-                  type="date"
+                  pattern="\d{4}-\d{2}-\d{2}"
+                  placeholder={dictionary.discover.placeholders.dateIso}
+                  type="text"
                 />
               </label>
 

@@ -56,7 +56,8 @@ function Register-OneTask {
 
     $taskAction = New-ScheduledTaskAction `
         -Execute "powershell.exe" `
-        -Argument ("-NoProfile -ExecutionPolicy Bypass -File `"{0}`" -BatchId {1}" -f $runScript, $Spec.BatchId)
+        -Argument ("-NoProfile -ExecutionPolicy Bypass -File `"{0}`" -BatchId {1}" -f $runScript, $Spec.BatchId) `
+        -WorkingDirectory $repoRoot
     $atTime = [datetime]::Today.Add([timespan]::Parse($Spec.TimeValue))
     $trigger = New-ScheduledTaskTrigger -Daily -At $atTime
     $principal = New-ScheduledTaskPrincipal -UserId $currentUser -LogonType Interactive -RunLevel Limited

@@ -65,12 +65,14 @@ export const formatCompactCurrency = (locale: AppLocale, value: number | null | 
     return null;
   }
 
-  return new Intl.NumberFormat(getIntlLocale(locale), {
+  const formatted = new Intl.NumberFormat(getIntlLocale(locale), {
     style: "currency",
     currency: "EUR",
     notation: "compact",
     maximumFractionDigits: 1,
   }).format(value);
+
+  return locale === "en" ? formatted.replace(/K/g, "k") : formatted;
 };
 
 export const formatCurrency = (locale: AppLocale, value: number | null | undefined) => {

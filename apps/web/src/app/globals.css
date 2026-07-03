@@ -297,6 +297,7 @@ input[type="checkbox"] {
   font-size: 0.66rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
+  text-decoration: none;
   transition:
     color 180ms var(--ease-out-quart),
     background-color 180ms var(--ease-out-quart),
