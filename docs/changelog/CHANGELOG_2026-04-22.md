@@ -1,16 +1,16 @@
 ---
 title: CHANGELOG 2026-04-22
-status: 已完成
+status: done
 updated_at: 2026-04-22
 related_docs:
   - docs/ai/doc-governance-standard.md
   - docs/structures/2026-04-22-workspace-follow-up-architecture.md
-  - docs/plans/施工中-2026-04-19-05-qualification-scoring-v1-plan.md
-  - docs/plans/施工中-2026-04-19-06-bid-no-bid-assistant-v1-plan.md
-  - docs/plans/已完成-2026-04-19-07-saved-search-and-watchlists-plan.md
-  - docs/plans/未实施-2026-04-19-08-alerts-and-digests-plan.md
-  - docs/plans/未实施-2026-04-19-09-pursuit-workspace-v1-plan.md
-  - docs/plans/未实施-2026-04-19-10-verified-submission-intake-plan.md
+  - docs/plans/2026-04-19-05-qualification-scoring-v1-plan.md
+  - docs/plans/2026-04-19-06-bid-no-bid-assistant-v1-plan.md
+  - docs/plans/2026-04-19-07-saved-search-and-watchlists-plan.md
+  - docs/plans/2026-04-19-08-alerts-and-digests-plan.md
+  - docs/plans/2026-04-19-09-pursuit-workspace-v1-plan.md
+  - docs/plans/2026-04-19-10-verified-submission-intake-plan.md
 ---
 
 # CHANGELOG 2026-04-22
@@ -21,8 +21,8 @@ related_docs:
 
 - Added the new structure owner [docs/structures/2026-04-22-workspace-follow-up-architecture.md](../structures/2026-04-22-workspace-follow-up-architecture.md) for the shared `workspace_key`, follow-up-state boundaries, worker schema ownership, and submission-to-review handoff.
 - Renamed plan 05 and plan 06 to `施工中-` because the current codebase already implements part of qualification scoring and evidence-first decision support.
-- Rewrote [docs/plans/施工中-2026-04-19-05-qualification-scoring-v1-plan.md](../plans/施工中-2026-04-19-05-qualification-scoring-v1-plan.md) around the current score owner, existing storage exposure, and the remaining explainability work.
-- Rewrote [docs/plans/施工中-2026-04-19-06-bid-no-bid-assistant-v1-plan.md](../plans/施工中-2026-04-19-06-bid-no-bid-assistant-v1-plan.md) so it builds on the current detail surface and storage path instead of treating the feature as greenfield.
+- Rewrote [docs/plans/2026-04-19-05-qualification-scoring-v1-plan.md](../plans/2026-04-19-05-qualification-scoring-v1-plan.md) around the current score owner, existing storage exposure, and the remaining explainability work.
+- Rewrote [docs/plans/2026-04-19-06-bid-no-bid-assistant-v1-plan.md](../plans/2026-04-19-06-bid-no-bid-assistant-v1-plan.md) so it builds on the current detail surface and storage path instead of treating the feature as greenfield.
 - Updated plans 07, 08, and 09 so new workspace tables stay owned by `apps/worker/src/arch_competition_ops/storage/database.py`, while `packages/storage` remains the web-facing contract owner.
 - Updated plan 09 so the future dashboard no longer stays on a raw `queryStoredOpportunityFeed()` call once pursuit state exists.
 - Updated plan 10 so verified submissions reuse the existing ops review queue and `submission_pending_review` semantics instead of inventing a second moderation surface.
@@ -42,12 +42,12 @@ related_docs:
 - `npm run lint:web`
 - `npm run build:web`
 - `npm run check:doc-governance:file -- --file docs/structures/2026-04-22-workspace-follow-up-architecture.md`
-- `npm run check:doc-governance:file -- --file docs/plans/施工中-2026-04-19-05-qualification-scoring-v1-plan.md`
-- `npm run check:doc-governance:file -- --file docs/plans/施工中-2026-04-19-06-bid-no-bid-assistant-v1-plan.md`
-- `npm run check:doc-governance:file -- --file docs/plans/已完成-2026-04-19-07-saved-search-and-watchlists-plan.md`
-- `npm run check:doc-governance:file -- --file docs/plans/未实施-2026-04-19-08-alerts-and-digests-plan.md`
-- `npm run check:doc-governance:file -- --file docs/plans/未实施-2026-04-19-09-pursuit-workspace-v1-plan.md`
-- `npm run check:doc-governance:file -- --file docs/plans/未实施-2026-04-19-10-verified-submission-intake-plan.md`
+- `npm run check:doc-governance:file -- --file docs/plans/2026-04-19-05-qualification-scoring-v1-plan.md`
+- `npm run check:doc-governance:file -- --file docs/plans/2026-04-19-06-bid-no-bid-assistant-v1-plan.md`
+- `npm run check:doc-governance:file -- --file docs/plans/2026-04-19-07-saved-search-and-watchlists-plan.md`
+- `npm run check:doc-governance:file -- --file docs/plans/2026-04-19-08-alerts-and-digests-plan.md`
+- `npm run check:doc-governance:file -- --file docs/plans/2026-04-19-09-pursuit-workspace-v1-plan.md`
+- `npm run check:doc-governance:file -- --file docs/plans/2026-04-19-10-verified-submission-intake-plan.md`
 - `npm run check:doc-governance:file -- --file docs/plans/README.md`
 - `npm run check:doc-governance:file -- --file docs/changelog/CHANGELOG_2026-04-22.md`
 - `npm run check:encoding:all`
@@ -55,9 +55,9 @@ related_docs:
 ### Modified Files
 
 - `docs/structures/2026-04-22-workspace-follow-up-architecture.md`
-- `docs/plans/施工中-2026-04-19-05-qualification-scoring-v1-plan.md`
-- `docs/plans/施工中-2026-04-19-06-bid-no-bid-assistant-v1-plan.md`
-- `docs/plans/已完成-2026-04-19-07-saved-search-and-watchlists-plan.md`
+- `docs/plans/2026-04-19-05-qualification-scoring-v1-plan.md`
+- `docs/plans/2026-04-19-06-bid-no-bid-assistant-v1-plan.md`
+- `docs/plans/2026-04-19-07-saved-search-and-watchlists-plan.md`
 
 ## Saved Search And Watchlists Implementation
 
@@ -68,7 +68,7 @@ related_docs:
 - Added `apps/web/src/lib/workspace.ts` plus the new `apps/web/src/app/api/saved-searches/route.ts` and `apps/web/src/app/api/watchlists/route.ts` handlers, with writes gated by `ARCH_ENABLE_WORKSPACE_WRITES`.
 - Extended discover with `apps/web/src/components/discover-saved-searches.tsx`, added `apps/web/src/components/watch-toggle-button.tsx`, and switched the existing dashboard table to watched opportunities through `apps/web/src/components/watchlist-dashboard-table.tsx`.
 - Updated bilingual product copy and styles so discover, detail, and dashboard all expose the new save/watch controls without changing the procurement-first surface model.
-- Marked plan 07 complete and renamed it to `docs/plans/已完成-2026-04-19-07-saved-search-and-watchlists-plan.md`.
+- Marked plan 07 complete and renamed it to `docs/plans/2026-04-19-07-saved-search-and-watchlists-plan.md`.
 
 ### Why
 
@@ -114,12 +114,12 @@ related_docs:
 - `apps/web/src/app/globals.css`
 - `.env.example`
 - `docs/plans/README.md`
-- `docs/plans/已完成-2026-04-19-07-saved-search-and-watchlists-plan.md`
+- `docs/plans/2026-04-19-07-saved-search-and-watchlists-plan.md`
 - `docs/structures/2026-04-22-workspace-follow-up-architecture.md`
 - `docs/changelog/CHANGELOG_2026-04-22.md`
-- `docs/plans/未实施-2026-04-19-08-alerts-and-digests-plan.md`
-- `docs/plans/未实施-2026-04-19-09-pursuit-workspace-v1-plan.md`
-- `docs/plans/未实施-2026-04-19-10-verified-submission-intake-plan.md`
+- `docs/plans/2026-04-19-08-alerts-and-digests-plan.md`
+- `docs/plans/2026-04-19-09-pursuit-workspace-v1-plan.md`
+- `docs/plans/2026-04-19-10-verified-submission-intake-plan.md`
 - `docs/plans/README.md`
 - `docs/changelog/CHANGELOG_2026-04-22.md`
 
@@ -127,8 +127,8 @@ related_docs:
 
 ### Changed
 
-- Updated [docs/plans/未实施-2026-04-19-08-alerts-and-digests-plan.md](../plans/未实施-2026-04-19-08-alerts-and-digests-plan.md) so its baseline now reflects the live watchlist-backed dashboard, and so digest work explicitly preserves the existing watched-opportunity follow-up table instead of replacing it with a digest-only screen.
-- Updated [docs/plans/未实施-2026-04-19-09-pursuit-workspace-v1-plan.md](../plans/未实施-2026-04-19-09-pursuit-workspace-v1-plan.md) so its baseline and dashboard task now start from the current `queryStoredWatchlistEntries()` plus `getStoredOpportunityFeedItemBySlug()` join, rather than the older raw-feed assumption.
+- Updated [docs/plans/2026-04-19-08-alerts-and-digests-plan.md](../plans/2026-04-19-08-alerts-and-digests-plan.md) so its baseline now reflects the live watchlist-backed dashboard, and so digest work explicitly preserves the existing watched-opportunity follow-up table instead of replacing it with a digest-only screen.
+- Updated [docs/plans/2026-04-19-09-pursuit-workspace-v1-plan.md](../plans/2026-04-19-09-pursuit-workspace-v1-plan.md) so its baseline and dashboard task now start from the current `queryStoredWatchlistEntries()` plus `getStoredOpportunityFeedItemBySlug()` join, rather than the older raw-feed assumption.
 
 ### Why
 
@@ -138,13 +138,13 @@ related_docs:
 
 ### Validation
 
-- `npm run check:doc-governance:file -- --file docs/plans/未实施-2026-04-19-08-alerts-and-digests-plan.md`
-- `npm run check:doc-governance:file -- --file docs/plans/未实施-2026-04-19-09-pursuit-workspace-v1-plan.md`
+- `npm run check:doc-governance:file -- --file docs/plans/2026-04-19-08-alerts-and-digests-plan.md`
+- `npm run check:doc-governance:file -- --file docs/plans/2026-04-19-09-pursuit-workspace-v1-plan.md`
 - `npm run check:doc-governance:file -- --file docs/changelog/CHANGELOG_2026-04-22.md`
 - `npm run check:encoding:all`
 
 ### Modified Files
 
-- `docs/plans/未实施-2026-04-19-08-alerts-and-digests-plan.md`
-- `docs/plans/未实施-2026-04-19-09-pursuit-workspace-v1-plan.md`
+- `docs/plans/2026-04-19-08-alerts-and-digests-plan.md`
+- `docs/plans/2026-04-19-09-pursuit-workspace-v1-plan.md`
 - `docs/changelog/CHANGELOG_2026-04-22.md`

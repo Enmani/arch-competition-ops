@@ -1,122 +1,149 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState } from "react";
 
-import type { StoredOpportunityFeedItem, StoredOpportunityQuery } from "@arch-competition/storage/cloudflare";
+import type { StoredOpportunityFeedItem, StoredOpportunityQuery } from "@arch-competition/storage";
 
 import { OpportunityStreamItem } from "@/components/opportunity-stream-item";
 import { serializeSearchParams, type AppLocale } from "@/i18n/config";
-import type { AppDictionary } from "@/i18n/dictionaries";
-import { buildDiscoverSearchParams } from "@/lib/discover";
+import { fillTemplate } from "@/i18n/format";
+import type { DiscoverFeedCopy } from "@/i18n/slices";
+import { describeApiFailure, requestJson, type ApiFailure } from "@/lib/api-client";
+import { buildDiscoverPageSearchParams, buildDiscoverSearchParams, DISCOVER_PAGE_SIZE } from "@/lib/discover";
+import {
+  appendFeedPage,
+  createFeedState,
+  hasMoreItems,
+  type FeedPage,
+  type FeedState,
+} from "@/lib/feed-pagination";
 
 type DiscoverFeedProps = {
-  dictionary: AppDictionary;
+  copy: DiscoverFeedCopy;
+  filters: StoredOpportunityQuery;
   initialItems: StoredOpportunityFeedItem[];
+  initialNextOffset: number;
+  initialTotal: number;
   initialWatchedIds: string[];
   locale: AppLocale;
   routeBase: string;
-  total: number;
-  workspaceWritesEnabled: boolean;
-  filters: StoredOpportunityQuery;
+  signedIn: boolean;
 };
 
-const DISCOVER_BATCH_SIZE = 36;
-
-type OpportunityFeedPayload = {
-  opportunities: StoredOpportunityFeedItem[];
-  total: number;
-};
-
+/**
+ * The parent mounts this with `key` set to the serialized filters, so changing a filter
+ * discards the list, offsets and any pending state instead of merging into stale results.
+ *
+ * Load-more is self-managed: a ref blocks duplicate clicks synchronously, pages are merged by
+ * id, and the loaded count is written to the URL (`loaded`) so reload and the back button
+ * restore the same depth.
+ */
 export const DiscoverFeed = ({
-  dictionary,
+  copy,
   filters,
   initialItems,
+  initialNextOffset,
+  initialTotal,
   initialWatchedIds,
   locale,
   routeBase,
-  total,
-  workspaceWritesEnabled,
+  signedIn,
 }: DiscoverFeedProps) => {
-  const [items, setItems] = useState(initialItems);
+  const [feed, setFeed] = useState<FeedState<StoredOpportunityFeedItem>>(() =>
+    createFeedState(initialItems, initialTotal, initialNextOffset),
+  );
   const [watchedIds, setWatchedIds] = useState(() => new Set(initialWatchedIds));
-  const [loadedTotal, setLoadedTotal] = useState(total);
-  const [isPending, startTransition] = useTransition();
-  const hasMore = items.length < loadedTotal;
+  const [isLoading, setIsLoading] = useState(false);
+  const [failure, setFailure] = useState<ApiFailure | null>(null);
+  const inFlightRef = useRef(false);
+  const feedRef = useRef(feed);
+  const hasMore = hasMoreItems(feed);
 
-  const loadMore = () => {
-    if (isPending || !hasMore) {
+  const loadMore = async () => {
+    if (inFlightRef.current || !hasMoreItems(feedRef.current)) {
       return;
     }
 
-    startTransition(() => {
-      void (async () => {
-        const nextSearch = serializeSearchParams(
-          buildDiscoverSearchParams({
-            ...filters,
-            limit: DISCOVER_BATCH_SIZE,
-            offset: items.length,
-          }),
-        );
+    inFlightRef.current = true;
+    setIsLoading(true);
+    setFailure(null);
 
-        const response = await fetch(`/api/opportunities${nextSearch}`, {
-          headers: {
-            accept: "application/json",
-          },
-        });
+    const search = serializeSearchParams(
+      buildDiscoverSearchParams({ ...filters, limit: DISCOVER_PAGE_SIZE, offset: feedRef.current.nextOffset }),
+    );
+    const result = await requestJson<FeedPage<StoredOpportunityFeedItem>>(`/api/opportunities${search}`);
 
-        if (!response.ok) {
-          return;
-        }
+    inFlightRef.current = false;
+    setIsLoading(false);
+    if (!result.ok) {
+      setFailure(result.failure);
+      return;
+    }
 
-        const payload = (await response.json()) as OpportunityFeedPayload;
-        if (payload.opportunities.length === 0) {
-          setLoadedTotal(payload.total);
-          return;
-        }
+    const next = appendFeedPage(feedRef.current, result.data);
+    feedRef.current = next;
+    setFeed(next);
+    // Remember the depth without a navigation: reload and back keep the same number of items.
+    const url = `${routeBase}${serializeSearchParams(buildDiscoverPageSearchParams(filters, next.items.length))}`;
+    window.history.replaceState(window.history.state, "", url);
+  };
 
-        setItems((current) => [...current, ...payload.opportunities]);
-        setLoadedTotal(payload.total);
-      })();
+  const handleWatchChange = (opportunityId: string, nextWatched: boolean) => {
+    setWatchedIds((current) => {
+      const next = new Set(current);
+      if (nextWatched) {
+        next.add(opportunityId);
+      } else {
+        next.delete(opportunityId);
+      }
+      return next;
     });
   };
 
   return (
     <>
-      <section className="waterfall-feed" aria-label={dictionary.discover.feedRegionLabel}>
-        {items.map((opportunity, index) => (
+      <section aria-label={copy.discover.feedRegionLabel} className="waterfall-feed">
+        {feed.items.map((opportunity, index) => (
           <OpportunityStreamItem
-            dictionary={dictionary}
+            copy={copy}
             index={index}
             isWatched={watchedIds.has(opportunity.id)}
             key={opportunity.id}
             locale={locale}
-            onWatchChange={(nextWatched) => {
-              setWatchedIds((current) => {
-                const next = new Set(current);
-                if (nextWatched) {
-                  next.add(opportunity.id);
-                } else {
-                  next.delete(opportunity.id);
-                }
-                return next;
-              });
-            }}
+            onWatchChange={(nextWatched) => handleWatchChange(opportunity.id, nextWatched)}
             opportunity={opportunity}
-            workspaceWritesEnabled={workspaceWritesEnabled}
+            signedIn={signedIn}
           />
         ))}
       </section>
 
-      {hasMore ? (
-        <div className="discover-feed-footer">
-          <button className="button secondary discover-load-more" disabled={isPending} onClick={loadMore} type="button">
-            {isPending ? dictionary.discover.buttons.loadingMore : dictionary.discover.buttons.loadMore}
-          </button>
-          <p className="discover-feed-status">
-            {items.length} / {loadedTotal}
+      <div className="discover-feed-footer">
+        <p aria-live="polite" className="discover-feed-status" role="status">
+          {hasMore
+            ? fillTemplate(copy.common.templates.progress, { shown: feed.items.length, total: feed.total })
+            : copy.discover.feed.allLoaded}
+        </p>
+        {failure ? (
+          <p className="discover-feed-error" role="alert">
+            {copy.discover.feed.loadMoreError} {describeApiFailure(copy.common.apiErrors, failure)}
           </p>
-        </div>
-      ) : null}
+        ) : null}
+        {hasMore ? (
+          <button
+            aria-busy={isLoading}
+            className="button secondary discover-load-more"
+            disabled={isLoading}
+            onClick={() => void loadMore()}
+            type="button"
+          >
+            {isLoading
+              ? copy.discover.buttons.loadingMore
+              : failure
+                ? copy.common.retry
+                : copy.discover.buttons.loadMore}
+          </button>
+        ) : null}
+      </div>
     </>
   );
 };

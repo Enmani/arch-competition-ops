@@ -1,273 +1,148 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
 import type {
   StoredOpsReviewDecisionStatus,
   StoredOpsReviewQueueItem,
   StoredOpsReviewSummary,
-} from "@arch-competition/storage/cloudflare";
+} from "@arch-competition/storage";
 
 import OpsReviewToolbar from "@/components/ops-review-toolbar";
 import type { AppLocale } from "@/i18n/config";
 import type { AppDictionary } from "@/i18n/dictionaries";
+import { DATE_TIME_FORMAT, formatLocalizedDate } from "@/i18n/format";
+import { describeApiFailure, requestJson, sendJson } from "@/lib/api-client";
 
-type QueueResponse = {
-  items: StoredOpsReviewQueueItem[];
-  summary: StoredOpsReviewSummary;
-};
-
-type LoadQueueOptions = {
-  preserveError?: boolean;
-};
-
-const reviewReasonCodes = [
-  "source_parse_failures",
-  "source_run_failed",
-  "duplicate_cluster",
-  "low_confidence_record",
-  "evidence_conflict",
-  "submission_pending_review",
-] as const;
+type QueueResponse = { items: StoredOpsReviewQueueItem[]; summary: StoredOpsReviewSummary };
+type DecisionResponse = { item: StoredOpsReviewQueueItem; summary: StoredOpsReviewSummary };
+type ReviewCopy = AppDictionary["ops"]["review"];
 
 type OpsReviewQueueProps = {
+  apiErrors: AppDictionary["common"]["apiErrors"];
   initialItems: StoredOpsReviewQueueItem[];
   initialSummary: StoredOpsReviewSummary;
   locale: AppLocale;
-  opsDictionary: AppDictionary["ops"];
-  reviewEnabled: boolean;
+  review: ReviewCopy;
 };
 
-const localeCode = (locale: AppLocale) => (locale === "zh" ? "zh-CN" : "en-GB");
+const REASON_LABEL_KEYS = {
+  duplicate_cluster: "duplicateCluster",
+  evidence_conflict: "evidenceConflict",
+  low_confidence_record: "lowConfidenceRecord",
+  source_parse_failures: "sourceParseFailures",
+  source_run_failed: "sourceRunFailed",
+  submission_pending_review: "submissionPendingReview",
+} as const satisfies Record<string, keyof ReviewCopy["reasons"]>;
 
-const formatTimestamp = (value: string, locale: AppLocale) => {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
+const STATUS_LABEL_KEYS = {
+  accepted: "accepted",
+  needs_follow_up: "needsFollowUp",
+  pending: "pending",
+  rejected: "rejected",
+} as const satisfies Record<string, keyof ReviewCopy["status"]>;
 
-  return new Intl.DateTimeFormat(localeCode(locale), {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
-};
+const isKnown = <Key extends string>(map: Record<Key, string>, value: string): value is Key =>
+  Object.prototype.hasOwnProperty.call(map, value);
 
-const resolveStatusLabel = (
-  status: string,
-  dictionary: AppDictionary["ops"]["review"]["status"],
-) => {
-  switch (status) {
-    case "pending":
-      return dictionary.pending;
-    case "accepted":
-      return dictionary.accepted;
-    case "rejected":
-      return dictionary.rejected;
-    case "needs_follow_up":
-      return dictionary.needsFollowUp;
-    default:
-      return status;
-  }
-};
+const resolveReasonLabel = (reasonCode: string, reasons: ReviewCopy["reasons"]) =>
+  isKnown(REASON_LABEL_KEYS, reasonCode) ? reasons[REASON_LABEL_KEYS[reasonCode]] : reasonCode;
 
-const resolveReasonLabel = (
-  reasonCode: string,
-  dictionary: AppDictionary["ops"]["review"]["reasons"],
-) => {
-  switch (reasonCode) {
-    case "source_parse_failures":
-      return dictionary.sourceParseFailures;
-    case "source_run_failed":
-      return dictionary.sourceRunFailed;
-    case "duplicate_cluster":
-      return dictionary.duplicateCluster;
-    case "low_confidence_record":
-      return dictionary.lowConfidenceRecord;
-    case "evidence_conflict":
-      return dictionary.evidenceConflict;
-    case "submission_pending_review":
-      return dictionary.submissionPendingReview;
-    default:
-      return reasonCode;
-  }
-};
+const resolveStatusLabel = (status: string, labels: ReviewCopy["status"]) =>
+  isKnown(STATUS_LABEL_KEYS, status) ? labels[STATUS_LABEL_KEYS[status]] : status;
 
-const buildSignalLines = (
-  item: StoredOpsReviewQueueItem,
-  dictionary: AppDictionary["ops"]["review"]["meta"],
-) => {
+const buildSignalLines = (item: StoredOpsReviewQueueItem, meta: ReviewCopy["meta"]) => {
   const lines: string[] = [];
-
-  if (item.sourceId) {
-    lines.push(`${dictionary.source}: ${item.sourceId}`);
-  }
-  if (item.competitionId) {
-    lines.push(`${dictionary.competition}: ${item.competitionId}`);
-  }
-  if (item.noticeId) {
-    lines.push(`${dictionary.noticeId}: ${item.noticeId}`);
-  }
+  if (item.sourceId) lines.push(`${meta.source}: ${item.sourceId}`);
+  if (item.competitionId) lines.push(`${meta.competition}: ${item.competitionId}`);
+  if (item.noticeId) lines.push(`${meta.noticeId}: ${item.noticeId}`);
   const parseFailures = item.payload["lastParseFailureCount"];
-  if (typeof parseFailures === "number") {
-    lines.push(`${dictionary.parseFailures}: ${parseFailures}`);
-  }
+  if (typeof parseFailures === "number") lines.push(`${meta.parseFailures}: ${parseFailures}`);
   const duplicateCount = item.payload["duplicateCount"];
-  if (typeof duplicateCount === "number") {
-    lines.push(`${dictionary.duplicateCount}: ${duplicateCount}`);
-  }
-  const extractionConfidence = item.payload["extractionConfidence"];
-  if (typeof extractionConfidence === "number") {
-    lines.push(`${dictionary.confidence}: ${extractionConfidence.toFixed(2)}`);
-  }
-
+  if (typeof duplicateCount === "number") lines.push(`${meta.duplicateCount}: ${duplicateCount}`);
+  const confidence = item.payload["extractionConfidence"];
+  if (typeof confidence === "number") lines.push(`${meta.confidence}: ${confidence.toFixed(2)}`);
   return lines;
 };
 
-const OpsReviewQueue = ({
-  initialItems,
-  initialSummary,
-  locale,
-  opsDictionary,
-  reviewEnabled,
-}: OpsReviewQueueProps) => {
-  const dictionary = opsDictionary.review;
+const DECISIONS: Array<{ decision: StoredOpsReviewDecisionStatus; label: keyof ReviewCopy["actions"] }> = [
+  { decision: "accepted", label: "accept" },
+  { decision: "needs_follow_up", label: "followUp" },
+  { decision: "rejected", label: "reject" },
+  { decision: "pending", label: "reopen" },
+];
+
+const OpsReviewQueue = ({ apiErrors, initialItems, initialSummary, locale, review: dictionary }: OpsReviewQueueProps) => {
   const [items, setItems] = useState(initialItems);
   const [summary, setSummary] = useState(initialSummary);
-  const [statusFilter, setStatusFilter] = useState<string>("pending");
-  const [reasonFilter, setReasonFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState("pending");
+  const [reasonFilter, setReasonFilter] = useState("all");
   const [isLoading, setIsLoading] = useState(false);
   const [busyQueueId, setBusyQueueId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const busyRef = useRef(false);
+  const requestSequence = useRef(0);
   const skippedInitialFetch = useRef(false);
-  const busyQueueIdRef = useRef<string | null>(null);
 
-  const loadQueue = useCallback(
-    async (nextStatus: string, nextReason: string, options?: LoadQueueOptions) => {
-      setIsLoading(true);
-      if (!options?.preserveError) {
-        setErrorMessage(null);
-      }
-
-      try {
-        const searchParams = new URLSearchParams({
-          activeOnly: "true",
-          limit: "50",
-          reasonCode: nextReason,
-          status: nextStatus,
-        });
-        const response = await fetch(`/api/ops/review?${searchParams.toString()}`, {
-          cache: "no-store",
-        });
-        const payload = (await response.json()) as QueueResponse & { error?: string };
-
-        if (!response.ok) {
-          throw new Error(payload.error || dictionary.errors.load);
-        }
-
-        setItems(payload.items);
-        setSummary(payload.summary);
-        return true;
-      } catch {
-        if (!options?.preserveError) {
-          setErrorMessage(dictionary.errors.load);
-        }
-        return false;
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [dictionary.errors.load],
-  );
-
-  const handleStatusChange = useCallback((nextStatus: string) => {
-    if (busyQueueIdRef.current !== null) {
+  // Latest-request-wins: a slow response for an old filter must not overwrite a newer one.
+  const loadQueue = async (status: string, reason: string) => {
+    const sequence = ++requestSequence.current;
+    setIsLoading(true);
+    setErrorMessage(null);
+    const search = new URLSearchParams({ activeOnly: "true", limit: "50", reasonCode: reason, status });
+    const result = await requestJson<QueueResponse>(`/api/ops/review?${search.toString()}`, { cache: "no-store" });
+    if (sequence !== requestSequence.current) {
       return;
     }
-
-    setStatusFilter(nextStatus);
-  }, []);
-
-  const handleReasonChange = useCallback((nextReason: string) => {
-    if (busyQueueIdRef.current !== null) {
+    setIsLoading(false);
+    if (!result.ok) {
+      setErrorMessage(`${dictionary.errors.load} ${describeApiFailure(apiErrors, result.failure)}`);
       return;
     }
-
-    setReasonFilter(nextReason);
-  }, []);
-
-  const handleRefresh = useCallback(() => {
-    if (busyQueueIdRef.current !== null) {
-      return;
-    }
-
-    void loadQueue(statusFilter, reasonFilter);
-  }, [loadQueue, reasonFilter, statusFilter]);
-
-  const applyDecision = useCallback(
-    async (queueId: string, decision: StoredOpsReviewDecisionStatus) => {
-      if (busyQueueIdRef.current !== null) {
-        return;
-      }
-
-      busyQueueIdRef.current = queueId;
-      setBusyQueueId(queueId);
-      setErrorMessage(null);
-
-      try {
-        const response = await fetch(`/api/ops/review/${encodeURIComponent(queueId)}`, {
-          method: "PATCH",
-          headers: {
-            "content-type": "application/json",
-          },
-          body: JSON.stringify({ decision }),
-        });
-        const payload = (await response.json()) as
-          | { error?: string; item: StoredOpsReviewQueueItem; summary: StoredOpsReviewSummary }
-          | { error?: string };
-
-        if (!response.ok || !("item" in payload) || !("summary" in payload)) {
-          throw new Error(("error" in payload && payload.error) || dictionary.errors.decision);
-        }
-
-        setItems((currentItems) => {
-          const nextItems = currentItems.map((item) =>
-            item.queueId === queueId ? payload.item : item,
-          );
-          const matchesStatus = statusFilter === "all" || payload.item.status === statusFilter;
-          const matchesReason = reasonFilter === "all" || payload.item.reasonCode === reasonFilter;
-
-          return matchesStatus && matchesReason
-            ? nextItems
-            : nextItems.filter((item) => item.queueId !== queueId);
-        });
-        setSummary(payload.summary);
-        const reloaded = await loadQueue(statusFilter, reasonFilter, { preserveError: true });
-
-        if (!reloaded) {
-          setErrorMessage(dictionary.errors.load);
-        }
-      } catch {
-        setErrorMessage(dictionary.errors.decision);
-      } finally {
-        if (busyQueueIdRef.current === queueId) {
-          busyQueueIdRef.current = null;
-        }
-        setBusyQueueId((currentQueueId) => (currentQueueId === queueId ? null : currentQueueId));
-      }
-    },
-    [dictionary.errors.decision, dictionary.errors.load, loadQueue, reasonFilter, statusFilter],
-  );
+    setItems(result.data.items);
+    setSummary(result.data.summary);
+  };
 
   useEffect(() => {
     if (!skippedInitialFetch.current) {
       skippedInitialFetch.current = true;
       return;
     }
-
     void loadQueue(statusFilter, reasonFilter);
-  }, [loadQueue, reasonFilter, statusFilter]);
+    // loadQueue only closes over stable setters and refs; the filters are the real inputs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter, reasonFilter]);
 
-  const queueWriteBusy = busyQueueId !== null;
+  const applyDecision = async (queueId: string, decision: StoredOpsReviewDecisionStatus) => {
+    if (busyRef.current) {
+      return;
+    }
+    busyRef.current = true;
+    setBusyQueueId(queueId);
+    setErrorMessage(null);
 
+    const result = await sendJson<DecisionResponse>(`/api/ops/review/${encodeURIComponent(queueId)}`, "PATCH", {
+      decision,
+    });
+    if (result.ok) {
+      const { item, summary: nextSummary } = result.data;
+      const matches =
+        (statusFilter === "all" || item.status === statusFilter) &&
+        (reasonFilter === "all" || item.reasonCode === reasonFilter);
+      setItems((current) =>
+        matches
+          ? current.map((entry) => (entry.queueId === queueId ? item : entry))
+          : current.filter((entry) => entry.queueId !== queueId),
+      );
+      setSummary(nextSummary);
+    } else {
+      setErrorMessage(`${dictionary.errors.decision} ${describeApiFailure(apiErrors, result.failure)}`);
+    }
+    busyRef.current = false;
+    setBusyQueueId(null);
+  };
+
+  const actionsDisabled = isLoading || busyQueueId !== null;
   const statusOptions = [
     { value: "pending", label: dictionary.filters.pending },
     { value: "needs_follow_up", label: dictionary.filters.needsFollowUp },
@@ -277,47 +152,45 @@ const OpsReviewQueue = ({
   ];
   const reasonOptions = [
     { value: "all", label: dictionary.filters.allReasons },
-    ...reviewReasonCodes.map((reasonCode) => ({
+    ...Object.keys(REASON_LABEL_KEYS).map((reasonCode) => ({
       value: reasonCode,
       label: resolveReasonLabel(reasonCode, dictionary.reasons),
     })),
   ];
+  const formatTimestamp = (value: string) => formatLocalizedDate(locale, value, DATE_TIME_FORMAT) ?? value;
 
   return (
     <>
       <OpsReviewToolbar
-        counts={{
-          active: summary.active,
-          pending: summary.pending,
-          needsFollowUp: summary.needsFollowUp,
-          accepted: summary.accepted,
-          rejected: summary.rejected,
-        }}
+        counts={summary}
         dictionary={dictionary}
-        isBusy={queueWriteBusy}
+        isBusy={busyQueueId !== null}
         isLoading={isLoading}
-        onReasonChange={handleReasonChange}
-        onRefresh={handleRefresh}
-        onStatusChange={handleStatusChange}
+        onReasonChange={(value) => !busyRef.current && setReasonFilter(value)}
+        onRefresh={() => !busyRef.current && void loadQueue(statusFilter, reasonFilter)}
+        onStatusChange={(value) => !busyRef.current && setStatusFilter(value)}
         reasonOptions={reasonOptions}
         reasonValue={reasonFilter}
-        reviewEnabled={reviewEnabled}
         statusOptions={statusOptions}
         statusValue={statusFilter}
       />
 
-      {!reviewEnabled ? (
-        <div className="ops-review-readonly">
-          <strong>{dictionary.readOnly.title}</strong>
-          <p>{dictionary.readOnly.body}</p>
-        </div>
+      {errorMessage ? (
+        <p className="ops-review-error" role="alert">
+          {errorMessage}{" "}
+          <button
+            className="button secondary"
+            onClick={() => void loadQueue(statusFilter, reasonFilter)}
+            type="button"
+          >
+            {dictionary.actions.refresh}
+          </button>
+        </p>
       ) : null}
 
-      {errorMessage ? <p className="ops-review-error">{errorMessage}</p> : null}
-
-      <div className="table-panel">
+      <div aria-busy={isLoading} className="table-panel">
         {items.length === 0 ? (
-          <div className="ops-review-empty">
+          <div className="ops-review-empty" role="status">
             <strong>{dictionary.empty.title}</strong>
             <p>{dictionary.empty.body}</p>
           </div>
@@ -325,11 +198,11 @@ const OpsReviewQueue = ({
           <table>
             <thead>
               <tr>
-                <th>{dictionary.table.record}</th>
-                <th>{dictionary.table.reason}</th>
-                <th>{dictionary.table.detected}</th>
-                <th>{dictionary.table.status}</th>
-                <th>{dictionary.table.actions}</th>
+                <th scope="col">{dictionary.table.record}</th>
+                <th scope="col">{dictionary.table.reason}</th>
+                <th scope="col">{dictionary.table.detected}</th>
+                <th scope="col">{dictionary.table.status}</th>
+                <th scope="col">{dictionary.table.actions}</th>
               </tr>
             </thead>
             <tbody>
@@ -350,32 +223,23 @@ const OpsReviewQueue = ({
                           ))}
                         </div>
                       ) : null}
-                      {item.evidenceNote ? (
-                        <p className="brand-caption ops-review-note">{item.evidenceNote}</p>
-                      ) : null}
+                      {item.evidenceNote ? <p className="brand-caption ops-review-note">{item.evidenceNote}</p> : null}
                     </td>
                     <td>
-                      <span className="pill ops-review-reason">
-                        {resolveReasonLabel(item.reasonCode, dictionary.reasons)}
-                      </span>
+                      <span className="pill ops-review-reason">{resolveReasonLabel(item.reasonCode, dictionary.reasons)}</span>
                     </td>
                     <td>
-                      <strong>{formatTimestamp(item.lastDetectedAt, locale)}</strong>
+                      <strong>{formatTimestamp(item.lastDetectedAt)}</strong>
                       <br />
-                      <span className="brand-caption">
-                        {item.isActive ? dictionary.meta.active : dictionary.meta.inactive}
-                      </span>
+                      <span className="brand-caption">{item.isActive ? dictionary.meta.active : dictionary.meta.inactive}</span>
                       {item.latestDecision ? (
                         <>
                           <br />
                           <span className="brand-caption">
-                            {dictionary.meta.latestDecision}:{" "}
-                            {resolveStatusLabel(item.latestDecision.decision, dictionary.status)}
+                            {dictionary.meta.latestDecision}: {resolveStatusLabel(item.latestDecision.decision, dictionary.status)}
                           </span>
                           <br />
-                          <span className="brand-caption">
-                            {formatTimestamp(item.latestDecision.createdAt, locale)}
-                          </span>
+                          <span className="brand-caption">{formatTimestamp(item.latestDecision.createdAt)}</span>
                         </>
                       ) : null}
                     </td>
@@ -386,49 +250,17 @@ const OpsReviewQueue = ({
                     </td>
                     <td>
                       <div className="ops-review-actions">
-                        <button
-                          className="button secondary"
-                          disabled={
-                            !reviewEnabled || isLoading || queueWriteBusy || item.status === "accepted"
-                          }
-                          onClick={() => void applyDecision(item.queueId, "accepted")}
-                          type="button"
-                        >
-                          {dictionary.actions.accept}
-                        </button>
-                        <button
-                          className="button secondary"
-                          disabled={
-                            !reviewEnabled
-                            || isLoading
-                            || queueWriteBusy
-                            || item.status === "needs_follow_up"
-                          }
-                          onClick={() => void applyDecision(item.queueId, "needs_follow_up")}
-                          type="button"
-                        >
-                          {dictionary.actions.followUp}
-                        </button>
-                        <button
-                          className="button secondary"
-                          disabled={
-                            !reviewEnabled || isLoading || queueWriteBusy || item.status === "rejected"
-                          }
-                          onClick={() => void applyDecision(item.queueId, "rejected")}
-                          type="button"
-                        >
-                          {dictionary.actions.reject}
-                        </button>
-                        <button
-                          className="button secondary"
-                          disabled={
-                            !reviewEnabled || isLoading || queueWriteBusy || item.status === "pending"
-                          }
-                          onClick={() => void applyDecision(item.queueId, "pending")}
-                          type="button"
-                        >
-                          {dictionary.actions.reopen}
-                        </button>
+                        {DECISIONS.map(({ decision, label }) => (
+                          <button
+                            className="button secondary"
+                            disabled={actionsDisabled || item.status === decision}
+                            key={decision}
+                            onClick={() => void applyDecision(item.queueId, decision)}
+                            type="button"
+                          >
+                            {dictionary.actions[label]}
+                          </button>
+                        ))}
                       </div>
                     </td>
                   </tr>

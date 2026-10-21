@@ -1,361 +1,103 @@
 ---
 title: Architecture
-status: 已完成
-updated_at: 2026-04-20
+status: done
+updated_at: 2026-10-21
 related_docs:
   - vision.md
+  - AGENTS.md
   - docs/AI_CONSTRAINTS.md
-  - README.md
+  - docs/DATA_CONTRACT.md
+  - docs/structures/2026-10-21-storage-auth-api-architecture.md
+  - CLOUDFLARE_DEPLOY_RUNBOOK.md
 ---
 
 # Architecture
 
+This file is the system overview. Detailed decisions live in `docs/structures/`; the rules agents must follow live in `AGENTS.md`.
+
 ## Product Position
 
-This repository is not a generic architecture competition directory.
+A professional opportunity radar for licensed architects and established design teams who need public-sector work with a credible path to implementation. Official procurement and authority sources outrank media visibility. The product prefers design-contest notices, design-service procurement, framework agreements and negotiated follow-on appointments, and downgrades speculative idea contests, student-only competitions and publicity-driven calls.
 
-It is a professional opportunity radar for licensed architects and established design teams who need public-sector opportunities with a credible path to implementation.
+Primary users are licensed architects and studios; secondary users are practice managers and bid coordinators.
 
-The product is built around one operating assumption:
-
-- official procurement and contracting sources matter more than media visibility
-
-That means the platform prefers:
-
-- design contest notices
-- design service procurement
-- framework agreements
-- negotiated follow-on appointments after competitions
-
-And it explicitly downgrades:
-
-- speculative idea contests
-- student-only competitions
-- publicity-driven calls with no downstream commission path
-
-## User Model
-
-Primary user:
-
-- licensed architect
-- established studio or emerging practice with professional qualification
-- searching for public opportunities that can lead to built work or design service revenue
-
-Secondary user:
-
-- practice manager
-- business development lead
-- competition coordinator
-
-## Architecture Overview
+## Overview
 
 ```text
-official procurement portals + authority pages + secondary discovery sources
-                                |
-                                v
-                     apps/worker ingestion pipeline
-       collect -> parse -> normalize -> qualify -> verify -> persist
-                                |
-                                v
-                     canonical structured opportunity store
-                                |
-              +-----------------+-----------------+
-              |                                   |
-              v                                   v
-        apps/web public surface             apps/web operator surface
-    discover / detail / search           dashboard / ops / review flows
+official procurement portals + authority pages + secondary sources
+                          |
+                          v
+        apps/worker (Python): collect -> extract -> normalize -> verify -> store
+                          |
+                          v   SQLite  data/competitions.sqlite  (worker-owned tables)
+                          |
+                          |  scripts/export-d1-data.mjs   incremental upserts, never touches user tables
+                          v
+        Cloudflare D1  <-- schema from apps/web/migrations/*.sql
+                          ^
+                          |  D1 binding (production)  /  better-sqlite3 (local next dev)
+        packages/storage  (one implementation, one SQL dialect)
+                          ^
+        apps/web (Next.js on Cloudflare Workers via OpenNext): discover, detail, dashboard, ops, API
 ```
 
-## System Boundaries
+Data flows one way: the worker writes opportunities, the web app reads them and writes only what it owns (accounts, sessions, watchlists, saved searches, review decisions).
 
-### `apps/worker`
+## Modules
 
-Owns:
+| Module | Owns | Does not own |
+| --- | --- | --- |
+| `apps/worker/src/arch_competition_ops` | Source loading, collection, extraction, normalization, verification, SQLite persistence | Presentation, accounts, per-user state |
+| `apps/web` | Pages, route handlers (thin), auth and CSRF, migrations | Source parsing, inventing facts |
+| `packages/storage` | Queries and row mapping for every web read and write, password hashing, sessions | HTTP, cookies, business-rule copies |
+| `packages/core` | Vocabularies, zod contracts, fee rule, logger | Database access |
+| `config/` | Source registry and packs, filters, taxonomy, automation batches | Secrets |
+| `scripts/` | D1 export, Windows scheduled ingestion, docs scan | Runtime logic |
 
-- source registry loading
-- procurement and authority page collection
-- field extraction
-- normalization into the canonical schema
-- qualification scoring
-- verification state transitions
-- SQLite persistence for local-first development
+Storage, authentication and the API contract are specified in `docs/structures/2026-10-21-storage-auth-api-architecture.md`. The migrations in `apps/web/migrations/` are the only schema authority; the worker's `storage/schema.py` mirrors them and `apps/worker/tests/test_schema_parity.py` fails on drift.
 
-Does not own:
+## Worker Layout
 
-- frontend presentation
-- public search experience
-- auth and per-user state
+- `collectors/` one module per upstream shape (TED, BOAMP, ANAC, GGZY, municipal portals, RSS ...), selected by `collector:` in `config/source_packs/`; `collectors/ggzy/` and `collectors/municipal/` are packages.
+- `extractors/` turn a fetched document into a `CompetitionRecord` using only evidence in the notice.
+- `normalizers/` dates, money, text, identity keys and the confidence formula.
+- `verifiers/` compare secondary records with official or authority pages.
+- `http/` the single HTTP client: retries for GET, per-host rate limit, size cap, charset detection, SSRF guards, optional raw-response archive under `artifacts/html`.
+- `storage/` SQLite connection, schema mirror, field-level merge upsert (`merge.py`), run history, review queue.
+- `postprocess/` source-specific maintenance tasks registered by `source_id` (ANAC, GETS), so core modules stay source-agnostic.
+- `locking.py` OS-level lock that serializes scheduled batches; `clock.py` the single clock, overridable with `ARCH_COMPETITION_TODAY`.
+- `ingest.py`, `automation.py`, `maintenance.py`, `diagnostics.py`, `cli.py` the pipeline, batches, clean-up, health checks and command line.
 
-### `apps/web`
+An ingest records a run per source, writes all records of a source in one transaction, and skips (and reports) individual documents that fail instead of aborting the batch. Failures are reported through exit codes (see `apps/worker/README.md`).
 
-Owns:
+## Record Model And Truth Rules
 
-- public discovery pages
-- opportunity detail pages
-- private practice-facing dashboard
-- ops and verification UI
-- API routes for UI consumption
+The canonical object is a professional design opportunity, not a competition listing. Core fields include title, `authority_name`, `organizer` (the buyer, empty when unknown), `source_id`/`source_name` (the publishing platform), `official_url`, `source_url`, `official_notice_id`, jurisdiction, procedure type, CPV codes, implementation path, fees, estimated contract value, deadline, eligibility summary, evidence level, qualification score and status.
 
-Does not own:
+Fee, currency, eligibility, identity and merge rules are in `docs/DATA_CONTRACT.md`. Short form: unknown stays unknown (`NULL` fee means pending), values are only taken from explicit evidence, a re-ingest never erases evidence or human decisions, and an official source wins over an aggregator with the conflict kept in `evidence_note`.
 
-- source truth generation
-- procurement fact inference
-- source parsing logic
+## Qualification
 
-### `packages/core`
-
-Owns:
-
-- shared TypeScript contracts for UI-facing opportunity objects
-- shared sample and seed shapes for frontend development
-- summary-level derived helpers used by the web app
-
-### `packages/storage`
-
-Owns:
-
-- server-side SQLite reads for the web app
-- row-to-contract mapping between worker persistence and UI objects
-- fallback behavior when the canonical store is unavailable
-
-### `config/*`
-
-Owns:
-
-- source registration
-- targeting preferences
-- controlled vocabulary and taxonomy
-
-## Source Strategy
-
-The platform uses a tiered source model.
-
-### Tier 1: Primary official procurement
-
-Examples:
-
-- TED
-- BOAMP
-- simap
-- ANAC / BDNCP
-- national public contract hubs
-
-Use:
-
-- first-pass ingestion
-- official notice IDs
-- procedure type detection
-- procurement fact verification
-
-### Tier 2: Primary authority pages
-
-Examples:
-
-- buyer profiles
-- municipal procurement pages
-- regional agency tender pages
-
-Use:
-
-- confirm attachments and addenda
-- verify dossier links
-- capture local qualification constraints
-
-### Tier 3: Secondary discovery
-
-Examples:
-
-- aggregators
-- media listings
-- professional association roundups
-
-Use:
-
-- discovery hints only
-- never final authority for critical facts
-
-## Canonical Opportunity Model
-
-The platform should treat the canonical object as a professional design opportunity, not merely a competition listing.
-
-Minimum core fields:
-
-- `title`
-- `authority_name`
-- `organizer`
-- `official_url`
-- `source_url`
-- `official_notice_id`
-- `jurisdiction`
-- `opportunity_type`
-- `procedure_type`
-- `competition_types`
-- `cpv_codes`
-- `implementation_path`
-- `licensed_architect_required`
-- `local_partner_required`
-- `registration_fee_eur`
-- `submission_fee_eur`
-- `estimated_contract_value_eur`
-- `estimated_contract_value_text`
-- `deadline_at`
-- `eligibility_summary`
-- `evidence_level`
-- `qualification_score`
-- `status`
-
-Why this matters:
-
-- `competition` is too narrow
-- public-sector architectural work often appears as procurement, not as branded competitions
-- qualification fit and implementation route are more valuable than aesthetic category labels
-
-## Qualification Model
-
-The platform should rank opportunities by professional value, not by surface popularity.
-
-### Strong positive signals
-
-- official procurement notice exists
-- contracting authority is explicit
-- procedure type is explicit
-- downstream implementation route exists
-- architect qualification is required or strongly implied
-- budget or service value is visible
-- dossier or brief is available
-
-### Negative signals
-
-- participation fee with no implementation path
-- student-only or open-to-all call
-- no identifiable authority
-- no notice identifier
-- no contract continuation or built-work path
-- rights-heavy publicity contests
-
-### Output
-
-Use a `qualification_score` in the data layer and expose it where it supports judgment, especially in operator views and selected public detail contexts.
-
-This score is not a beauty score. It is a professional viability score.
-
-## Worker Pipeline
-
-### 1. Discovery
-
-Read `config/sources.yml` and collect candidate records from enabled primary and secondary sources.
-
-### 2. Parsing
-
-Extract:
-
-- authority
-- notice type
-- deadlines
-- qualification signals
-- contract value signals
-- implementation path
-
-### 3. Normalization
-
-Map multilingual procurement wording into canonical labels:
-
-- `concorso di progettazione`
-- `avis de concours`
-- `maitrise d'oeuvre`
-- `design contest notice`
-- `planning competition`
-
-For commercial value:
-
-- keep `estimated_contract_value_eur` only when the source amount is explicitly EUR or already normalized to EUR by the source
-- keep `estimated_contract_value_text` for the official raw amount signal when the source is explicit but uses another currency or only exposes a display string
-- do not coerce native-currency source amounts into EUR without an explicit upstream EUR value
-
-### 4. Qualification
-
-Apply procurement-first ranking and downrank speculative calls.
-
-### 5. Verification
-
-Where secondary discovery conflicts with official sources, official sources win and the conflict is preserved in `evidence_note`.
-
-### 6. Persistence
-
-Store normalized opportunities in SQLite during local development. The schema should remain compatible with later migration to Postgres.
+`qualification_score` is a professional viability score, not a popularity score. Positive signals: an official notice, an explicit authority and procedure type, a downstream implementation route, architect qualification required, a visible budget and an available brief. Negative signals: participation fees with no implementation path, student-only or open-to-all calls, no identifiable authority or notice id, and rights-heavy publicity contests. The score is computed in the worker (`normalizers/competition.py`) and only displayed by the web app.
 
 ## Web Surface
 
-The public browse experience is intentionally split in two:
+- Discover: image-led compact cards for first-pass screening; filters, sort, paging and facets are computed in SQL.
+- Detail: authority, procedure, implementation route, qualification requirements, commercial signals, evidence note and official links.
+- Dashboard: the signed-in user's private watchlist and saved searches.
+- Ops console (administrators only): source health, duplicate pressure, review queue and decisions.
+- Opportunity card previews are generated offline by `packages/previews` (satellite imagery, official images, a `manifest.json`); the Web image route only serves what the manifest names and otherwise draws a placeholder. The worker can run the generator after ingest (`ARCH_PREVIEW_PREWARM=1`). See `docs/structures/2026-10-21-preview-pipeline-architecture.md`.
 
-- `discover` optimizes for fast first-pass screening
-- `detail` owns the expanded record, evidence, and qualification context
+## Deployment
 
-### Public discovery
+Production is one Cloudflare Worker (OpenNext bundle with static assets) plus one D1 database, bound as `DB` in `apps/web/wrangler.jsonc`. The worker pipeline runs on an operator machine (Windows scheduled tasks or any scheduler), and its results reach D1 with `npm run d1:export-data` followed by a D1 import. Procedure, secrets and rollback: `CLOUDFLARE_DEPLOY_RUNBOOK.md`. Local development needs no Cloudflare account.
 
-Needs:
+## Source Strategy
 
-- compact image-led opportunity cards for first-pass screening
-- jurisdiction filters
-- procedure filters
-- qualification-oriented sorting
-- visible title, location, deadline, and value at scan speed
-- clear separation between verified and merely discovered records
-- direct handoff into the detail page for the full record
+1. Primary official procurement (TED, BOAMP, simap, ANAC/BDNCP, national hubs): first-pass ingestion, official notice ids, procedure detection.
+2. Primary authority pages (buyer profiles, municipal and regional pages): confirm attachments and addenda, capture local qualification constraints.
+3. Secondary discovery (aggregators, media, association round-ups): discovery hints only, never the final authority for a critical fact.
 
-### Opportunity detail
+## Why This Shape
 
-Needs:
-
-- authority and procedure
-- implementation route
-- full qualification requirements
-- full commercial signal and participation cost context
-- evidence note and evidence-trace context
-- official links
-
-### Practice dashboard
-
-Needs:
-
-- shortlist state
-- reminders
-- teaming notes
-- jurisdictional watchlists
-- AI briefing based on verified facts
-
-### Ops console
-
-Needs:
-
-- source freshness
-- parser failure tracking
-- duplicate clusters
-- verification backlog
-- primary-source coverage by jurisdiction
-
-## Persistence Strategy
-
-Current local-first persistence:
-
-- SQLite in `data/competitions.sqlite`
-
-Planned evolution:
-
-- move the canonical application store to Postgres
-- keep raw fetched artifacts outside the application database
-- retain a clear separation between raw artifacts, normalized records, and derived summaries
-
-## Why This Architecture
-
-This structure avoids the main failure mode of architecture competition products:
-
-- looking broad but being unusable for real practices
-
-The system is intentionally narrow:
-
-- official-source-first
-- qualification-aware
-- implementation-oriented
-
-That constraint is the product advantage.
+The system is deliberately narrow: official-source-first, qualification-aware and implementation-oriented. That constraint is the product advantage; the architecture keeps facts in the worker and storage layers so the website cannot drift into inventing them.

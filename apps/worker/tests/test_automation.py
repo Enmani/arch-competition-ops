@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-from pathlib import Path
-
-from arch_competition_ops.automation import load_automation_config, resolve_batch_sources, run_automation_batch
+from arch_competition_ops.automation import (
+    load_automation_config,
+    resolve_batch_sources,
+    run_automation_batch,
+)
+from arch_competition_ops.ingest import IngestResult
 from arch_competition_ops.settings import Settings
 
 
@@ -37,6 +40,7 @@ sources:
     kind: official_procurement
     jurisdiction: eu
     base_url: https://ted.europa.eu/
+    collector: ted_search_api
     scan_method: api
     extractor: ted_notice_parser
     enabled: true
@@ -45,6 +49,7 @@ sources:
     kind: authority_portal
     jurisdiction: germany
     base_url: https://example.gov/
+    collector: municipal_buyer_profiles
     scan_method: html
     extractor: buyer_profile_parser
     enabled: true
@@ -53,6 +58,7 @@ sources:
     kind: aggregator
     jurisdiction: global
     base_url: https://example.com/
+    collector: disabled_scaffold
     scan_method: html
     extractor: generic_listing_html
     enabled: false
@@ -73,7 +79,9 @@ batches:
     settings = Settings(root=tmp_path)
 
     official_batch, official_sources = resolve_batch_sources(settings, batch_id="official_daytime")
-    secondary_batch, secondary_sources = resolve_batch_sources(settings, batch_id="secondary_nightly")
+    secondary_batch, secondary_sources = resolve_batch_sources(
+        settings, batch_id="secondary_nightly"
+    )
 
     assert official_batch.batch_id == "official_daytime"
     assert [source.source_id for source in official_sources] == ["ted_design_notices"]
@@ -81,7 +89,9 @@ batches:
     assert [source.source_id for source in secondary_sources] == ["municipal_buyer_profiles"]
 
 
-def test_run_automation_batch_uses_default_window_and_accumulates_results(tmp_path, monkeypatch) -> None:
+def test_run_automation_batch_uses_default_window_and_accumulates_results(
+    tmp_path, monkeypatch
+) -> None:
     (tmp_path / "config").mkdir(parents=True)
     (tmp_path / "config" / "sources.yml").write_text(
         """
@@ -91,6 +101,7 @@ sources:
     kind: official_procurement
     jurisdiction: eu
     base_url: https://ted.europa.eu/
+    collector: ted_search_api
     scan_method: api
     extractor: ted_notice_parser
     enabled: true
@@ -99,6 +110,7 @@ sources:
     kind: official_procurement
     jurisdiction: switzerland
     base_url: https://www.simap.ch/
+    collector: simap_project_api
     scan_method: api
     extractor: simap_notice_parser
     enabled: true
@@ -118,10 +130,14 @@ batches:
 
     captured_calls: list[tuple[str, int, str | None]] = []
 
-    def fake_ingest_source(settings: Settings, *, source_id: str, limit: int, publication_date_from: str | None):
+    def fake_ingest_source(
+        settings: Settings, *, source_id: str, limit: int, publication_date_from: str | None
+    ):
         del settings
         captured_calls.append((source_id, limit, publication_date_from))
-        return [f"{source_id}-001"]
+        return IngestResult(
+            source_id=source_id, status="success", ingested_ids=[f"{source_id}-001"]
+        )
 
     monkeypatch.setattr("arch_competition_ops.automation.ingest_source", fake_ingest_source)
 

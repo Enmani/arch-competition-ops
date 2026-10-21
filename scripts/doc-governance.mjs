@@ -1,408 +1,137 @@
+// Documentation scan: `node scripts/doc-governance.mjs scan [--root <dir>] [--stale-days <n>] [--strict]`
+//
+// Checks every Markdown file under docs/ plus AGENTS.md for:
+//   1. frontmatter with title, status and a real ISO updated_at date;
+//   2. a status from the single vocabulary documented in docs/plans/README.md;
+//   3. frontmatter paths (vision_doc, goal_doc, structure_doc, related_docs) that exist;
+//   4. relative Markdown links ([text](path)) that resolve to an existing file;
+//   5. staleness: a doc with status "in-progress" whose updated_at is older than --stale-days
+//      (default 60). Staleness is a warning; with --strict it fails the scan.
+// Errors exit with code 1. The script rewrites nothing.
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const ROOT = process.cwd();
-const GOVERNED_ROOTS = [
-  'docs/roadmaps',
-  'docs/goals',
-  'docs/structures',
-  'docs/plans',
-  'docs/research',
-  'docs/changelog',
-];
-const MARKDOWN_ROOTS = ['docs'];
-const EXTRA_FILES = ['vision.md', 'AGENTS.md', 'README.md'];
+export const STATUSES = new Set(['draft', 'not-started', 'in-progress', 'done', 'archived']);
 const REQUIRED_FIELDS = ['title', 'status', 'updated_at'];
-const ALLOWED_STATUS = new Set([
-  '未实施',
-  '施工中',
-  '已完成',
-  'draft',
-  'planned',
-  'in_progress',
-  'done',
-  'blocked',
-  'archived',
-]);
-const FRONTMATTER_ORDER = ['title', 'vision_doc', 'goal_doc', 'structure_doc', 'status', 'updated_at', 'related_docs'];
-const SPECIAL_BASENAMES = new Set(['README.md', 'AGENTS.md', '_template.md']);
+const PATH_FIELDS = ['vision_doc', 'goal_doc', 'structure_doc'];
+const ROOT_FILES = ['AGENTS.md'];
+const DAY_MS = 24 * 60 * 60 * 1000;
 
-main();
-
-function main() {
-  const [command, ...rest] = process.argv.slice(2);
-  const args = parseArgs(rest);
-
-  if (!command || command === 'help' || command === '--help') {
-    printHelp();
-    return;
-  }
-
-  try {
-    if (command === 'scan') {
-      runScan(resolveFiles(args, { governedOnly: true }));
-      return;
-    }
-
-    if (command === 'check-encoding') {
-      runEncodingCheck(resolveFiles(args, { governedOnly: false }));
-      return;
-    }
-
-    if (command === 'normalize') {
-      const file = requireFileArg(args);
-      normalizeFile(file, args);
-      console.log(`normalized ${toPosix(file)}`);
-      return;
-    }
-
-    if (command === 'set-status') {
-      const file = requireFileArg(args);
-      const status = String(args.status || '').trim();
-      if (!ALLOWED_STATUS.has(status)) {
-        throw new Error(`Unsupported status: ${status}`);
-      }
-      const parsed = readMarkdown(file);
-      parsed.data.status = status;
-      parsed.data.updated_at = today();
-      writeMarkdown(file, parsed.data, parsed.body);
-      console.log(`status updated ${toPosix(file)} -> ${status}`);
-      return;
-    }
-
-    if (command === 'write') {
-      const file = requireFileArg(args);
-      const content = resolveWriteContent(args);
-      fs.mkdirSync(path.dirname(file), { recursive: true });
-      fs.writeFileSync(file, content, 'utf8');
-      console.log(`wrote ${toPosix(file)}`);
-      return;
-    }
-
-    if (command === 'rename') {
-      const file = requireFileArg(args);
-      const target = requireTargetArg(args);
-      renameMarkdown(file, target);
-      console.log(`renamed ${toPosix(file)} -> ${toPosix(target)}`);
-      return;
-    }
-
-    throw new Error(`Unknown command: ${command}`);
-  } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
-    process.exitCode = 1;
+function walk(dir, files) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const abs = path.join(dir, entry.name);
+    if (entry.isDirectory()) walk(abs, files);
+    else if (entry.isFile() && abs.endsWith('.md')) files.push(abs);
   }
 }
 
-function printHelp() {
-  console.log(`doc-governance.mjs
+function unquote(value) {
+  const quoted = /^(["']).*\1$/.test(value);
+  return quoted ? value.slice(1, -1) : value;
+}
 
-Commands:
-  scan [--file <path[,path]>]
-  check-encoding [--file <path[,path]>]
-  normalize --file <path> [--title <title>] [--status <status>]
-  set-status --file <path> --status <status>
-  write --file <path> [--from-file <path>]
-  rename --file <path> --to <path>
-`);
+// Minimal frontmatter reader: `key: value` scalars and `key:` followed by `  - item` lists.
+function parseMarkdown(content) {
+  const text = content.replace(/\r\n/g, '\n');
+  const end = text.startsWith('---\n') ? text.indexOf('\n---\n', 4) : -1;
+  if (end === -1) return { data: null, body: text };
+  const data = {};
+  let listKey = null;
+  for (const line of text.slice(4, end).split('\n')) {
+    if (!line.trim()) continue;
+    if (listKey && line.startsWith('  - ')) {
+      data[listKey].push(unquote(line.slice(4).trim()));
+      continue;
+    }
+    const match = line.match(/^([A-Za-z0-9_]+):\s*(.*)$/);
+    if (!match) continue;
+    const [, key, value] = match;
+    listKey = value ? null : key;
+    data[key] = value ? unquote(value.trim()) : [];
+  }
+  return { data, body: text.slice(end + 5) };
+}
+
+function relativeLinks(body) {
+  const withoutCode = body.replace(/```[\s\S]*?```/g, '').replace(/`[^`\n]*`/g, '');
+  const targets = [];
+  for (const match of withoutCode.matchAll(/\[[^\]\n]*\]\(([^)\s]+)[^)]*\)/g)) {
+    const target = match[1].replace(/^<|>$/g, '').split('#')[0];
+    if (target && !/^[a-z][a-z0-9+.-]*:/i.test(target)) targets.push(target);
+  }
+  return targets;
+}
+
+function collectFiles(root) {
+  const files = [];
+  const docs = path.join(root, 'docs');
+  if (fs.existsSync(docs)) walk(docs, files);
+  for (const name of ROOT_FILES) {
+    const abs = path.join(root, name);
+    if (fs.existsSync(abs)) files.push(abs);
+  }
+  return files;
+}
+
+export function scan(root, { staleDays = 60, now = new Date() } = {}) {
+  const errors = [];
+  const warnings = [];
+  const files = collectFiles(root);
+  for (const file of files) {
+    const rel = path.relative(root, file).split(path.sep).join('/');
+    const { data, body } = parseMarkdown(fs.readFileSync(file, 'utf8'));
+    if (!data) {
+      errors.push(`${rel}: missing frontmatter`);
+      continue;
+    }
+    for (const field of REQUIRED_FIELDS) {
+      if (!data[field]) errors.push(`${rel}: missing "${field}"`);
+    }
+    if (data.status && !STATUSES.has(data.status)) {
+      errors.push(`${rel}: invalid status "${data.status}" (allowed: ${[...STATUSES].join(', ')})`);
+    }
+    const updated = /^\d{4}-\d{2}-\d{2}$/.test(data.updated_at ?? '') ? Date.parse(data.updated_at) : NaN;
+    if (data.updated_at && Number.isNaN(updated)) {
+      errors.push(`${rel}: updated_at "${data.updated_at}" is not an ISO date (YYYY-MM-DD)`);
+    } else if (data.status === 'in-progress' && now - updated > staleDays * DAY_MS) {
+      warnings.push(`${rel}: in-progress but updated_at ${data.updated_at} is over ${staleDays} days old`);
+    }
+    const referenced = [...PATH_FIELDS.map((key) => data[key]).filter(Boolean), ...(data.related_docs ?? [])];
+    for (const target of referenced) {
+      if (!fs.existsSync(path.resolve(root, target))) errors.push(`${rel}: referenced file not found "${target}"`);
+    }
+    for (const target of relativeLinks(body)) {
+      const resolved = path.resolve(path.dirname(file), decodeURIComponent(target));
+      if (!fs.existsSync(resolved)) errors.push(`${rel}: broken link "${target}"`);
+    }
+  }
+  return { files: files.length, errors, warnings };
 }
 
 function parseArgs(argv) {
-  const args = {};
-  for (let i = 0; i < argv.length; i += 1) {
-    const token = argv[i];
-    if (!token.startsWith('--')) continue;
-    const key = token.slice(2);
-    const value = argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[++i] : true;
-    args[key] = value;
+  const args = { command: argv[0], root: process.cwd(), staleDays: 60, strict: false };
+  for (let i = 1; i < argv.length; i += 1) {
+    if (argv[i] === '--root') args.root = path.resolve(argv[++i] ?? '');
+    else if (argv[i] === '--stale-days') args.staleDays = Number(argv[++i]);
+    else if (argv[i] === '--strict') args.strict = true;
   }
   return args;
 }
 
-function requireFileArg(args) {
-  const raw = args.file;
-  if (!raw || typeof raw !== 'string') {
-    throw new Error('Missing required --file <path>');
+function main() {
+  const args = parseArgs(process.argv.slice(2));
+  if (args.command !== 'scan' || !Number.isFinite(args.staleDays)) {
+    console.error('usage: node scripts/doc-governance.mjs scan [--root <dir>] [--stale-days <n>] [--strict]');
+    process.exitCode = 2;
+    return;
   }
-  return path.resolve(ROOT, raw);
+  const { files, errors, warnings } = scan(args.root, { staleDays: args.staleDays });
+  for (const warning of warnings) console.warn(`warning: ${warning}`);
+  for (const error of errors) console.error(`error: ${error}`);
+  const failed = errors.length > 0 || (args.strict && warnings.length > 0);
+  console.log(`doc scan ${failed ? 'failed' : 'passed'}: ${files} file(s), ${errors.length} error(s), ${warnings.length} warning(s)`);
+  if (failed) process.exitCode = 1;
 }
 
-function requireTargetArg(args) {
-  const raw = args.to;
-  if (!raw || typeof raw !== 'string') {
-    throw new Error('Missing required --to <path>');
-  }
-  return path.resolve(ROOT, raw);
-}
-
-function resolveFiles(args, { governedOnly }) {
-  if (typeof args.file === 'string') {
-    return args.file
-      .split(',')
-      .map((item) => item.trim())
-      .filter(Boolean)
-      .map((item) => path.resolve(ROOT, item));
-  }
-
-  const files = [];
-  const roots = governedOnly ? GOVERNED_ROOTS : MARKDOWN_ROOTS;
-  for (const root of roots) {
-    const abs = path.resolve(ROOT, root);
-    if (!fs.existsSync(abs)) continue;
-    walk(abs, files);
-  }
-  if (!governedOnly) {
-    for (const extra of EXTRA_FILES) {
-      const abs = path.resolve(ROOT, extra);
-      if (fs.existsSync(abs)) files.push(abs);
-    }
-  }
-  return files.filter((file) => file.endsWith('.md'));
-}
-
-function walk(dir, files) {
-  const entries = fs.readdirSync(dir, { withFileTypes: true });
-  for (const entry of entries) {
-    const abs = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      walk(abs, files);
-      continue;
-    }
-    if (entry.isFile() && abs.endsWith('.md')) {
-      files.push(abs);
-    }
-  }
-}
-
-function runScan(files) {
-  const issues = [];
-  for (const file of files) {
-    const rel = toPosix(file);
-    const parsed = readMarkdown(file);
-    if (!parsed.hasFrontmatter) {
-      issues.push(`${rel}: missing frontmatter`);
-      continue;
-    }
-
-    for (const field of REQUIRED_FIELDS) {
-      if (!hasValue(parsed.data[field])) {
-        issues.push(`${rel}: missing required field "${field}"`);
-      }
-    }
-
-    if (hasValue(parsed.data.status) && !ALLOWED_STATUS.has(parsed.data.status)) {
-      issues.push(`${rel}: invalid status "${parsed.data.status}"`);
-    }
-
-    if (requiresVisionDoc(file) && !hasValue(parsed.data.vision_doc)) {
-      issues.push(`${rel}: missing "vision_doc"`);
-    }
-
-    const heading = firstHeading(parsed.body);
-    if (!heading) {
-      issues.push(`${rel}: missing H1 heading`);
-    }
-
-    for (const key of ['vision_doc', 'goal_doc', 'structure_doc']) {
-      if (hasValue(parsed.data[key])) {
-        const target = path.resolve(ROOT, parsed.data[key]);
-        if (!fs.existsSync(target)) {
-          issues.push(`${rel}: missing referenced file "${parsed.data[key]}"`);
-        }
-      }
-    }
-
-    if (Array.isArray(parsed.data.related_docs)) {
-      for (const item of parsed.data.related_docs) {
-        const target = path.resolve(ROOT, item);
-        if (!fs.existsSync(target)) {
-          issues.push(`${rel}: missing related doc "${item}"`);
-        }
-      }
-    }
-  }
-
-  if (issues.length > 0) {
-    for (const issue of issues) console.error(issue);
-    throw new Error(`doc scan failed with ${issues.length} issue(s)`);
-  }
-
-  console.log(`doc scan passed for ${files.length} file(s)`);
-}
-
-function runEncodingCheck(files) {
-  const issues = [];
-  for (const file of files) {
-    const content = fs.readFileSync(file, 'utf8');
-    if (content.includes('\uFFFD')) {
-      issues.push(`${toPosix(file)}: found replacement character`);
-    }
-  }
-  if (issues.length > 0) {
-    for (const issue of issues) console.error(issue);
-    throw new Error(`encoding check failed with ${issues.length} issue(s)`);
-  }
-  console.log(`encoding check passed for ${files.length} file(s)`);
-}
-
-function normalizeFile(file, args) {
-  const parsed = readMarkdown(file);
-  const title = typeof args.title === 'string' ? args.title : firstHeading(parsed.body) || titleFromFile(file);
-  const status = typeof args.status === 'string' ? args.status : parsed.data.status || '未实施';
-  if (!ALLOWED_STATUS.has(status)) {
-    throw new Error(`Unsupported status: ${status}`);
-  }
-
-  parsed.data.title = title;
-  parsed.data.status = status;
-  parsed.data.updated_at = today();
-
-  if (requiresVisionDoc(file) && !hasValue(parsed.data.vision_doc)) {
-    parsed.data.vision_doc = 'vision.md';
-  }
-
-  writeMarkdown(file, parsed.data, parsed.body);
-}
-
-function renameMarkdown(file, target) {
-  if (!fs.existsSync(file)) {
-    throw new Error(`Missing source file: ${toPosix(file)}`);
-  }
-  if (fs.existsSync(target)) {
-    throw new Error(`Target already exists: ${toPosix(target)}`);
-  }
-  const fromRel = toPosix(file);
-  const toRel = toPosix(target);
-  fs.mkdirSync(path.dirname(target), { recursive: true });
-  fs.renameSync(file, target);
-  rewriteReferences(fromRel, toRel);
-}
-
-function rewriteReferences(fromRel, toRel) {
-  const files = resolveFiles({}, { governedOnly: false });
-  for (const file of files) {
-    const content = fs.readFileSync(file, 'utf8');
-    if (!content.includes(fromRel)) continue;
-    fs.writeFileSync(file, content.split(fromRel).join(toRel), 'utf8');
-  }
-}
-
-function resolveWriteContent(args) {
-  if (typeof args['from-file'] === 'string') {
-    return fs.readFileSync(path.resolve(ROOT, args['from-file']), 'utf8');
-  }
-  return fs.readFileSync(0, 'utf8');
-}
-
-function readMarkdown(file) {
-  const content = fs.readFileSync(file, 'utf8');
-  return splitFrontmatter(content);
-}
-
-function splitFrontmatter(content) {
-  const normalized = content.replace(/\r\n/g, '\n');
-  if (!normalized.startsWith('---\n')) {
-    return { hasFrontmatter: false, data: {}, body: normalized.trimStart() };
-  }
-  const end = normalized.indexOf('\n---\n', 4);
-  if (end === -1) {
-    return { hasFrontmatter: false, data: {}, body: normalized };
-  }
-  const raw = normalized.slice(4, end);
-  const body = normalized.slice(end + 5).trimStart();
-  return { hasFrontmatter: true, data: parseFrontmatter(raw), body };
-}
-
-function parseFrontmatter(raw) {
-  const data = {};
-  const lines = raw.split('\n');
-  let currentArrayKey = null;
-  for (const line of lines) {
-    if (!line.trim()) continue;
-    if (line.startsWith('  - ') && currentArrayKey) {
-      if (!Array.isArray(data[currentArrayKey])) data[currentArrayKey] = [];
-      data[currentArrayKey].push(unquote(line.slice(4).trim()));
-      continue;
-    }
-    currentArrayKey = null;
-    const match = line.match(/^([A-Za-z0-9_]+):\s*(.*)$/);
-    if (!match) continue;
-    const [, key, value] = match;
-    if (!value) {
-      data[key] = [];
-      currentArrayKey = key;
-      continue;
-    }
-    data[key] = unquote(value.trim());
-  }
-  return data;
-}
-
-function writeMarkdown(file, data, body) {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const orderedKeys = [];
-  for (const key of FRONTMATTER_ORDER) {
-    if (key in data) orderedKeys.push(key);
-  }
-  for (const key of Object.keys(data)) {
-    if (!orderedKeys.includes(key)) orderedKeys.push(key);
-  }
-  const lines = ['---'];
-  for (const key of orderedKeys) {
-    const value = data[key];
-    if (!hasValue(value)) continue;
-    if (Array.isArray(value)) {
-      lines.push(`${key}:`);
-      for (const item of value) {
-        lines.push(`  - ${item}`);
-      }
-      continue;
-    }
-    lines.push(`${key}: ${formatScalar(value)}`);
-  }
-  lines.push('---', '', body.trimStart(), '');
-  fs.writeFileSync(file, lines.join('\n'), 'utf8');
-}
-
-function requiresVisionDoc(file) {
-  const rel = toPosix(file);
-  const base = path.basename(file);
-  if (SPECIAL_BASENAMES.has(base)) return false;
-  return ['docs/roadmaps/', 'docs/goals/', 'docs/structures/', 'docs/plans/'].some((prefix) => rel.startsWith(prefix));
-}
-
-function firstHeading(body) {
-  const match = body.match(/^#\s+(.+)$/m);
-  return match ? match[1].trim() : '';
-}
-
-function titleFromFile(file) {
-  return path
-    .basename(file, '.md')
-    .replace(/[-_]+/g, ' ')
-    .replace(/\b\w/g, (char) => char.toUpperCase());
-}
-
-function hasValue(value) {
-  if (Array.isArray(value)) return value.length > 0;
-  return typeof value === 'string' ? value.trim().length > 0 : value !== undefined && value !== null;
-}
-
-function unquote(value) {
-  if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-    return value.slice(1, -1);
-  }
-  return value;
-}
-
-function formatScalar(value) {
-  return /[:#]/.test(String(value)) ? JSON.stringify(String(value)) : String(value);
-}
-
-function today() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function toPosix(file) {
-  return path.relative(ROOT, file).split(path.sep).join('/');
-}
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();

@@ -1,6 +1,6 @@
 ---
 title: CHANGELOG 2026-04-21
-status: 已完成
+status: done
 updated_at: 2026-04-21
 related_docs:
   - docs/ai/doc-governance-standard.md
@@ -15,7 +15,7 @@ related_docs:
 ### Changed
 
 - Added `docs/changelog/**` to this repo's documentation-governance architecture as the dated closeout trace layer.
-- Updated [docs/AGENTS.md](../AGENTS.md), [docs/ai/doc-governance-standard.md](../ai/doc-governance-standard.md), and [docs/skills/doc-governance-workflow.md](../skills/doc-governance-workflow.md) so changelog is now part of doc routing and same-round closeout rules.
+- Updated [docs/AGENTS.md](../AGENTS.md), [docs/ai/doc-governance-standard.md](../ai/doc-governance-standard.md), and `docs/skills/doc-governance-workflow.md` (since removed) so changelog is now part of doc routing and same-round closeout rules.
 - Extended `scripts/doc-governance.mjs` so `npm run check:doc-governance` scans `docs/changelog/**`.
 - Added the subtree docs [docs/changelog/AGENTS.md](./AGENTS.md), [docs/changelog/README.md](./README.md), and [docs/changelog/_template.md](./_template.md).
 
@@ -57,7 +57,7 @@ related_docs:
 - Added `getStoredSourceHealth()` and `getStoredDuplicatePressureSummary()` in `packages/storage/src/index.ts`, keeping `getStoredOpsSnapshot()` stable for existing callers.
 - Added the new ops component `apps/web/src/components/ops-source-health-table.tsx` and rewired `apps/web/src/app/[locale]/ops/page.tsx` to show source freshness, parser health, and duplicate pressure.
 - Extended `apps/web/src/i18n/dictionaries.ts` with `zh` and `en` product copy for the new ops diagnostics surface.
-- Marked plan 02 complete and renamed it to `docs/plans/已完成-2026-04-19-02-parser-reliability-and-freshness-visibility-plan.md`.
+- Marked plan 02 complete and renamed it to `docs/plans/2026-04-19-02-parser-reliability-and-freshness-visibility-plan.md`.
 
 ### Why
 
@@ -87,7 +87,7 @@ related_docs:
 - `apps/web/src/components/ops-source-health-table.tsx`
 - `apps/web/src/i18n/dictionaries.ts`
 - `apps/web/src/app/globals.css`
-- `docs/plans/已完成-2026-04-19-02-parser-reliability-and-freshness-visibility-plan.md`
+- `docs/plans/2026-04-19-02-parser-reliability-and-freshness-visibility-plan.md`
 - `docs/changelog/CHANGELOG_2026-04-21.md`
 
 ## Deepen Canonical Normalization
@@ -103,7 +103,7 @@ related_docs:
 - Added the missing worker alias for `ANNOUNCEMENT_OF_COMPETITION` so future official procurement ingests normalize to `public_design_services_tender` instead of falling through to `design_contest`.
 - Reorganized procedure handling into explicit canonical alias groups and suppressed-value groups, adding `selective`, `negotiated_procedure`, and `adapted_procedure` as stable taxonomy keys while keeping opaque values like `AD3` and `Altri avvisi` in the unknown path.
 - Updated storage query filtering so canonical procedure filters expand back to legacy raw variants, keeping discover filters and API queries aligned with the labels shown for historical rows.
-- Marked plan 03 complete and renamed it to `docs/plans/已完成-2026-04-19-03-deepen-canonical-normalization-plan.md`.
+- Marked plan 03 complete and renamed it to `docs/plans/2026-04-19-03-deepen-canonical-normalization-plan.md`.
 
 ### Why
 
@@ -137,7 +137,7 @@ related_docs:
 - `apps/web/src/components/opportunity-stream-item.tsx`
 - `apps/web/src/components/opportunity-detail-surface.tsx`
 - `apps/worker/tests/test_extractors.py`
-- `docs/plans/已完成-2026-04-19-03-deepen-canonical-normalization-plan.md`
+- `docs/plans/2026-04-19-03-deepen-canonical-normalization-plan.md`
 - `docs/plans/README.md`
 - `docs/changelog/CHANGELOG_2026-04-21.md`
 
@@ -169,11 +169,11 @@ related_docs:
 
 ### Changed
 
-- Updated `docs/plans/已完成-2026-04-19-04-ops-review-queue-plan.md` so the ops-review rollout now preserves the current ops snapshot and source-health diagnostics instead of describing `/[locale]/ops` as a summary-only surface.
-- Updated `docs/plans/施工中-2026-04-19-05-qualification-scoring-v1-plan.md` to match the current score owner in `apps/worker/src/arch_competition_ops/normalizers/competition.py`, and to treat explicit unknown normalized states as first-class scoring inputs instead of pretending the score still starts inside parser helpers.
-- Updated `docs/plans/施工中-2026-04-19-06-bid-no-bid-assistant-v1-plan.md` so the decision brief builds on the current storage-owned detail/feed path rather than inventing a second component-local inference layer.
-- Updated `docs/plans/已完成-2026-04-19-07-saved-search-and-watchlists-plan.md` so discover follow-up work preserves the new `getStoredDiscoverSurfaceData()` path instead of regressing to split feed/filter queries, and corrected downstream related-doc links.
-- Updated `docs/plans/未实施-2026-04-19-08-alerts-and-digests-plan.md` to point alert-preference API work at the workspace resolver from plan 07 rather than the unrelated bid/no-bid plan.
+- Updated `docs/plans/2026-04-19-04-ops-review-queue-plan.md` so the ops-review rollout now preserves the current ops snapshot and source-health diagnostics instead of describing `/[locale]/ops` as a summary-only surface.
+- Updated `docs/plans/2026-04-19-05-qualification-scoring-v1-plan.md` to match the current score owner in `apps/worker/src/arch_competition_ops/normalizers/competition.py`, and to treat explicit unknown normalized states as first-class scoring inputs instead of pretending the score still starts inside parser helpers.
+- Updated `docs/plans/2026-04-19-06-bid-no-bid-assistant-v1-plan.md` so the decision brief builds on the current storage-owned detail/feed path rather than inventing a second component-local inference layer.
+- Updated `docs/plans/2026-04-19-07-saved-search-and-watchlists-plan.md` so discover follow-up work preserves the new `getStoredDiscoverSurfaceData()` path instead of regressing to split feed/filter queries, and corrected downstream related-doc links.
+- Updated `docs/plans/2026-04-19-08-alerts-and-digests-plan.md` to point alert-preference API work at the workspace resolver from plan 07 rather than the unrelated bid/no-bid plan.
 
 ### Why
 
@@ -182,21 +182,21 @@ related_docs:
 
 ### Validation
 
-- `npm run check:doc-governance:file -- --file docs/plans/已完成-2026-04-19-04-ops-review-queue-plan.md`
-- `npm run check:doc-governance:file -- --file docs/plans/施工中-2026-04-19-05-qualification-scoring-v1-plan.md`
-- `npm run check:doc-governance:file -- --file docs/plans/施工中-2026-04-19-06-bid-no-bid-assistant-v1-plan.md`
-- `npm run check:doc-governance:file -- --file docs/plans/已完成-2026-04-19-07-saved-search-and-watchlists-plan.md`
-- `npm run check:doc-governance:file -- --file docs/plans/未实施-2026-04-19-08-alerts-and-digests-plan.md`
+- `npm run check:doc-governance:file -- --file docs/plans/2026-04-19-04-ops-review-queue-plan.md`
+- `npm run check:doc-governance:file -- --file docs/plans/2026-04-19-05-qualification-scoring-v1-plan.md`
+- `npm run check:doc-governance:file -- --file docs/plans/2026-04-19-06-bid-no-bid-assistant-v1-plan.md`
+- `npm run check:doc-governance:file -- --file docs/plans/2026-04-19-07-saved-search-and-watchlists-plan.md`
+- `npm run check:doc-governance:file -- --file docs/plans/2026-04-19-08-alerts-and-digests-plan.md`
 - `npm run check:doc-governance:file -- --file docs/changelog/CHANGELOG_2026-04-21.md`
 - `npm run check:encoding:all`
 
 ### Modified Files
 
-- `docs/plans/已完成-2026-04-19-04-ops-review-queue-plan.md`
-- `docs/plans/施工中-2026-04-19-05-qualification-scoring-v1-plan.md`
-- `docs/plans/施工中-2026-04-19-06-bid-no-bid-assistant-v1-plan.md`
-- `docs/plans/已完成-2026-04-19-07-saved-search-and-watchlists-plan.md`
-- `docs/plans/未实施-2026-04-19-08-alerts-and-digests-plan.md`
+- `docs/plans/2026-04-19-04-ops-review-queue-plan.md`
+- `docs/plans/2026-04-19-05-qualification-scoring-v1-plan.md`
+- `docs/plans/2026-04-19-06-bid-no-bid-assistant-v1-plan.md`
+- `docs/plans/2026-04-19-07-saved-search-and-watchlists-plan.md`
+- `docs/plans/2026-04-19-08-alerts-and-digests-plan.md`
 - `docs/changelog/CHANGELOG_2026-04-21.md`
 
 ## Ops Review Queue Delivery
@@ -208,7 +208,7 @@ related_docs:
 - Added the storage owner `packages/storage/src/ops-review.ts`, then re-exported queue reads, summary reads, and decision writes from `packages/storage/src/index.ts`.
 - Added localized ops review UI and API wiring through `apps/web/src/app/[locale]/ops/page.tsx`, `apps/web/src/components/ops-review-queue.tsx`, `apps/web/src/components/ops-review-toolbar.tsx`, `apps/web/src/app/api/ops/review/route.ts`, and `apps/web/src/app/api/ops/review/[queueId]/route.ts`.
 - Extended `apps/web/src/i18n/dictionaries.ts` and `apps/web/src/app/globals.css` so the queue stays bilingual and table-driven instead of falling back to generic dashboard cards.
-- Marked plan 04 complete and renamed it to `docs/plans/已完成-2026-04-19-04-ops-review-queue-plan.md`.
+- Marked plan 04 complete and renamed it to `docs/plans/2026-04-19-04-ops-review-queue-plan.md`.
 - Fixed the older ops snapshot query in `packages/storage/src/index.ts` by replacing the SQLite alias `primary` with `primary_count`, which was causing `/[locale]/ops` to 500 at runtime against the real database.
 
 ### Why
@@ -225,8 +225,8 @@ related_docs:
 - `npm run build:web`
 - `uv run arch-competition-ops doctor`
 - `uv run arch-competition-ops verify`
-- `npm run check:doc-governance:file -- --file docs/plans/已完成-2026-04-19-04-ops-review-queue-plan.md`
-- `npm run check:doc-governance:file -- --file docs/plans/未实施-2026-04-19-10-verified-submission-intake-plan.md`
+- `npm run check:doc-governance:file -- --file docs/plans/2026-04-19-04-ops-review-queue-plan.md`
+- `npm run check:doc-governance:file -- --file docs/plans/2026-04-19-10-verified-submission-intake-plan.md`
 - `npm run check:doc-governance:file -- --file docs/changelog/CHANGELOG_2026-04-21.md`
 - `npm run check:doc-governance:file -- --file docs/plans/README.md`
 - `npm run check:encoding:all`
@@ -252,7 +252,7 @@ related_docs:
 - `apps/web/src/lib/ops-review-access.ts`
 - `apps/web/src/i18n/dictionaries.ts`
 - `apps/web/src/app/globals.css`
-- `docs/plans/已完成-2026-04-19-04-ops-review-queue-plan.md`
-- `docs/plans/未实施-2026-04-19-10-verified-submission-intake-plan.md`
+- `docs/plans/2026-04-19-04-ops-review-queue-plan.md`
+- `docs/plans/2026-04-19-10-verified-submission-intake-plan.md`
 - `docs/plans/README.md`
 - `docs/changelog/CHANGELOG_2026-04-21.md`

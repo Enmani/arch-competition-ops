@@ -1,21 +1,24 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from datetime import date, timedelta
+from datetime import timedelta
 from pathlib import Path
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
+from arch_competition_ops import clock
 from arch_competition_ops.config_loader import load_source_catalog, load_yaml_file
+from arch_competition_ops.ingest import ingest_source
+from arch_competition_ops.locking import exclusive_lock
 from arch_competition_ops.models import SourceDefinition
-from arch_competition_ops.operations import ingest_source
 from arch_competition_ops.settings import Settings
-
 
 DEFAULT_AUTOMATION_CONFIG_PATH = Path("config") / "automation.yml"
 
 
 class AutomationBatchDefinition(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     batch_id: str
     description: str | None = None
     include_kinds: list[str] = Field(default_factory=list)
@@ -27,6 +30,8 @@ class AutomationBatchDefinition(BaseModel):
 
 
 class AutomationConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     batches: list[AutomationBatchDefinition] = Field(default_factory=list)
 
 
@@ -36,6 +41,10 @@ class AutomationSourceRun:
     ingested_count: int
     ingested_ids: list[str] = field(default_factory=list)
     publication_date_from: str | None = None
+    # Documents of this source that were skipped (parse/verify/geocode errors); the rest of the
+    # source was stored. A run with failures still makes the batch exit non-zero.
+    failure_count: int = 0
+    notes: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -61,6 +70,10 @@ class AutomationBatchResult:
     def total_ingested(self) -> int:
         return sum(run.ingested_count for run in self.succeeded)
 
+    @property
+    def has_failures(self) -> bool:
+        return bool(self.failed) or any(run.failure_count for run in self.succeeded)
+
     def to_dict(self) -> dict[str, object]:
         return {
             "batch_id": self.batch_id,
@@ -69,6 +82,7 @@ class AutomationBatchResult:
             "limit_per_source": self.limit_per_source,
             "total_sources": self.total_sources,
             "total_ingested": self.total_ingested,
+            "has_failures": self.has_failures,
             "succeeded": [asdict(run) for run in self.succeeded],
             "failed": [asdict(failure) for failure in self.failed],
         }
@@ -114,7 +128,8 @@ def resolve_batch_sources(
     missing_source_ids = sorted(include_source_ids - known_source_ids)
     if missing_source_ids:
         raise ValueError(
-            f"Automation batch '{batch_id}' references unknown source ids: {', '.join(missing_source_ids)}"
+            f"Automation batch '{batch_id}' references unknown source ids: "
+            f"{', '.join(missing_source_ids)}"
         )
 
     selected_sources: list[SourceDefinition] = []
@@ -141,7 +156,7 @@ def resolve_batch_sources(
 def _default_publication_date_from(window_days: int | None) -> str | None:
     if window_days is None:
         return None
-    return (date.today() - timedelta(days=window_days)).isoformat()
+    return (clock.today() - timedelta(days=window_days)).isoformat()
 
 
 def run_automation_batch(
@@ -152,7 +167,14 @@ def run_automation_batch(
     limit_per_source: int | None = None,
     publication_date_from: str | None = None,
     continue_on_error: bool = True,
+    use_lock: bool = True,
 ) -> AutomationBatchResult:
+    """Ingest every source of a batch, one process at a time.
+
+    Batches are serialized by an OS file lock (``Settings.ingest_lock``): if another batch holds
+    it, ``LockHeldError`` is raised immediately instead of two batches writing the same SQLite
+    file. ``use_lock=False`` is for callers that already hold the lock.
+    """
     batch, sources = resolve_batch_sources(
         settings,
         batch_id=batch_id,
@@ -169,32 +191,37 @@ def run_automation_batch(
         limit_per_source=effective_limit,
     )
 
-    for source in sources:
-        try:
-            ingested_ids = ingest_source(
-                settings,
-                source_id=source.source_id,
-                limit=effective_limit,
-                publication_date_from=effective_publication_date_from,
-            )
-        except Exception as exc:  # noqa: BLE001
-            result.failed.append(
-                AutomationSourceFailure(
+    def run_sources() -> None:
+        for source in sources:
+            try:
+                ingest = ingest_source(
+                    settings,
                     source_id=source.source_id,
-                    error=str(exc),
+                    limit=effective_limit,
+                    publication_date_from=effective_publication_date_from,
+                )
+            except Exception as exc:
+                result.failed.append(
+                    AutomationSourceFailure(source_id=source.source_id, error=str(exc))
+                )
+                if not continue_on_error:
+                    raise
+                continue
+
+            result.succeeded.append(
+                AutomationSourceRun(
+                    source_id=source.source_id,
+                    ingested_count=len(ingest.ingested_ids),
+                    ingested_ids=ingest.ingested_ids,
+                    publication_date_from=effective_publication_date_from,
+                    failure_count=ingest.parse_failure_count,
+                    notes=ingest.notes,
                 )
             )
-            if not continue_on_error:
-                raise
-            continue
 
-        result.succeeded.append(
-            AutomationSourceRun(
-                source_id=source.source_id,
-                ingested_count=len(ingested_ids),
-                ingested_ids=ingested_ids,
-                publication_date_from=effective_publication_date_from,
-            )
-        )
-
+    if use_lock:
+        with exclusive_lock(settings.resolve_path(settings.ingest_lock), label=f"batch:{batch_id}"):
+            run_sources()
+    else:
+        run_sources()
     return result

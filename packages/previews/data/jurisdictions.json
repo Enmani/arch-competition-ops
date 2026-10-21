@@ -1,0 +1,277 @@
+{
+  "austria": {
+    "code": "AT",
+    "comparisonNames": [
+      "austria",
+      "osterreich"
+    ],
+    "geocoderCountryCode": "at"
+  },
+  "belgium": {
+    "code": "BE",
+    "comparisonNames": [
+      "belgium",
+      "belgique",
+      "belgie"
+    ],
+    "geocoderCountryCode": "be"
+  },
+  "bulgaria": {
+    "code": "BG",
+    "comparisonNames": [
+      "bulgaria",
+      "balgariya"
+    ],
+    "geocoderCountryCode": "bg",
+    "atlasName": "Bulgaria"
+  },
+  "canada": {
+    "code": "CA",
+    "comparisonNames": [
+      "canada"
+    ],
+    "geocoderCountryCode": "ca",
+    "atlasName": "Canada",
+    "polygonCount": 2
+  },
+  "china": {
+    "code": "CN",
+    "comparisonNames": [
+      "china",
+      "zhongguo"
+    ],
+    "geocoderCountryCode": "cn",
+    "atlasName": "China"
+  },
+  "croatia": {
+    "code": "HR",
+    "comparisonNames": [
+      "croatia",
+      "hrvatska"
+    ],
+    "geocoderCountryCode": "hr"
+  },
+  "czechia": {
+    "code": "CZ",
+    "comparisonNames": [
+      "czechia",
+      "czech republic",
+      "cesko"
+    ],
+    "geocoderCountryCode": "cz"
+  },
+  "denmark": {
+    "code": "DK",
+    "comparisonNames": [
+      "denmark",
+      "danmark"
+    ],
+    "geocoderCountryCode": "dk"
+  },
+  "estonia": {
+    "code": "EE",
+    "comparisonNames": [
+      "estonia",
+      "eesti"
+    ],
+    "geocoderCountryCode": "ee"
+  },
+  "finland": {
+    "code": "FI",
+    "comparisonNames": [
+      "finland",
+      "suomi"
+    ],
+    "geocoderCountryCode": "fi"
+  },
+  "france": {
+    "code": "FR",
+    "comparisonNames": [
+      "france"
+    ],
+    "geocoderCountryCode": "fr",
+    "atlasName": "France",
+    "polygonCount": 1
+  },
+  "germany": {
+    "code": "DE",
+    "comparisonNames": [
+      "germany",
+      "deutschland"
+    ],
+    "geocoderCountryCode": "de",
+    "atlasName": "Germany"
+  },
+  "greece": {
+    "code": "GR",
+    "comparisonNames": [
+      "greece",
+      "ellada"
+    ],
+    "geocoderCountryCode": "gr"
+  },
+  "hungary": {
+    "code": "HU",
+    "comparisonNames": [
+      "hungary",
+      "magyarorszag"
+    ],
+    "geocoderCountryCode": "hu"
+  },
+  "ireland": {
+    "code": "IE",
+    "comparisonNames": [
+      "ireland",
+      "eire"
+    ],
+    "geocoderCountryCode": "ie"
+  },
+  "italy": {
+    "code": "IT",
+    "comparisonNames": [
+      "italy",
+      "italia"
+    ],
+    "geocoderCountryCode": "it",
+    "atlasName": "Italy",
+    "polygonCount": 3
+  },
+  "latvia": {
+    "code": "LV",
+    "comparisonNames": [
+      "latvia",
+      "latvija"
+    ],
+    "geocoderCountryCode": "lv"
+  },
+  "lithuania": {
+    "code": "LT",
+    "comparisonNames": [
+      "lithuania",
+      "lietuva"
+    ],
+    "geocoderCountryCode": "lt"
+  },
+  "luxembourg": {
+    "code": "LU",
+    "comparisonNames": [
+      "luxembourg",
+      "letzebuerg"
+    ],
+    "geocoderCountryCode": "lu"
+  },
+  "netherlands": {
+    "code": "NL",
+    "comparisonNames": [
+      "netherlands",
+      "nederland"
+    ],
+    "geocoderCountryCode": "nl"
+  },
+  "new_zealand": {
+    "code": "NZ",
+    "comparisonNames": [
+      "new zealand",
+      "aotearoa"
+    ],
+    "geocoderCountryCode": "nz",
+    "atlasName": "New Zealand",
+    "polygonCount": 2
+  },
+  "norway": {
+    "code": "NO",
+    "comparisonNames": [
+      "norway",
+      "norge"
+    ],
+    "geocoderCountryCode": "no",
+    "atlasName": "Norway"
+  },
+  "poland": {
+    "code": "PL",
+    "comparisonNames": [
+      "poland",
+      "polska"
+    ],
+    "geocoderCountryCode": "pl"
+  },
+  "portugal": {
+    "code": "PT",
+    "comparisonNames": [
+      "portugal"
+    ],
+    "geocoderCountryCode": "pt"
+  },
+  "romania": {
+    "code": "RO",
+    "comparisonNames": [
+      "romania"
+    ],
+    "geocoderCountryCode": "ro"
+  },
+  "serbia": {
+    "code": "RS",
+    "comparisonNames": [
+      "serbia",
+      "srbija"
+    ],
+    "geocoderCountryCode": "rs"
+  },
+  "slovakia": {
+    "code": "SK",
+    "comparisonNames": [
+      "slovakia",
+      "slovensko"
+    ],
+    "geocoderCountryCode": "sk"
+  },
+  "slovenia": {
+    "code": "SI",
+    "comparisonNames": [
+      "slovenia",
+      "slovenija"
+    ],
+    "geocoderCountryCode": "si",
+    "atlasName": "Slovenia"
+  },
+  "spain": {
+    "code": "ES",
+    "comparisonNames": [
+      "spain",
+      "espana"
+    ],
+    "geocoderCountryCode": "es",
+    "atlasName": "Spain"
+  },
+  "sweden": {
+    "code": "SE",
+    "comparisonNames": [
+      "sweden",
+      "sverige"
+    ],
+    "geocoderCountryCode": "se"
+  },
+  "switzerland": {
+    "code": "CH",
+    "comparisonNames": [
+      "switzerland",
+      "schweiz",
+      "suisse",
+      "svizzera"
+    ],
+    "geocoderCountryCode": "ch",
+    "atlasName": "Switzerland"
+  },
+  "united_kingdom": {
+    "code": "UK",
+    "comparisonNames": [
+      "united kingdom",
+      "great britain",
+      "britain",
+      "uk"
+    ],
+    "geocoderCountryCode": "gb",
+    "atlasName": "United Kingdom",
+    "polygonCount": 2
+  }
+}

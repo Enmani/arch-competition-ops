@@ -1,0 +1,206 @@
+/* Content surfaces: hero, panels, stat/metric cards, competition cards, pills and
+   generic tables. */
+
+.section-grid,
+.content-grid,
+.detail-grid,
+.discover-filter-grid,
+.detail-grid > section,
+.panel,
+.table-panel {
+  display: grid;
+}
+
+.section-grid {
+  gap: var(--space-xl);
+  padding-top: var(--space-xl);
+}
+
+.hero,
+.content-grid,
+.detail-layout {
+  padding-top: var(--space-xl);
+}
+
+.hero {
+  gap: var(--space-xl);
+}
+
+.content-grid,
+.detail-grid {
+  gap: var(--space-xl);
+}
+
+.content-grid,
+.detail-grid {
+  grid-template-columns: minmax(0, 1.15fr) minmax(18rem, 0.85fr);
+}
+
+.panel,
+.table-panel,
+.competition-card,
+.detail-hero,
+.detail-grid > section,
+.empty-state {
+  border: 1px solid var(--line-strong);
+  background: color-mix(in oklch, var(--surface) 92%, var(--surface-alt) 8%);
+  box-shadow: var(--shadow);
+}
+
+.panel,
+.detail-hero,
+.detail-grid > section,
+.empty-state {
+  padding: var(--space-xl);
+}
+
+.panel h2,
+.detail-hero h1,
+.empty-state h2 {
+  margin: 0;
+  font-family: var(--font-display), var(--font-cjk-fallback), sans-serif;
+  font-weight: 600;
+  text-transform: uppercase;
+  line-height: 0.9;
+}
+
+.detail-hero h1,
+.empty-state h2 {
+  font-size: clamp(2.2rem, 5vw, 4rem);
+}
+
+.panel h2 {
+  font-size: clamp(1.6rem, 2vw, 2.2rem);
+}
+
+.panel p,
+.detail-hero p,
+.empty-state p,
+.competition-card p {
+  color: var(--ink-soft);
+}
+
+.hero-actions {
+  margin-top: var(--space-lg);
+}
+
+.card-grid,
+.detail-list {
+  gap: var(--space-md);
+}
+
+.ops-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-md);
+}
+
+.metric-card {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--line);
+  background: var(--surface-alt);
+}
+
+.metric-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-lg);
+  margin-bottom: var(--space-lg);
+}
+
+.competition-card {
+  gap: var(--space-md);
+  padding: var(--space-lg);
+}
+
+.tag-row {
+  gap: 0.45rem;
+}
+
+.pill {
+  padding: 0.35rem 0.55rem;
+  border: 1px solid var(--line);
+  background: var(--surface-alt);
+  color: var(--ink-faint);
+  font-size: 0.72rem;
+}
+
+.pill.accent {
+  border-color: color-mix(in oklch, var(--accent) 40%, var(--line) 60%);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.table-panel {
+  padding: 0;
+  overflow: clip;
+}
+
+.table-panel table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table-panel thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: color-mix(in oklch, var(--surface) 94%, var(--surface-alt) 6%);
+}
+
+.table-panel th,
+.table-panel td {
+  padding: 1rem;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.table-panel th {
+  color: var(--ink-faint);
+  font-size: 0.76rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.table-panel tr:last-child td {
+  border-bottom: none;
+}
+
+.watchlist-row {
+  transition:
+    background-color 180ms var(--ease-out-quart),
+    transform 220ms var(--ease-out-quart),
+    opacity 220ms var(--ease-out-quart);
+}
+
+@media (hover: hover) {
+  .watchlist-row:hover {
+    background: color-mix(in oklch, var(--surface-alt) 90%, var(--accent-soft) 10%);
+  }
+
+  .competition-card:hover {
+    border-color: color-mix(in oklch, var(--accent) 40%, var(--line-strong) 60%);
+    background: color-mix(in oklch, var(--surface-alt) 88%, var(--accent-soft) 12%);
+  }
+}
+
+@media (max-width: 960px) {
+  .content-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .table-panel {
+    overflow-x: auto;
+  }
+}

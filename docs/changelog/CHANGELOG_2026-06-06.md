@@ -1,6 +1,6 @@
 ---
 title: Changelog 2026-06-06
-status: 已完成
+status: done
 updated_at: 2026-06-06
 related_docs:
   - docs/AI_CONSTRAINTS.md

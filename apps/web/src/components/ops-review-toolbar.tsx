@@ -1,5 +1,7 @@
 import type { AppDictionary } from "@/i18n/dictionaries";
 
+type Option = { label: string; value: string };
+
 type OpsReviewToolbarProps = {
   counts: {
     accepted: number;
@@ -14,16 +16,9 @@ type OpsReviewToolbarProps = {
   onReasonChange: (value: string) => void;
   onRefresh: () => void;
   onStatusChange: (value: string) => void;
-  reasonOptions: Array<{
-    label: string;
-    value: string;
-  }>;
+  reasonOptions: Option[];
   reasonValue: string;
-  reviewEnabled: boolean;
-  statusOptions: Array<{
-    label: string;
-    value: string;
-  }>;
+  statusOptions: Option[];
   statusValue: string;
 };
 
@@ -37,42 +32,33 @@ const OpsReviewToolbar = ({
   onStatusChange,
   reasonOptions,
   reasonValue,
-  reviewEnabled,
   statusOptions,
   statusValue,
 }: OpsReviewToolbarProps) => {
   const controlsDisabled = isLoading || isBusy;
+  const metrics = [
+    { key: "active", label: dictionary.summary.active, value: counts.active },
+    { key: "pending", label: dictionary.summary.pending, value: counts.pending },
+    { key: "needsFollowUp", label: dictionary.summary.needsFollowUp, value: counts.needsFollowUp },
+    { key: "accepted", label: dictionary.summary.accepted, value: counts.accepted },
+    { key: "rejected", label: dictionary.summary.rejected, value: counts.rejected },
+  ];
 
   return (
     <>
       <div className="ops-metric-grid ops-review-summary">
-        <article className="metric-card">
-          <span className="eyebrow">{dictionary.summary.active}</span>
-          <strong className="metric-value">{counts.active}</strong>
-        </article>
-        <article className="metric-card">
-          <span className="eyebrow">{dictionary.summary.pending}</span>
-          <strong className="metric-value">{counts.pending}</strong>
-        </article>
-        <article className="metric-card">
-          <span className="eyebrow">{dictionary.summary.needsFollowUp}</span>
-          <strong className="metric-value">{counts.needsFollowUp}</strong>
-        </article>
-        <article className="metric-card">
-          <span className="eyebrow">{dictionary.summary.accepted}</span>
-          <strong className="metric-value">{counts.accepted}</strong>
-        </article>
-        <article className="metric-card">
-          <span className="eyebrow">{dictionary.summary.rejected}</span>
-          <strong className="metric-value">{counts.rejected}</strong>
-        </article>
+        {metrics.map((metric) => (
+          <article className="metric-card" key={metric.key}>
+            <span className="eyebrow">{metric.label}</span>
+            <strong className="metric-value">{metric.value}</strong>
+          </article>
+        ))}
       </div>
 
       <div className="ops-review-toolbar">
         <label className="field-stack ops-review-filter">
           <span className="sr-only">{dictionary.filters.statusLabel}</span>
           <select
-            aria-label={dictionary.filters.statusLabel}
             disabled={controlsDisabled}
             onChange={(event) => onStatusChange(event.target.value)}
             value={statusValue}
@@ -88,7 +74,6 @@ const OpsReviewToolbar = ({
         <label className="field-stack ops-review-filter">
           <span className="sr-only">{dictionary.filters.reasonLabel}</span>
           <select
-            aria-label={dictionary.filters.reasonLabel}
             disabled={controlsDisabled}
             onChange={(event) => onReasonChange(event.target.value)}
             value={reasonValue}
@@ -102,19 +87,10 @@ const OpsReviewToolbar = ({
         </label>
 
         <div className="toolbar-actions">
-          <button
-            className="button secondary"
-            disabled={controlsDisabled}
-            onClick={onRefresh}
-            type="button"
-          >
+          <button className="button secondary" disabled={controlsDisabled} onClick={onRefresh} type="button">
             {dictionary.actions.refresh}
           </button>
         </div>
-
-        <p className="brand-caption ops-review-mode">
-          {reviewEnabled ? dictionary.mode.enabled : dictionary.mode.readOnly}
-        </p>
       </div>
     </>
   );

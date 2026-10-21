@@ -1,10 +1,11 @@
-﻿sources:
+sources:
   - source_id: municipal_buyer_profiles
     name: Municipal Buyer Profiles
     kind: authority_portal
     jurisdiction: germany
     base_url: https://www.berlin.de/vergabeplattform/veroeffentlichungen/bekanntmachungen/feed.rss
     url_list_path: config/source_lists/germany_municipal_profiles.txt
+    collector: municipal_buyer_profiles
     scan_method: rss
     extractor: buyer_profile_parser
     source_tier: primary

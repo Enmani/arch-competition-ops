@@ -7,6 +7,8 @@ const compat = new FlatCompat({
   baseDirectory: currentDirectory,
 });
 
-const config = [...compat.config({ extends: ["next/core-web-vitals"] })];
+// next/typescript adds the typescript-eslint recommended rules (no-explicit-any, unused vars,
+// ban-ts-comment, ...) on top of the Next.js core-web-vitals rules.
+const config = [...compat.config({ extends: ["next/core-web-vitals", "next/typescript"] })];
 
 export default config;

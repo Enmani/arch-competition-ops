@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
-from datetime import datetime, timezone
 from pathlib import Path
 
-from arch_competition_ops.storage.database import connect, ensure_schema, sync_review_queue_items
+from arch_competition_ops import clock
+from arch_competition_ops.storage import connect, ensure_schema, sync_review_queue_items
 
-
-LOW_CONFIDENCE_THRESHOLD = 0.8
+# Extraction confidence is 0.2 + 0.8 * (evidence fields found / 9) (see
+# normalizers.competition.compute_extraction_confidence). 0.5 flags records that carry three or
+# fewer of the nine evidence fields; with the former constant 0.78 against a 0.8 threshold every
+# record landed in this queue.
+LOW_CONFIDENCE_THRESHOLD = 0.5
 CONFLICT_KEYWORDS = (
     "conflict",
     "mismatch",
@@ -70,8 +73,8 @@ def _build_source_review_candidates(db_path: Path) -> list[dict[str, object | No
                     "priority": 90,
                     "title": row["source_name"],
                     "summary": (
-                        f"{row['last_parse_failure_count']} {failure_label} failed parser validation in "
-                        "the latest run."
+                        f"{row['last_parse_failure_count']} {failure_label} failed parser "
+                        "validation in the latest run."
                     ),
                     "source_id": row["source_id"],
                     "evidence_note": row["last_error"],
@@ -259,7 +262,7 @@ def generate_review_queue_candidates(db_path: Path) -> list[dict[str, object | N
         *_build_duplicate_candidates(db_path),
         *_build_low_confidence_candidates(db_path),
     ]
-    generated_at = datetime.now(timezone.utc).isoformat()
+    generated_at = clock.now_utc().isoformat()
 
     for candidate in candidates:
         candidate.setdefault("last_detected_at", generated_at)

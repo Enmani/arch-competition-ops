@@ -1,9 +1,10 @@
-﻿sources:
+sources:
   - source_id: simap_public_design_notices
     name: simap Swiss Public Procurement
     kind: official_procurement
     jurisdiction: switzerland
     base_url: https://www.simap.ch/
+    collector: simap_project_api
     scan_method: api
     extractor: simap_notice_parser
     verifier: simap_official_enricher

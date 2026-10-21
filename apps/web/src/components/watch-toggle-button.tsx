@@ -1,123 +1,106 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import Link from "next/link";
+import { usePathname, useSearchParams } from "next/navigation";
+import { useRef, useState } from "react";
 
-import type { AppDictionary } from "@/i18n/dictionaries";
+import type { AppLocale } from "@/i18n/config";
+import type { WatchToggleCopy } from "@/i18n/slices";
+import { describeApiFailure, sendJson, type ApiFailure } from "@/lib/api-client";
+import { buildLoginRedirect } from "@/lib/return-path";
 
 type WatchToggleButtonProps = {
+  copy: WatchToggleCopy;
   initialWatched: boolean;
+  locale: AppLocale;
   onToggle?: (isWatched: boolean) => void;
   opportunityId: string;
   showStatus?: boolean;
-  workspaceDictionary: AppDictionary["workspace"];
-  workspaceWritesEnabled: boolean;
+  signedIn: boolean;
 };
 
+/**
+ * Optimistic watch/unwatch control.
+ *
+ * The in-flight flag lives in a ref (not only in state) so two clicks in the same frame cannot
+ * both pass the guard. Callers key the component by opportunity id, so it never has to
+ * reconcile a changing id with a pending request. Anonymous visitors get a sign-in link
+ * instead of a dead disabled button.
+ */
 const WatchToggleButton = ({
+  copy,
   initialWatched,
+  locale,
   onToggle,
   opportunityId,
   showStatus = false,
-  workspaceDictionary,
-  workspaceWritesEnabled,
+  signedIn,
 }: WatchToggleButtonProps) => {
+  const pathname = usePathname();
+  const search = useSearchParams().toString();
   const [isWatched, setIsWatched] = useState(initialWatched);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isMutating, startTransition] = useTransition();
-  const isMutatingRef = useRef(false);
-  const opportunityIdRef = useRef(opportunityId);
-  const requestSequenceRef = useRef(0);
-  const dictionary = workspaceDictionary.watchlist;
-  const stateText =
-    errorMessage ?? (isWatched ? dictionary.watched : !workspaceWritesEnabled ? dictionary.readOnly : null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [failure, setFailure] = useState<ApiFailure | null>(null);
+  const inFlightRef = useRef(false);
+  const dictionary = copy.workspace.watchlist;
+  const loginHref = buildLoginRedirect(locale, search ? `${pathname}?${search}` : pathname);
 
-  useEffect(() => {
-    opportunityIdRef.current = opportunityId;
-    requestSequenceRef.current += 1;
-    isMutatingRef.current = false;
-    setIsWatched(initialWatched);
-    setErrorMessage(null);
-  }, [initialWatched, opportunityId]);
+  if (!signedIn) {
+    return (
+      <div className="watch-toggle">
+        <Link className="button secondary watch-toggle-button" href={loginHref}>
+          {dictionary.signInToWatch}
+        </Link>
+      </div>
+    );
+  }
 
-  const finishRequest = (requestSequence: number, targetOpportunityId: string) => {
-    if (
-      requestSequence !== requestSequenceRef.current ||
-      targetOpportunityId !== opportunityIdRef.current
-    ) {
-      return false;
-    }
-
-    isMutatingRef.current = false;
-    return true;
-  };
-
-  const handleClick = () => {
-    if (!workspaceWritesEnabled || isMutatingRef.current) {
+  const handleClick = async () => {
+    if (inFlightRef.current) {
       return;
     }
 
     const nextWatched = !isWatched;
-    const targetOpportunityId = opportunityId;
-    const requestSequence = requestSequenceRef.current + 1;
-    requestSequenceRef.current = requestSequence;
-    isMutatingRef.current = true;
-    setErrorMessage(null);
+    inFlightRef.current = true;
+    setIsSaving(true);
+    setFailure(null);
     setIsWatched(nextWatched);
     onToggle?.(nextWatched);
 
-    startTransition(() => {
-      void (async () => {
-        try {
-          const response = await fetch("/api/watchlists", {
-            method: nextWatched ? "POST" : "DELETE",
-            headers: {
-              "content-type": "application/json",
-            },
-            body: JSON.stringify({ opportunityId: targetOpportunityId }),
-          });
-          const payload = (await response.json()) as { error?: string };
+    const result = await sendJson("/api/watchlists", nextWatched ? "POST" : "DELETE", { opportunityId });
 
-          if (!response.ok) {
-            throw new Error(payload.error || dictionary.errors.update);
-          }
-
-          if (
-            requestSequence !== requestSequenceRef.current ||
-            targetOpportunityId !== opportunityIdRef.current
-          ) {
-            return;
-          }
-        } catch {
-          if (
-            requestSequence !== requestSequenceRef.current ||
-            targetOpportunityId !== opportunityIdRef.current
-          ) {
-            return;
-          }
-
-          setIsWatched(!nextWatched);
-          onToggle?.(!nextWatched);
-          setErrorMessage(dictionary.errors.update);
-        } finally {
-          finishRequest(requestSequence, targetOpportunityId);
-        }
-      })();
-    });
+    inFlightRef.current = false;
+    setIsSaving(false);
+    if (!result.ok) {
+      setIsWatched(!nextWatched);
+      onToggle?.(!nextWatched);
+      setFailure(result.failure);
+    }
   };
 
   return (
     <div className={`watch-toggle${showStatus ? " has-status" : ""}`}>
       <button
-        aria-pressed={isWatched}
         className={`button secondary watch-toggle-button${isWatched ? " is-active" : ""}`}
-        disabled={!workspaceWritesEnabled || isMutating}
-        onClick={handleClick}
-        title={!workspaceWritesEnabled ? dictionary.readOnly : undefined}
+        disabled={isSaving}
+        onClick={() => void handleClick()}
         type="button"
       >
-        {isMutating ? dictionary.saving : isWatched ? dictionary.unwatch : dictionary.watch}
+        {isSaving ? dictionary.saving : isWatched ? dictionary.unwatch : dictionary.watch}
       </button>
-      {showStatus && stateText ? <span className="watch-toggle-state">{stateText}</span> : null}
+      <span aria-live="polite" className="watch-toggle-state" role="status">
+        {showStatus && isWatched && !failure ? dictionary.watched : null}
+      </span>
+      {failure ? (
+        <span className="watch-toggle-error" role="alert">
+          {failure.kind === "generic" ? dictionary.errors.update : describeApiFailure(copy.common.apiErrors, failure)}{" "}
+          {failure.kind === "unauthenticated" ? (
+            <Link className="inline-link" href={loginHref}>
+              {copy.common.signIn}
+            </Link>
+          ) : null}
+        </span>
+      ) : null}
     </div>
   );
 };

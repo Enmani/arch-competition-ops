@@ -1,9 +1,9 @@
 ---
 title: Changelog 2026-04-30
-status: 已完成
+status: done
 updated_at: 2026-04-30
 related_docs:
-  - docs/plans/施工中-2026-04-30-cloudflare-workers-d1-deployment-plan.md
+  - docs/plans/2026-04-30-cloudflare-workers-d1-deployment-plan.md
 ---
 
 # Changelog 2026-04-30

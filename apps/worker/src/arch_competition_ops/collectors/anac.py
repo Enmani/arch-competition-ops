@@ -8,13 +8,15 @@ from arch_competition_ops.collectors.base import CollectedSourceDocument
 from arch_competition_ops.collectors.common import (
     build_url,
     fetch_json_get,
+)
+from arch_competition_ops.collectors.relevance import (
     has_built_environment_context,
     is_design_relevant,
-    normalize_text,
-    parse_date_string,
 )
+from arch_competition_ops.extractors.anac import resolve_anac_record_status
 from arch_competition_ops.models import SourceDefinition
-
+from arch_competition_ops.normalizers.dates import parse_date_string
+from arch_competition_ops.normalizers.text import normalize_text
 
 ANAC_AVVISI_URL = "https://pubblicitalegale.anticorruzione.it/api/v0/avvisi"
 ANAC_HEADERS = {
@@ -37,10 +39,9 @@ def _build_notice_public_url(notice_id: str | None, procedure_type: str | None) 
     if not isinstance(notice_id, str) or not notice_id.strip():
         return None
 
-    normalized_notice_id = notice_id.strip()
-    normalized_procedure_type = (procedure_type or "").strip().lower()
-    route = "esiti" if normalized_procedure_type.startswith("ad") else "bandi"
-    return f"https://pubblicitalegale.anticorruzione.it/{route}/{normalized_notice_id}?ricercaArchivio=true"
+    is_award = resolve_anac_record_status({"procedureType": procedure_type}) == "archived"
+    route = "esiti" if is_award else "bandi"
+    return f"https://pubblicitalegale.anticorruzione.it/{route}/{notice_id.strip()}?ricercaArchivio=true"
 
 
 def _extract_template(item: dict[str, Any]) -> dict[str, Any]:
@@ -84,7 +85,9 @@ def _extract_authority_name(template: dict[str, Any]) -> str | None:
     return None
 
 
-def _extract_document_link(template: dict[str, Any], flattened_items: list[dict[str, Any]]) -> str | None:
+def _extract_document_link(
+    template: dict[str, Any], flattened_items: list[dict[str, Any]]
+) -> str | None:
     for section in template.get("sections", []):
         if not isinstance(section, dict):
             continue
@@ -110,7 +113,9 @@ def collect_anac_documents(
     fetch_json: callable | None = None,
 ) -> list[CollectedSourceDocument]:
     get_json = fetch_json or _default_fetch_json
-    min_publication_date = date.fromisoformat(publication_date_from) if publication_date_from else None
+    min_publication_date = (
+        date.fromisoformat(publication_date_from) if publication_date_from else None
+    )
     page = 0
     page_size = max(limit * 10, 50)
     max_pages = 5
@@ -153,7 +158,8 @@ def collect_anac_documents(
                 continue
             normalized_title = normalize_text(title)
             if not has_built_environment_context(title, summary) and not any(
-                marker in normalized_title for marker in ("architett", "archeolog", "restauro", "paesagg")
+                marker in normalized_title
+                for marker in ("architett", "archeolog", "restauro", "paesagg")
             ):
                 continue
 
@@ -179,8 +185,7 @@ def collect_anac_documents(
                     "publicationDate": publication_date,
                     "estimatedValueEur": first_item.get("valore_affidamento"),
                     "summary": summary,
-                    "url": document_link or source.base_url,
-                    "officialUrl": document_link or source.base_url,
+                    "officialUrl": document_link,
                     "sourceApiUrl": detail_url,
                     "sourcePublicUrl": public_notice_url,
                 },

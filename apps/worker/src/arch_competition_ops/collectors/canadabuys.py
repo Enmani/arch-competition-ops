@@ -7,13 +7,14 @@ import json
 from arch_competition_ops.collectors.base import CollectedSourceDocument
 from arch_competition_ops.collectors.common import (
     fetch_text_get,
+)
+from arch_competition_ops.collectors.relevance import (
     has_built_environment_context,
     is_design_relevant,
-    normalize_text,
-    parse_date_string,
 )
 from arch_competition_ops.models import SourceDefinition
-
+from arch_competition_ops.normalizers.dates import parse_date_string
+from arch_competition_ops.normalizers.text import normalize_text
 
 CANADA_DESIGN_MARKERS = (
     "design build",
@@ -97,16 +98,25 @@ def collect_canadabuys_documents(
     documents: list[tuple[str, CollectedSourceDocument]] = []
     for row in reader:
         title = _pick_row_value(row, "title-titre-eng", "title-titre-fra")
-        summary = _pick_row_value(
-            row,
-            "description-descriptif-eng",
-            "description-descriptif-fra",
-            "unspscDescription-eng",
-            "unspscDescription-fra",
-        ) or ""
-        procurement_category = _pick_row_value(row, "procurementCategory-categorieApprovisionnement") or ""
-        unspsc_description = _pick_row_value(row, "unspscDescription-eng", "unspscDescription-fra") or ""
-        publication_date = parse_date_string(_pick_row_value(row, "publicationDate-datePublication"))
+        summary = (
+            _pick_row_value(
+                row,
+                "description-descriptif-eng",
+                "description-descriptif-fra",
+                "unspscDescription-eng",
+                "unspscDescription-fra",
+            )
+            or ""
+        )
+        procurement_category = (
+            _pick_row_value(row, "procurementCategory-categorieApprovisionnement") or ""
+        )
+        unspsc_description = (
+            _pick_row_value(row, "unspscDescription-eng", "unspscDescription-fra") or ""
+        )
+        publication_date = parse_date_string(
+            _pick_row_value(row, "publicationDate-datePublication")
+        )
 
         if publication_date_from and publication_date and publication_date < publication_date_from:
             continue
@@ -118,7 +128,10 @@ def collect_canadabuys_documents(
         ):
             continue
 
-        official_url = _pick_row_value(row, "noticeURL-URLavis-eng", "noticeURL-URLavis-fra") or source.base_url
+        official_url = (
+            _pick_row_value(row, "noticeURL-URLavis-eng", "noticeURL-URLavis-fra")
+            or source.base_url
+        )
         payload = json.dumps(
             {
                 "title": title,
@@ -128,7 +141,9 @@ def collect_canadabuys_documents(
                     "referenceNumber-numeroReference",
                     "solicitationNumber-numeroSollicitation",
                 ),
-                "deadline": parse_date_string(_pick_row_value(row, "tenderClosingDate-appelOffresDateCloture")),
+                "deadline": parse_date_string(
+                    _pick_row_value(row, "tenderClosingDate-appelOffresDateCloture")
+                ),
                 "summary": summary or procurement_category or unspsc_description,
                 "officialUrl": official_url,
                 "opportunityType": "public_design_services_procurement",
@@ -137,7 +152,6 @@ def collect_canadabuys_documents(
                     "procurementMethod-methodeApprovisionnement-eng",
                     "noticeType-avisType-eng",
                 ),
-                "implementationPath": "service_contract_award_after_competitive_selection",
                 "evidenceLevel": "official_listing",
                 "evidenceNote": "Official CanadaBuys open tender notice dataset row.",
                 "publishedAt": publication_date,

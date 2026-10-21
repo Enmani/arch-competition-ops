@@ -5,10 +5,15 @@
   "workspaces": [
     "apps/web",
     "packages/core",
+    "packages/previews",
     "packages/storage"
   ],
+  "engines": {
+    "node": ">=22",
+    "npm": ">=10"
+  },
   "scripts": {
-    "prepare:web": "npm --workspace apps/web run prepare:opportunity-previews",
+    "prewarm:previews": "node packages/previews/bin/prewarm.mjs",
     "dev:web": "npm --workspace apps/web run dev",
     "dev:web:up": "powershell -ExecutionPolicy Bypass -File .\\dev-port.ps1 up",
     "dev:web:restart": "powershell -ExecutionPolicy Bypass -File .\\dev-port.ps1 restart",
@@ -24,19 +29,25 @@
     "preview:web:cloudflare": "npm --workspace apps/web run preview:cloudflare",
     "start:web": "npm --workspace apps/web run start",
     "lint:web": "npm --workspace apps/web run lint",
-    "test:storage": "tsx --test packages/storage/src/**/*.test.ts",
+    "lint:worker": "uv run ruff check . && uv run ruff format --check .",
+    "typecheck": "tsc --noEmit -p packages/core && tsc --noEmit -p packages/storage && tsc --noEmit -p packages/previews && tsc --noEmit -p apps/web",
+    "test:worker": "uv run pytest -q",
+    "test:storage": "tsx --test \"packages/storage/src/**/*.test.ts\"",
+    "test:web": "tsx --test \"apps/web/src/**/*.test.ts\"",
+    "test:previews": "tsx --test \"packages/previews/src/**/*.test.ts\"",
     "test:dev-port": "node --test tests/dev-port.test.mjs",
+    "test:scripts": "node --test tests/dev-port.test.mjs tests/ingest-scripts.test.mjs",
+    "test:tools": "node --test tests/export-d1-data.test.mjs",
+    "test:docs": "node --test tests/doc-governance.test.mjs",
+    "test": "npm run test:worker && npm run test:storage && npm run test:previews && npm run test:web && npm run test:tools && npm run test:docs && npm run test:scripts",
+    "check": "npm run check:docs && npm run lint:worker && npm run lint:web && npm run typecheck && npm run test && uv run arch-competition-ops doctor && uv run arch-competition-ops verify",
+    "check:full": "npm run check && npm run build:web",
     "ops:auto-fetch:day": "powershell -ExecutionPolicy Bypass -File .\\scripts\\run-ingest-batch.ps1 -BatchId official_daytime",
     "ops:auto-fetch:night": "powershell -ExecutionPolicy Bypass -File .\\scripts\\run-ingest-batch.ps1 -BatchId secondary_nightly",
     "ops:auto-fetch:install": "powershell -ExecutionPolicy Bypass -File .\\scripts\\register-auto-ingest-tasks.ps1 -Action Install",
     "ops:auto-fetch:remove": "powershell -ExecutionPolicy Bypass -File .\\scripts\\register-auto-ingest-tasks.ps1 -Action Remove",
     "ops:auto-fetch:status": "powershell -ExecutionPolicy Bypass -File .\\scripts\\register-auto-ingest-tasks.ps1 -Action Show",
-    "check:doc-governance": "node scripts/doc-governance.mjs scan",
-    "check:doc-governance:file": "node scripts/doc-governance.mjs scan",
-    "check:encoding:all": "node scripts/doc-governance.mjs check-encoding",
-    "doc:normalize": "node scripts/doc-governance.mjs normalize",
-    "doc:set-status": "node scripts/doc-governance.mjs set-status",
-    "doc:write": "node scripts/doc-governance.mjs write"
+    "check:docs": "node scripts/doc-governance.mjs scan"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

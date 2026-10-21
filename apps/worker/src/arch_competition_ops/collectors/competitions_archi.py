@@ -6,12 +6,11 @@ import xml.etree.ElementTree as ET
 from arch_competition_ops.collectors.base import CollectedSourceDocument
 from arch_competition_ops.collectors.common import (
     fetch_text_get,
-    is_design_relevant,
-    parse_date_string,
-    strip_html,
 )
+from arch_competition_ops.collectors.relevance import is_design_relevant
 from arch_competition_ops.models import SourceDefinition
-
+from arch_competition_ops.normalizers.dates import parse_date_string
+from arch_competition_ops.normalizers.text import strip_html
 
 COMPETITIONS_ARCHI_FEED_URL = "https://competitions.archi/cat/all-competitions/feed/"
 
@@ -42,7 +41,9 @@ def collect_competitions_archi_documents(
         link = (item.findtext("link") or source.base_url).strip()
         pub_date = parse_date_string(item.findtext("pubDate"))
         description = strip_html(item.findtext("description")) or ""
-        categories = [category.text.strip() for category in item.findall("category") if category.text]
+        categories = [
+            category.text.strip() for category in item.findall("category") if category.text
+        ]
 
         if publication_date_from and pub_date and pub_date < publication_date_from:
             continue

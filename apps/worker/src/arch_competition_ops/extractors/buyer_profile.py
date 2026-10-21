@@ -3,17 +3,18 @@ from __future__ import annotations
 import re
 from urllib.parse import urljoin
 
-from arch_competition_ops.collectors.common import extract_cpv_codes, strip_html
 from arch_competition_ops.extractors.common import (
     build_base_record,
-    parse_iso_date,
+    is_distinct_notice_url,
     parse_money_amount,
+    parse_source_date,
     pick_first_value,
     pick_list_value,
     pick_regex,
     try_load_json,
 )
 from arch_competition_ops.models import CompetitionRecord, SourceDefinition
+from arch_competition_ops.normalizers.text import extract_cpv_codes, strip_html
 
 
 def _infer_opportunity_type(title: str) -> str:
@@ -21,12 +22,6 @@ def _infer_opportunity_type(title: str) -> str:
     if any(marker in normalized for marker in ("competition", "contest", "concorso", "concours")):
         return "public_design_contest"
     return "public_design_services_procurement"
-
-
-def _infer_implementation_path(opportunity_type: str) -> str:
-    if opportunity_type == "public_design_contest":
-        return "winner_or_winners_progress_to_negotiated_service_award"
-    return "service_contract_award_after_competitive_selection"
 
 
 def _extract_notice_id_from_url(source_url: str) -> str | None:
@@ -195,6 +190,7 @@ def parse_buyer_profile_notice(
         detail_html = data.get("detailHtml") if isinstance(data.get("detailHtml"), str) else ""
         official_url = None
         brief_pdf_url = None
+        eligibility_is_clause = False
 
         if detail_html:
             authority_name = _parse_detail_authority(detail_html) or authority_name
@@ -221,10 +217,13 @@ def parse_buyer_profile_notice(
             brief_pdf_url = None
             evidence_level = "official_listing"
             evidence_note = (
-                "Parsed from an official municipal procurement listing. Confirm attachments and full detail page."
+                "Parsed from an official municipal procurement listing. "
+                "Confirm attachments and full detail page."
             )
     else:
-        title = pick_regex(payload, [r"<h1[^>]*>\s*([^<]+)</h1>", r"<title>([^<]+)</title>"]) or _parse_detail_title(payload)
+        title = pick_regex(
+            payload, [r"<h1[^>]*>\s*([^<]+)</h1>", r"<title>([^<]+)</title>"]
+        ) or _parse_detail_title(payload)
         authority_name = pick_regex(
             payload,
             [
@@ -271,16 +270,23 @@ def parse_buyer_profile_notice(
             payload,
             [r"Procedura[^:]*:\s*([^<\n]+)", r"Procedure[^:]*:\s*([^<\n]+)"],
         ) or _parse_detail_procedure(payload)
-        eligibility_summary = pick_regex(
+        eligibility_clause = pick_regex(
             payload,
             [r"Requisiti[^:]*:\s*([^<\n]+)", r"Requirements[^:]*:\s*([^<\n]+)"],
-        ) or _parse_detail_summary(payload)
+        )
+        eligibility_summary = eligibility_clause or _parse_detail_summary(payload)
+        eligibility_is_clause = eligibility_clause is not None
         cpv_raw = pick_regex(payload, [r"CPV[^:]*:\s*([^<\n]+)"])
-        cpv_codes = [code.strip() for code in re.split(r"[,;\s]+", cpv_raw or "") if code.strip()] or extract_cpv_codes(payload)
+        cpv_codes = [
+            code.strip() for code in re.split(r"[,;\s]+", cpv_raw or "") if code.strip()
+        ] or extract_cpv_codes(payload)
         official_url = _parse_external_official_url(payload, source_url)
         brief_pdf_url = _parse_brief_pdf_url(payload, source_url)
         evidence_level = "official_notice"
-        evidence_note = "Parsed from a municipal buyer-profile page. Confirm attachments and legal notice pages."
+        evidence_note = (
+            "Parsed from a municipal buyer-profile page. "
+            "Confirm attachments and legal notice pages."
+        )
 
     if not title:
         raise ValueError("Buyer profile parser could not determine a title from the payload")
@@ -294,14 +300,16 @@ def parse_buyer_profile_notice(
         opportunity_type=opportunity_type,
         procedure_type=procedure_type,
         official_notice_id=official_notice_id,
-        deadline_at=parse_iso_date(deadline_raw),
+        deadline_at=parse_source_date(deadline_raw, source),
         estimated_contract_value_eur=parse_money_amount(value_raw),
-        eligibility_summary=eligibility_summary,
-        implementation_path=_infer_implementation_path(opportunity_type),
+        eligibility_summary=eligibility_summary if eligibility_is_clause else None,
+        description=eligibility_summary,
         cpv_codes=cpv_codes,
         evidence_note=evidence_note,
         evidence_level=evidence_level,
         official_url=official_url,
+        # Detail pages on the municipal platform are the authority's own notice pages.
+        source_url_is_notice_page=is_distinct_notice_url(source, source_url),
         brief_pdf_url=brief_pdf_url,
         estimated_contract_value_text=value_raw,
         location_label=location_label if data else None,

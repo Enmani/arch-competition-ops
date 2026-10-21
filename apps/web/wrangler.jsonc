@@ -5,6 +5,9 @@
   "account_id": "9b32ab0cdd1d91002ccfc9b45882b4db",
   "compatibility_date": "2026-04-29",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "observability": {
+    "enabled": true
+  },
   "routes": [
     {
       "pattern": "arch-competition.com",

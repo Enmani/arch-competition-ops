@@ -7,17 +7,20 @@ from typing import Any
 from arch_competition_ops.collectors.base import CollectedSourceDocument
 from arch_competition_ops.collectors.common import (
     build_url,
-    extract_cpv_codes,
     fetch_json_get,
+)
+from arch_competition_ops.collectors.relevance import (
     has_built_environment_context,
     is_design_relevant,
-    parse_date_string,
 )
 from arch_competition_ops.models import SourceDefinition
+from arch_competition_ops.normalizers.dates import parse_date_string
 from arch_competition_ops.normalizers.money import format_money_text, parse_money_number
+from arch_competition_ops.normalizers.text import extract_cpv_codes
 
-
-BOAMP_SEARCH_URL = "https://boamp-datadila.opendatasoft.com/api/explore/v2.1/catalog/datasets/boamp/records"
+BOAMP_SEARCH_URL = (
+    "https://boamp-datadila.opendatasoft.com/api/explore/v2.1/catalog/datasets/boamp/records"
+)
 VALUE_KEY_MARKERS = ("amount", "montant", "value", "valeur", "prix", "price")
 
 
@@ -37,7 +40,9 @@ def _parse_nested_json(raw_value: Any) -> Any:
 def _pick_estimated_value(payload: Any) -> tuple[float | None, str | None]:
     def visit(value: Any, path: str = "root") -> tuple[float | None, str | None]:
         if isinstance(value, dict):
-            currency = str(value.get("@currencyID") or value.get("currency") or "").strip().upper() or None
+            currency = (
+                str(value.get("@currencyID") or value.get("currency") or "").strip().upper() or None
+            )
             amount_candidate = value.get("#text")
             if amount_candidate is None and "amount" in value:
                 amount_candidate = value.get("amount")
@@ -89,7 +94,9 @@ def collect_boamp_documents(
     )
     response = (fetch_json or _default_fetch_json)(url)
     results = response.get("results", []) if isinstance(response, dict) else []
-    min_publication_date = date.fromisoformat(publication_date_from) if publication_date_from else None
+    min_publication_date = (
+        date.fromisoformat(publication_date_from) if publication_date_from else None
+    )
 
     documents: list[CollectedSourceDocument] = []
     for item in results:
@@ -104,7 +111,9 @@ def collect_boamp_documents(
         title = str(item.get("objet") or "").strip()
         buyer = str(item.get("nomacheteur") or "").strip() or None
         descriptors = " ".join(
-            str(entry).strip() for entry in item.get("descripteur_libelle", []) if str(entry).strip()
+            str(entry).strip()
+            for entry in item.get("descripteur_libelle", [])
+            if str(entry).strip()
         )
         nested_payload = _parse_nested_json(item.get("donnees"))
         cpv_codes = extract_cpv_codes(nested_payload or {})
@@ -134,7 +143,7 @@ def collect_boamp_documents(
                 "estimatedValueText": estimated_value_text,
                 "cpv": cpv_codes,
                 "summary": descriptors or None,
-                "url": item.get("url") or source.base_url,
+                "officialUrl": item.get("url"),
             },
             ensure_ascii=False,
         )

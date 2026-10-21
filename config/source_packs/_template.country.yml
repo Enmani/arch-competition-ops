@@ -4,6 +4,7 @@ sources:
     kind: official_procurement
     jurisdiction: example_country
     base_url: https://example.gov/
+    collector: disabled_scaffold
     scan_method: html
     extractor: generic_listing_html
     source_tier: primary

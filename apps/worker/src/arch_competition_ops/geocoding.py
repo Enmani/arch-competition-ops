@@ -1,14 +1,24 @@
+"""Nominatim geocoding with a persistent JSON cache.
+
+Cache policy: entries are only written for definitive answers (a result, or an empty result set).
+Transport errors and non-2xx responses raise out of ``geocode`` and are never cached, so a rate
+limit cannot turn into a permanent "not found". The file is written atomically (temp file +
+``os.replace``) and at most once per ``save_every`` new entries plus once on ``flush()``; a corrupt
+file is moved aside with a warning instead of being silently discarded.
+"""
+
 from __future__ import annotations
 
 import json
-import time
+import logging
+import os
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
-import requests
-
+from arch_competition_ops.http import HttpClient, HttpError, get_default_client
 from arch_competition_ops.location import (
     clean_location_label,
     get_country_code_for_jurisdiction,
@@ -19,9 +29,12 @@ from arch_competition_ops.location import (
 )
 from arch_competition_ops.models import CompetitionRecord
 
+logger = logging.getLogger(__name__)
+
 NOMINATIM_SEARCH_URL = "https://nominatim.openstreetmap.org/search"
 NOMINATIM_USER_AGENT = "arch-competition-ops/0.1 geocoding-cache"
 GEOCODE_CACHE_VERSION = 1
+GEOCODE_TIMEOUT_SECONDS = 15.0
 
 
 @dataclass(frozen=True)
@@ -37,7 +50,7 @@ def enrich_record_geocode(
     record: CompetitionRecord,
     *,
     cache_path: Path,
-    geocoder: "NominatimGeocoder | None" = None,
+    geocoder: NominatimGeocoder | None = None,
 ) -> CompetitionRecord:
     if _has_valid_coordinates(record):
         if record.location_label is None:
@@ -65,7 +78,8 @@ def enrich_record_geocode(
             location_label=location_label,
             jurisdiction=record.jurisdiction,
         )
-    except (OSError, requests.RequestException):
+    except (OSError, HttpError) as exc:
+        logger.warning("Geocoding %r failed: %s", location_label, exc)
         record.location_label = location_label
         return record
     if not result:
@@ -80,35 +94,23 @@ def enrich_record_geocode(
     return record
 
 
-def enrich_records_geocode(
-    records: list[CompetitionRecord],
-    *,
-    cache_path: Path,
-    geocoder: "NominatimGeocoder | None" = None,
-) -> list[CompetitionRecord]:
-    resolver = geocoder or NominatimGeocoder(cache_path=cache_path)
-    return [
-        enrich_record_geocode(record, cache_path=cache_path, geocoder=resolver)
-        for record in records
-    ]
-
-
 class NominatimGeocoder:
     def __init__(
         self,
         *,
         cache_path: Path,
-        min_interval_seconds: float = 1.1,
         search_url: str = NOMINATIM_SEARCH_URL,
-        session: requests.Session | None = None,
+        client: HttpClient | None = None,
         user_agent: str = NOMINATIM_USER_AGENT,
+        save_every: int = 20,
     ) -> None:
         self.cache_path = cache_path
-        self.min_interval_seconds = min_interval_seconds
         self.search_url = search_url
-        self.session = session or requests.Session()
+        # Request pacing (1 request/second for Nominatim) is enforced by the shared client.
+        self.client = client or get_default_client()
         self.user_agent = user_agent
-        self._last_request_at = 0.0
+        self.save_every = max(1, save_every)
+        self._unsaved = 0
         self._cache = self._load_cache()
 
     def geocode(
@@ -135,7 +137,9 @@ class NominatimGeocoder:
             country_label=country_label,
         )
         self._cache[cache_key] = _cache_entry_from_result(result)
-        self._save_cache()
+        self._unsaved += 1
+        if self._unsaved >= self.save_every:
+            self.flush()
         return result
 
     def _fetch_geocode(
@@ -155,17 +159,11 @@ class NominatimGeocoder:
         if country_code:
             params["countrycodes"] = country_code
 
-        self._wait_for_rate_limit()
-        response = self.session.get(
+        response = self.client.get(
             f"{self.search_url}?{urlencode(params)}",
-            headers={
-                "Accept": "application/json",
-                "User-Agent": self.user_agent,
-            },
-            timeout=15,
+            headers={"Accept": "application/json", "User-Agent": self.user_agent},
+            timeout=GEOCODE_TIMEOUT_SECONDS,
         )
-        self._last_request_at = time.monotonic()
-        response.raise_for_status()
 
         try:
             payload = response.json()
@@ -185,26 +183,23 @@ class NominatimGeocoder:
             jurisdiction=jurisdiction,
         )
 
-    def _wait_for_rate_limit(self) -> None:
-        elapsed = time.monotonic() - self._last_request_at
-        remaining = self.min_interval_seconds - elapsed
-        if remaining > 0:
-            time.sleep(remaining)
-
     def _load_cache(self) -> dict[str, dict[str, Any] | None]:
         if not self.cache_path.exists():
             return {}
 
         try:
             payload = json.loads(self.cache_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+        except (OSError, json.JSONDecodeError) as exc:
+            self._quarantine_cache(f"unreadable ({exc})")
             return {}
 
         if not isinstance(payload, dict) or payload.get("version") != GEOCODE_CACHE_VERSION:
+            self._quarantine_cache("has an unexpected structure or version")
             return {}
 
         entries = payload.get("entries")
         if not isinstance(entries, dict):
+            self._quarantine_cache("has no entries mapping")
             return {}
 
         return {
@@ -212,16 +207,42 @@ class NominatimGeocoder:
             for key, value in entries.items()
         }
 
-    def _save_cache(self) -> None:
-        self.cache_path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {
-            "entries": self._cache,
-            "version": GEOCODE_CACHE_VERSION,
-        }
-        self.cache_path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
+    def _quarantine_cache(self, reason: str) -> None:
+        """Keep the unusable file next to the cache so it can be inspected, and say so."""
+        quarantine_path = self.cache_path.with_name(self.cache_path.name + ".corrupt")
+        logger.warning(
+            "Geocode cache %s is %s; starting with an empty cache and keeping the old file as %s",
+            self.cache_path,
+            reason,
+            quarantine_path,
         )
+        try:
+            os.replace(self.cache_path, quarantine_path)
+        except OSError as exc:
+            logger.warning("Could not move aside %s: %s", self.cache_path, exc)
+
+    def flush(self) -> None:
+        """Persist the cache atomically if anything changed since the last write."""
+        if self._unsaved == 0:
+            return
+        self.cache_path.parent.mkdir(parents=True, exist_ok=True)
+        document = json.dumps(
+            {"entries": self._cache, "version": GEOCODE_CACHE_VERSION},
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        )
+        handle, temporary_name = tempfile.mkstemp(
+            dir=self.cache_path.parent, prefix=self.cache_path.name, suffix=".tmp"
+        )
+        try:
+            with os.fdopen(handle, "w", encoding="utf-8", newline="\n") as temporary_file:
+                temporary_file.write(document + "\n")
+            os.replace(temporary_name, self.cache_path)
+        except BaseException:
+            Path(temporary_name).unlink(missing_ok=True)
+            raise
+        self._unsaved = 0
 
 
 def _has_valid_coordinates(record: CompetitionRecord) -> bool:

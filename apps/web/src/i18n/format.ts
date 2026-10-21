@@ -1,10 +1,21 @@
-import type { AppLocale } from "@/i18n/config";
-import type { AppDictionary } from "@/i18n/dictionaries";
-import { formatTokenLabel } from "@/lib/discover";
+import { describeParticipationFee } from "@arch-competition/core";
+
+import { intlLocaleTags, type AppLocale } from "./config";
+import type { AppDictionary } from "./dictionaries";
+import { formatTokenLabel } from "../lib/discover";
+
+/** The slice of the dictionary the formatters need; client components receive only this. */
+export type CommonCopy = Pick<AppDictionary, "common">;
 
 const normalizeLookupKey = (value: string) => value.trim().toLowerCase().replace(/\s+/g, "_");
 
-export const getIntlLocale = (locale: AppLocale) => (locale === "zh" ? "zh-CN" : "en-GB");
+const getIntlLocale = (locale: AppLocale) => intlLocaleTags[locale];
+
+/** Replaces `{name}` placeholders; an unknown placeholder is left visible rather than dropped. */
+export const fillTemplate = (template: string, values: Record<string, string | number>) =>
+  template.replace(/\{(\w+)\}/g, (placeholder, name: string) =>
+    name in values ? String(values[name]) : placeholder,
+  );
 
 export const translateMappedValue = (
   value: string | null | undefined,
@@ -23,10 +34,27 @@ export const translateMappedValue = (
   return formatTokenLabel(value);
 };
 
+/**
+ * Deadlines, capture and update stamps are stored as calendar dates or UTC instants and carry
+ * no zone of their own. Formatting always pins `timeZone` (default UTC) so the server render
+ * and every browser print the same day: with the viewer's zone, "2026-11-03" would read as
+ * 2 November west of Greenwich and trigger a hydration mismatch.
+ */
+const DATE_FORMAT: Intl.DateTimeFormatOptions = { dateStyle: "medium", timeZone: "UTC" };
+export const DATE_TIME_FORMAT: Intl.DateTimeFormatOptions = {
+  day: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  month: "short",
+  timeZone: "UTC",
+  timeZoneName: "short",
+  year: "numeric",
+};
+
 export const formatLocalizedDate = (
   locale: AppLocale,
   value: string | null | undefined,
-  options: Intl.DateTimeFormatOptions,
+  options: Intl.DateTimeFormatOptions = DATE_FORMAT,
 ) => {
   if (!value) {
     return null;
@@ -37,22 +65,17 @@ export const formatLocalizedDate = (
     return value;
   }
 
-  return new Intl.DateTimeFormat(getIntlLocale(locale), options).format(date);
+  return new Intl.DateTimeFormat(getIntlLocale(locale), { ...options, timeZone: options.timeZone ?? "UTC" }).format(
+    date,
+  );
 };
 
 export const formatDeadlineLabel = (
   locale: AppLocale,
-  dictionary: AppDictionary,
+  dictionary: CommonCopy,
   value: string | null | undefined,
 ) => {
-  const formatted = formatLocalizedDate(
-    locale,
-    value,
-    locale === "zh"
-      ? { year: "numeric", month: "numeric", day: "numeric" }
-      : { day: "2-digit", month: "short", year: "numeric" },
-  );
-
+  const formatted = formatLocalizedDate(locale, value);
   if (!formatted) {
     return dictionary.common.deadlinePending;
   }
@@ -65,14 +88,12 @@ export const formatCompactCurrency = (locale: AppLocale, value: number | null | 
     return null;
   }
 
-  const formatted = new Intl.NumberFormat(getIntlLocale(locale), {
+  return new Intl.NumberFormat(getIntlLocale(locale), {
     style: "currency",
     currency: "EUR",
     notation: "compact",
     maximumFractionDigits: 1,
   }).format(value);
-
-  return locale === "en" ? formatted.replace(/K/g, "k") : formatted;
 };
 
 export const formatCurrency = (locale: AppLocale, value: number | null | undefined) => {
@@ -87,46 +108,45 @@ export const formatCurrency = (locale: AppLocale, value: number | null | undefin
   }).format(value);
 };
 
+/**
+ * Localised participation-fee wording. The decision (pending / free / amounts) comes from
+ * core's `describeParticipationFee`, the single rule shared with storage: an unknown (NULL)
+ * fee reads as pending and only an explicit 0 reads as no participation fee.
+ */
 export const formatParticipationCost = (
   locale: AppLocale,
-  dictionary: AppDictionary,
+  dictionary: CommonCopy,
   registrationFeeEur: number | null,
   submissionFeeEur: number | null,
 ) => {
-  if ((registrationFeeEur ?? 0) === 0 && (submissionFeeEur ?? 0) === 0) {
+  const fee = describeParticipationFee(registrationFeeEur, submissionFeeEur);
+  if (fee.kind === "pending") {
+    return dictionary.common.feePending;
+  }
+  if (fee.kind === "free") {
     return dictionary.common.noParticipationFee;
   }
 
+  const { registrationFee, submissionFee } = dictionary.common.templates;
   const parts: string[] = [];
-  if (registrationFeeEur !== null) {
-    const amount = formatCurrency(locale, registrationFeeEur) ?? registrationFeeEur.toString();
-    parts.push(locale === "zh" ? `${amount} 注册` : `${amount} registration`);
+  if (fee.registrationEur !== null) {
+    const amount = formatCurrency(locale, fee.registrationEur) ?? fee.registrationEur.toString();
+    parts.push(fillTemplate(registrationFee, { amount }));
   }
-  if (submissionFeeEur !== null) {
-    const amount = formatCurrency(locale, submissionFeeEur) ?? submissionFeeEur.toString();
-    parts.push(locale === "zh" ? `${amount} 提交` : `${amount} submission`);
+  if (fee.submissionEur !== null) {
+    const amount = formatCurrency(locale, fee.submissionEur) ?? fee.submissionEur.toString();
+    parts.push(fillTemplate(submissionFee, { amount }));
   }
 
-  return parts.join(" / ") || dictionary.common.feePending;
+  return parts.join(" / ");
 };
 
 export const formatStampLabel = (
   locale: AppLocale,
-  dictionary: AppDictionary,
+  dictionary: CommonCopy,
   prefix: "capturedPrefix" | "updatedPrefix",
   value: string | null | undefined,
 ) => {
-  const formatted = formatLocalizedDate(
-    locale,
-    value,
-    locale === "zh"
-      ? { year: "numeric", month: "numeric", day: "numeric" }
-      : { day: "2-digit", month: "short", year: "numeric" },
-  );
-
-  if (!formatted) {
-    return `${dictionary.common[prefix]} ${dictionary.common.pending}`;
-  }
-
-  return `${dictionary.common[prefix]} ${formatted}`;
+  const formatted = formatLocalizedDate(locale, value);
+  return `${dictionary.common[prefix]} ${formatted ?? dictionary.common.pending}`;
 };

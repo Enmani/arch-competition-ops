@@ -1,14 +1,20 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 
 from pydantic import BaseModel, Field
+
+from arch_competition_ops.clock import now_utc
 
 
 class CompetitionRecord(BaseModel):
     competition_id: str | None = None
     title: str
-    organizer: str = "unknown"
+    # Real buyer / organizer only. Empty string means "not stated"; never a platform name.
+    organizer: str = ""
+    # Publishing platform that surfaced the record (config/sources.yml source_id / name).
+    source_id: str | None = None
+    source_name: str | None = None
     authority_name: str | None = None
     official_url: str | None = None
     source_url: str
@@ -42,7 +48,10 @@ class CompetitionRecord(BaseModel):
     geo_source: str | None = None
     geo_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     deadline_at: date | None = None
-    eligibility_summary: str | None = None
+    eligibility_summary: str | None = None  # qualification clause text only
+    # Project prose from the source. Transient: used for classification and keyword
+    # filtering, never written to the database.
+    description: str | None = Field(default=None, exclude=True)
     brief_pdf_url: str | None = None
     documents_portal_url: str | None = None
     extraction_confidence: float = Field(default=0.5, ge=0.0, le=1.0)
@@ -50,7 +59,7 @@ class CompetitionRecord(BaseModel):
     qualification_score: float | None = Field(default=None, ge=0.0, le=1.0)
     evidence_note: str | None = None
     last_verified_at: datetime | None = None
-    discovered_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    discovered_at: datetime = Field(default_factory=now_utc)
 
     def canonical_deadline(self) -> str:
         if self.deadline_at is None:

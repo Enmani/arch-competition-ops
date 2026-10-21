@@ -1,7 +1,7 @@
 ---
 title: AI Repository Constraints
-status: 已完成
-updated_at: 2026-04-20
+status: done
+updated_at: 2026-10-21
 related_docs:
   - AGENTS.md
   - docs/AGENTS.md
@@ -11,9 +11,7 @@ related_docs:
 
 # AI Repository Constraints
 
-This file is the durable implementation contract for all AI agents working in this repository.
-
-Read it together with `AGENTS.md`.
+Implementation detail for frontend, i18n, data access and API work. `AGENTS.md` is the single authority for repository rules (truth rules, sources of truth, port, verification); this file does not restate them and adds only the details below. If the two ever disagree, `AGENTS.md` wins.
 
 ## Product Intent
 
@@ -39,32 +37,10 @@ The repository should not drift toward:
 - inspirational competition galleries
 - design-award showcase aesthetics
 
-## Non-Negotiable Truth Rules
+## Data Boundaries
 
-1. Never invent deadlines, fees, prizes, organizer names, authority names, contract values, languages, or eligibility conditions.
-2. If evidence is missing, keep the field empty, `null`, or an explicit pending/unknown state.
-3. If an aggregator conflicts with an official notice, the official notice wins and the conflict must be recorded in `evidence_note`.
-4. Every canonical opportunity must preserve provenance through `official_url` and `source_url` when available.
-5. The web surface may format or localize data, but it must not invent facts that are not present in normalized storage.
-
-## Source Of Truth Hierarchy
-
-Use these layers in order:
-
-1. `config/sources.yml`
-2. `config/filters.yml`
-3. `config/taxonomy.yml`
-4. `data/competitions.sqlite`
-5. `packages/storage/src/*`
-6. `apps/worker/src/arch_competition_ops/*`
-7. `apps/web/src/*`
-
-Implications:
-
-- ingestion and normalization live in `apps/worker`
-- the canonical professional-opportunity read model lives in SQLite plus `packages/storage`
-- the website is a consumer of normalized records
-- UI code must not bypass the storage layer with parallel ad hoc data logic
+- Ingestion and normalization live in `apps/worker`; the website is a consumer of normalized records and never invents facts (`AGENTS.md` rules 1-8). Data-shape rules for stored records are in `docs/DATA_CONTRACT.md`.
+- The read model is `packages/storage` over the database. UI code must not bypass it with parallel ad hoc data logic.
 
 ## Frontend Constraints
 
@@ -126,7 +102,7 @@ Rules:
 4. The locale switcher must remain available in the top-right shell area.
 5. Query-string state should survive locale switching when reasonable.
 6. Do not hardcode UI strings directly inside components when they are product copy.
-7. Put product copy in `apps/web/src/i18n/dictionaries.ts`.
+7. Put product copy in `apps/web/src/i18n/dictionaries/`.
 8. Use locale-aware formatting helpers for dates, currency, and normalized taxonomy labels.
 
 Important distinction:
@@ -167,20 +143,6 @@ Keep this pattern:
 
 Do not add new primary pages outside the locale segment unless they are explicitly designed as redirects or technical endpoints.
 
-## Port And Runtime Constraints
-
-This repository must avoid Trinity-related ports already in use elsewhere.
-
-Hard rule:
-
-- web development must stay on port `3400` unless the user explicitly changes the repo standard
-
-Do not casually move the web app back to:
-
-- `3000`
-- `3001`
-- or other Trinity-adjacent defaults already called out by the user
-
 ## File Placement Constraints
 
 - website UI and route code: `apps/web/src/*`
@@ -193,23 +155,13 @@ Do not casually move the web app back to:
 
 Do not create parallel folders for the same concern unless the repository is intentionally being restructured.
 
-## Testing And Verification Constraints
+## Verification Details
 
-Before claiming a change is complete, run the checks that match the affected surface.
+The command list is in `AGENTS.md` (Verification). Extra expectations by surface:
 
-Minimum expectations:
-
-- storage changes: `npm run test:storage`
-- web changes: `npm run lint:web`
-- route or build-affecting web changes: `npm run build:web`
-- worker or repository health changes: `uv run arch-competition-ops doctor` and `uv run arch-competition-ops verify`
-
-When validating UI work, also verify in a browser when possible:
-
-- locale switching works
-- discover filters still work
-- root and legacy redirects still resolve correctly
-- no console errors on a fresh load
+- Storage, auth or API changes: also run `npm run test:web`. SQL changes should be smoke-tested on a local workerd (`wrangler dev`) because D1 has limits plain SQLite lacks (see `docs/structures/2026-10-21-storage-auth-api-architecture.md`).
+- State-changing or private API routes must use `requireApiUser`/`requireApiAdmin`, same-origin checks and zod validation from `apps/web/src/lib/api/`.
+- UI work: verify in a browser when possible: locale switching, discover filters, root and legacy redirects, and no console errors on a fresh load.
 
 ## Change Discipline For AI Agents
 
@@ -226,7 +178,6 @@ Do not:
 - add hardcoded English-only UI
 - add a second unofficial data access path
 - introduce speculative/non-normalized opportunity fields directly in the UI
-- weaken evidence and provenance rules for speed
 - redesign the browse surface into a generic dashboard
 
 ## When In Doubt

@@ -1,18 +1,14 @@
 import Link from "next/link";
 
-import type { StoredOpportunityFeedItem } from "@arch-competition/storage/cloudflare";
+import type { StoredOpportunityFeedItem } from "@arch-competition/storage";
 
 import WatchToggleButton from "@/components/watch-toggle-button";
 import { buildLocalePath, type AppLocale } from "@/i18n/config";
 import type { AppDictionary } from "@/i18n/dictionaries";
+import { fillTemplate } from "@/i18n/format";
+import { pickWatchToggleCopy } from "@/i18n/slices";
 import {
-  formatAudienceLabel,
-  formatBuiltAssetTypesLabel,
-  formatCompetitionTagsLabel,
-  formatDesignScopesLabel,
-  formatOfficialSectorsLabel,
-  formatProjectModesLabel,
-  formatRegionsLabel,
+  formatTaxonomyList,
   getOpportunityDisplayMeta,
   joinValues,
   truthFlag,
@@ -23,7 +19,7 @@ type OpportunityDetailSurfaceProps = {
   isWatched: boolean;
   locale: AppLocale;
   opportunity: StoredOpportunityFeedItem;
-  workspaceWritesEnabled: boolean;
+  signedIn: boolean;
 };
 
 export const OpportunityDetailSurface = ({
@@ -31,9 +27,10 @@ export const OpportunityDetailSurface = ({
   isWatched,
   locale,
   opportunity,
-  workspaceWritesEnabled,
+  signedIn,
 }: OpportunityDetailSurfaceProps) => {
   const {
+    authorityLabel,
     deadlineLabel,
     discoveryTrail,
     documentsPortalLink,
@@ -55,10 +52,11 @@ export const OpportunityDetailSurface = ({
       : opportunity.licensedArchitectRequired === false
         ? dictionary.common.notExplicitInNotice
         : dictionary.common.unstated;
-  const description =
-    locale === "zh"
-      ? `${dictionary.detail.fields.implementationRoute}：${implementationPathLabel} · ${dictionary.feed.fields.evidenceStack}：${evidenceLevelLabel}`
-      : `${dictionary.detail.fields.implementationRoute}: ${implementationPathLabel} · ${dictionary.feed.fields.evidenceStack}: ${evidenceLevelLabel}`;
+  const { labelValue } = dictionary.common.templates;
+  const description = [
+    fillTemplate(labelValue, { label: dictionary.detail.fields.implementationRoute, value: implementationPathLabel }),
+    fillTemplate(labelValue, { label: dictionary.feed.fields.evidenceStack, value: evidenceLevelLabel }),
+  ].join(" · ");
 
   return (
     <main className="detail-layout">
@@ -73,11 +71,12 @@ export const OpportunityDetailSurface = ({
         </div>
         <div className="detail-hero-actions">
           <WatchToggleButton
+            copy={pickWatchToggleCopy(dictionary)}
             initialWatched={isWatched}
+            locale={locale}
             opportunityId={opportunity.id}
             showStatus
-            workspaceDictionary={dictionary.workspace}
-            workspaceWritesEnabled={workspaceWritesEnabled}
+            signedIn={signedIn}
           />
         </div>
       </section>
@@ -89,7 +88,7 @@ export const OpportunityDetailSurface = ({
             <div className="detail-list">
               <div className="detail-item">
                 <span className="detail-label">{dictionary.detail.fields.authority}</span>
-                <span>{opportunity.authorityName}</span>
+                <span>{authorityLabel}</span>
               </div>
               <div className="detail-item">
                 <span className="detail-label">{dictionary.discover.card.location}</span>
@@ -164,7 +163,7 @@ export const OpportunityDetailSurface = ({
               </div>
               <div className="detail-item">
                 <span className="detail-label">{dictionary.feed.fields.audience}</span>
-                <span>{formatAudienceLabel(dictionary, opportunity)}</span>
+                <span>{formatTaxonomyList(dictionary, "audiences", opportunity.audience)}</span>
               </div>
             </div>
           </section>
@@ -202,27 +201,27 @@ export const OpportunityDetailSurface = ({
               </div>
               <div className="detail-item">
                 <span className="detail-label">{dictionary.feed.fields.regions}</span>
-                <span>{formatRegionsLabel(dictionary, opportunity)}</span>
+                <span>{formatTaxonomyList(dictionary, "regions", opportunity.regions)}</span>
               </div>
               <div className="detail-item">
                 <span className="detail-label">{dictionary.feed.fields.competitionTags}</span>
-                <span>{formatCompetitionTagsLabel(dictionary, opportunity)}</span>
+                <span>{formatTaxonomyList(dictionary, "competitionTags", opportunity.competitionTypes)}</span>
               </div>
               <div className="detail-item">
                 <span className="detail-label">{dictionary.detail.fields.officialSectors}</span>
-                <span>{formatOfficialSectorsLabel(dictionary, opportunity)}</span>
+                <span>{formatTaxonomyList(dictionary, "officialSectors", opportunity.officialSectors)}</span>
               </div>
               <div className="detail-item">
                 <span className="detail-label">{dictionary.detail.fields.builtAssetTypes}</span>
-                <span>{formatBuiltAssetTypesLabel(dictionary, opportunity)}</span>
+                <span>{formatTaxonomyList(dictionary, "builtAssetTypes", opportunity.builtAssetTypes)}</span>
               </div>
               <div className="detail-item">
                 <span className="detail-label">{dictionary.detail.fields.designScopes}</span>
-                <span>{formatDesignScopesLabel(dictionary, opportunity)}</span>
+                <span>{formatTaxonomyList(dictionary, "designScopes", opportunity.designScopes)}</span>
               </div>
               <div className="detail-item">
                 <span className="detail-label">{dictionary.detail.fields.projectModes}</span>
-                <span>{formatProjectModesLabel(dictionary, opportunity)}</span>
+                <span>{formatTaxonomyList(dictionary, "projectModes", opportunity.projectModes)}</span>
               </div>
               <div className="detail-item">
                 <span className="detail-label">{dictionary.feed.fields.cpv}</span>

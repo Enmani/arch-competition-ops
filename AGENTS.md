@@ -1,7 +1,7 @@
 ---
 title: Arch Competition Ops for Codex
-status: 已完成
-updated_at: 2026-04-21
+status: done
+updated_at: 2026-10-21
 related_docs:
   - docs/AI_CONSTRAINTS.md
   - docs/AGENTS.md
@@ -12,7 +12,7 @@ related_docs:
 
 Read this file first. It defines how AI agents should work in this repository.
 
-Then read `docs/AI_CONSTRAINTS.md`. That file is the detailed implementation contract for frontend, backend, i18n, routing, ports, and verification.
+Then read `docs/AI_CONSTRAINTS.md`. That file holds the frontend, i18n, routing and data-access details behind these rules. This file is the single authority for rules; other docs link here instead of restating them.
 For non-trivial documentation work under `docs/**`, also read `docs/ai/doc-governance-standard.md`.
 
 ## Core Principle
@@ -26,7 +26,7 @@ This repository is a competition-intelligence monorepo. Agents should favor evid
 - `config/filters.yml`: user targeting preferences
 - `config/taxonomy.yml`: allowed labels and controlled vocabulary
 - `data/competitions.sqlite`: canonical structured opportunity records
-- `docs/AI_CONSTRAINTS.md`: repository-wide implementation constraints for all AI agents
+- `docs/AI_CONSTRAINTS.md`: frontend, i18n, routing and data-access detail
 - `docs/roadmaps/**`: roadmap layer for capability tracks
 - `docs/goals/**`: stable capability intent
 - `docs/structures/**`: canonical architecture boundaries
@@ -35,7 +35,10 @@ This repository is a competition-intelligence monorepo. Agents should favor evid
 - `docs/changelog/**`: dated closeout trace for governed changes
 - `apps/worker/src/arch_competition_ops/*`: ingestion and normalization logic
 - `apps/web/src/*`: website and API surface
-- `packages/core/src/*`: shared TypeScript contracts and demo data
+- `apps/web/migrations/*.sql`: the only database schema authority (the worker's `storage/schema.py` mirrors it)
+- `packages/storage/src/*`: the one storage implementation for the web app (D1 binding and better-sqlite3)
+- `packages/core/src/*`: shared vocabularies, zod API contracts, fee rule and logger
+- `docs/DATA_CONTRACT.md`: data layers and the truth rules stored records follow
 - `modes/*.md`: task-specific agent behavior
 - `config/prompts/*.md`: reusable prompt fragments
 
@@ -65,7 +68,7 @@ This repository is a competition-intelligence monorepo. Agents should favor evid
 - detailed execution plans: `docs/plans/**`
 - evidence and competitor research: `docs/research/**`
 - changelog and closeout trace: `docs/changelog/**`
-- website or API work: read `apps/web` and `packages/core` before adding new UI or API shapes
+- website or API work: read `apps/web`, `packages/storage` and `packages/core` before adding new UI or API shapes
 - any non-trivial code change: read `docs/AI_CONSTRAINTS.md` before editing
 - any non-trivial docs change: read `docs/ai/doc-governance-standard.md` and `docs/AGENTS.md` before editing
 
@@ -74,22 +77,11 @@ This repository is a competition-intelligence monorepo. Agents should favor evid
 Before claiming the repository is healthy, run:
 
 ```bash
-uv run arch-competition-ops doctor
-uv run arch-competition-ops verify
-npm run test:storage
-npm run lint:web
-npm run build:web
+npm run check
 ```
 
-<!-- gitnexus:start -->
-# GitNexus — Code Intelligence
+`npm run check` runs, in order: the docs scan (`check:docs`), ruff (`lint:worker`), web ESLint (`lint:web`), `tsc --noEmit` for `packages/core`, `packages/storage` and `apps/web` (`typecheck`), then `npm test` (pytest, storage tests, web tests, export tool tests, Windows script tests), and finally `uv run arch-competition-ops doctor` and `verify`.
 
-This repo may be indexed by GitNexus, but GitNexus is optional here.
+After changing the frontend or anything the production build depends on, also run `npm run build:web` (`npm run check:full` does both).
 
-Use the GitNexus MCP tools when they materially help with code understanding, debugging, impact analysis, or refactoring. Do not treat `gitnexus_impact`, `gitnexus_detect_changes()`, or other GitNexus calls as mandatory before every edit or commit.
-
-If a GitNexus tool warns that the index is stale, either refresh it with `npx gitnexus analyze` or continue with local code reading and normal verification when that is faster and sufficient for the task.
-
-Available references remain under `.claude/skills/gitnexus/**` for cases where graph-aware exploration is actually useful.
-
-<!-- gitnexus:end -->
+Individual pieces: `npm run test:worker` (pytest), `npm run test:storage`, `npm run test:web` (`apps/web/src/**/*.test.ts`), `npm run test:tools` (D1 export tool), `npm run test:docs` (docs scan), `npm run test:scripts` (Windows scheduled-task and dev-port scripts; Windows only).

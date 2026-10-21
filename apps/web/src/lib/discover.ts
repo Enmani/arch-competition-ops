@@ -1,69 +1,21 @@
-import type {
-  StoredBuildingCategory,
-  StoredDesignScope,
-  StoredOpportunityQuery,
-  StoredProjectMode,
-  StoredProjectType,
-} from "@arch-competition/storage/cloudflare";
+import { parseDiscoverQuery, type DiscoverQueryInput } from "@arch-competition/core";
+import type { StoredOpportunityQuery } from "@arch-competition/storage";
 
-export type DiscoverSearchParams = Record<string, string | string[] | undefined>;
+/**
+ * Page-side helpers for the discover surface. Validation lives in @arch-competition/core
+ * (`parseDiscoverQuery`), the same schema the API and storage use; this file only adds URL
+ * (de)serialisation and the default sort.
+ */
+export type DiscoverSearchParams = DiscoverQueryInput;
 
-export const DISCOVER_DEFAULT_LIMIT = 500;
-export const DISCOVER_DEFAULT_SORT: NonNullable<StoredOpportunityQuery["sort"]> = "deadline";
+const DISCOVER_DEFAULT_SORT: NonNullable<StoredOpportunityQuery["sort"]> = "deadline";
 
-export const discoverRecencyValues = ["", "7", "30", "90", "365"] as const;
-export const discoverSortValues = ["deadline", "latest", "highest_value"] as const;
-
-const readSingleValue = (value: string | string[] | undefined) => {
-  if (Array.isArray(value)) {
-    return value[0];
-  }
-  return value;
-};
-
-const readMultiValue = (value: string | string[] | undefined) => {
-  if (Array.isArray(value)) {
-    return value;
-  }
-  return value ? [value] : [];
-};
-
-const readNumberValue = (value: string | string[] | undefined) => {
-  const raw = readSingleValue(value);
-  if (!raw) {
-    return undefined;
-  }
-
-  const parsed = Number(raw);
-  return Number.isFinite(parsed) ? parsed : undefined;
-};
-
-const isSortValue = (value: string | undefined): value is NonNullable<StoredOpportunityQuery["sort"]> =>
-  value === "deadline" || value === "highest_value" || value === "latest";
-const isProjectTypeValue = (value: string | undefined): value is StoredProjectType =>
-  value === "urban_regeneration" ||
-  value === "environment_design" ||
-  value === "urban_planning" ||
-  value === "interior_project" ||
-  value === "building_project";
-const isBuildingCategoryValue = (value: string | undefined): value is StoredBuildingCategory =>
-  value === "healthcare" ||
-  value === "education" ||
-  value === "housing" ||
-  value === "civic_public" ||
-  value === "sport_leisure" ||
-  value === "culture_heritage" ||
-  value === "transport_infrastructure";
-const isDesignScopeValue = (value: string | undefined): value is StoredDesignScope =>
-  value === "interior_design" ||
-  value === "architectural_design" ||
-  value === "scheme" ||
-  value === "preliminary" ||
-  value === "construction_docs" ||
-  value === "planning" ||
-  value === "design_service";
-const isProjectModeValue = (value: string | undefined): value is StoredProjectMode =>
-  value === "new_build" || value === "renovation" || value === "extension";
+/** Items rendered by the server on a fresh visit and fetched by each "load more". */
+export const DISCOVER_PAGE_SIZE = 36;
+/** Upper bound for restoring a deep list from the URL, so a hand-edited `loaded` stays cheap. */
+export const DISCOVER_MAX_LOADED = 500;
+/** URL parameter that remembers how many items were on screen (back button, reload, sharing). */
+const DISCOVER_LOADED_PARAM = "loaded";
 
 export const formatTokenLabel = (value: string) =>
   value
@@ -71,8 +23,6 @@ export const formatTokenLabel = (value: string) =>
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
-
-const toUniqueArray = <T extends string>(values: T[]) => [...new Set(values)];
 
 export const collectDiscoverSearchParams = (searchParams: URLSearchParams): DiscoverSearchParams => {
   const nextSearchParams: DiscoverSearchParams = {};
@@ -88,10 +38,9 @@ export const collectDiscoverSearchParams = (searchParams: URLSearchParams): Disc
   return nextSearchParams;
 };
 
-export const buildDiscoverSearchParams = (
-  filters: StoredOpportunityQuery,
-): DiscoverSearchParams => {
+export const buildDiscoverSearchParams = (filters: StoredOpportunityQuery): DiscoverSearchParams => {
   const searchParams: DiscoverSearchParams = {};
+  const unique = <T extends string>(values: T[]) => [...new Set(values)];
 
   if (filters.search) {
     searchParams.search = filters.search;
@@ -109,16 +58,16 @@ export const buildDiscoverSearchParams = (
     searchParams.deadlineBefore = filters.deadlineBefore;
   }
   if (filters.projectTypes && filters.projectTypes.length > 0) {
-    searchParams.projectType = toUniqueArray(filters.projectTypes);
+    searchParams.projectType = unique(filters.projectTypes);
   }
   if (filters.buildingCategories && filters.buildingCategories.length > 0) {
-    searchParams.buildingCategory = toUniqueArray(filters.buildingCategories);
+    searchParams.buildingCategory = unique(filters.buildingCategories);
   }
   if (filters.designScopes && filters.designScopes.length > 0) {
-    searchParams.designScope = toUniqueArray(filters.designScopes);
+    searchParams.designScope = unique(filters.designScopes);
   }
   if (filters.projectModes && filters.projectModes.length > 0) {
-    searchParams.projectMode = toUniqueArray(filters.projectModes);
+    searchParams.projectMode = unique(filters.projectModes);
   }
   if (filters.minEstimatedValueEur !== undefined) {
     searchParams.minEstimatedValueEur = filters.minEstimatedValueEur.toString();
@@ -154,45 +103,40 @@ export const buildDiscoverSearchParams = (
   return searchParams;
 };
 
-export const readDiscoverFilters = (
-  searchParams: DiscoverSearchParams,
-): StoredOpportunityQuery => {
-  const sortValue = readSingleValue(searchParams.sort);
-  const projectTypeValues = toUniqueArray(
-    readMultiValue(searchParams.projectType).filter(isProjectTypeValue),
-  );
-  const buildingCategoryValues = toUniqueArray(
-    readMultiValue(searchParams.buildingCategory).filter(isBuildingCategoryValue),
-  );
-  const designScopeValues = toUniqueArray(
-    readMultiValue(searchParams.designScope).filter(isDesignScopeValue),
-  );
-  const projectModeValues = toUniqueArray(
-    readMultiValue(searchParams.projectMode).filter(isProjectModeValue),
-  );
+const withoutPaging = (filters: StoredOpportunityQuery): StoredOpportunityQuery => {
+  const rest = { ...filters };
+  delete rest.limit;
+  delete rest.offset;
+  return rest;
+};
 
-  return {
-    buildingCategories: buildingCategoryValues.length > 0 ? buildingCategoryValues : undefined,
-    designScopes: designScopeValues.length > 0 ? designScopeValues : undefined,
-    deadlineAfter: readSingleValue(searchParams.deadlineAfter) || undefined,
-    deadlineBefore: readSingleValue(searchParams.deadlineBefore) || undefined,
-    includeExpired: readSingleValue(searchParams.includeExpired) === "true" ? true : undefined,
-    implementationPath: readSingleValue(searchParams.implementationPath) || undefined,
-    jurisdiction: readSingleValue(searchParams.jurisdiction) || undefined,
-    limit: readNumberValue(searchParams.limit) ?? DISCOVER_DEFAULT_LIMIT,
-    offset: readNumberValue(searchParams.offset) ?? 0,
-    licensedArchitectRequired:
-      readSingleValue(searchParams.licensedArchitectRequired) === "true" ? true : undefined,
-    maxEstimatedValueEur: readNumberValue(searchParams.maxEstimatedValueEur),
-    minEstimatedValueEur: readNumberValue(searchParams.minEstimatedValueEur),
-    minQualificationScore: readNumberValue(searchParams.minQualificationScore),
-    publishedWithinDays: readNumberValue(searchParams.publishedWithinDays),
-    projectModes: projectModeValues.length > 0 ? projectModeValues : undefined,
-    procedureType: readSingleValue(searchParams.procedureType) || undefined,
-    projectTypes: projectTypeValues.length > 0 ? projectTypeValues : undefined,
-    search: readSingleValue(searchParams.search)?.trim() || undefined,
-    sort: isSortValue(sortValue) ? sortValue : DISCOVER_DEFAULT_SORT,
-  };
+/** The discover page owns paging through `loaded`; `limit`/`offset` belong to the JSON API. */
+export const readDiscoverPageState = (searchParams: DiscoverSearchParams) => {
+  const filters = withoutPaging(readDiscoverFilters(searchParams));
+  const rawLoaded = searchParams[DISCOVER_LOADED_PARAM];
+  const parsed = Number.parseInt(Array.isArray(rawLoaded) ? (rawLoaded[0] ?? "") : (rawLoaded ?? ""), 10);
+  const loaded = Number.isFinite(parsed)
+    ? Math.min(Math.max(parsed, DISCOVER_PAGE_SIZE), DISCOVER_MAX_LOADED)
+    : DISCOVER_PAGE_SIZE;
+  return { filters, loaded };
+};
+
+/** Query string for the discover URL: filters plus, once the list grew past one page, `loaded`. */
+export const buildDiscoverPageSearchParams = (
+  filters: StoredOpportunityQuery,
+  loaded = DISCOVER_PAGE_SIZE,
+): DiscoverSearchParams => ({
+  ...buildDiscoverSearchParams(withoutPaging(filters)),
+  ...(loaded > DISCOVER_PAGE_SIZE
+    ? { [DISCOVER_LOADED_PARAM]: Math.min(Math.trunc(loaded), DISCOVER_MAX_LOADED).toString() }
+    : {}),
+});
+
+/** Lenient: invalid values in an old or hand-edited URL are dropped instead of failing the page. */
+export const readDiscoverFilters = (searchParams: DiscoverSearchParams): StoredOpportunityQuery => {
+  const parsed = parseDiscoverQuery(searchParams, "lenient");
+  const filters = parsed.ok ? parsed.filters : {};
+  return { ...filters, sort: filters.sort ?? DISCOVER_DEFAULT_SORT };
 };
 
 export const countActiveDiscoverFilters = (filters: StoredOpportunityQuery) => {

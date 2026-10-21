@@ -8,13 +8,11 @@ from html import unescape
 from arch_competition_ops.collectors.base import CollectedSourceDocument
 from arch_competition_ops.collectors.common import (
     fetch_text_get,
-    has_built_environment_context,
-    normalize_text,
-    parse_date_string,
-    strip_html,
 )
+from arch_competition_ops.collectors.relevance import has_built_environment_context
 from arch_competition_ops.models import SourceDefinition
-
+from arch_competition_ops.normalizers.dates import parse_date_string
+from arch_competition_ops.normalizers.text import normalize_text, strip_html
 
 RSS_FIELD_PATTERN = re.compile(
     r"<tr[^>]*>\s*<td[^>]*>\s*<b>\s*([^<:]+?)\s*:?\s*</b>\s*</td>\s*<td[^>]*>(.*?)</td>\s*</tr>",
@@ -129,11 +127,20 @@ def _rss_relevance_score(title: str, summary: str, categories: list[str]) -> int
     score = 0
     if any(marker in normalized for marker in ("architect", "architecture", "architectural")):
         score += 5
-    if any(marker in normalized for marker in ("urban design", "landscape architecture", "landscape design")):
+    if any(
+        marker in normalized
+        for marker in ("urban design", "landscape architecture", "landscape design")
+    ):
         score += 4
-    if any(marker in normalized for marker in ("design build", "design and build", "design builder", "design-builder")):
+    if any(
+        marker in normalized
+        for marker in ("design build", "design and build", "design builder", "design-builder")
+    ):
         score += 4
-    if any(marker in normalized for marker in ("concept design", "detailed design", "preliminary design")):
+    if any(
+        marker in normalized
+        for marker in ("concept design", "detailed design", "preliminary design")
+    ):
         score += 3
     if "design services" in normalized or "architectural services" in normalized:
         score += 3
@@ -162,7 +169,11 @@ def collect_generic_rss_documents(
         link = (item.findtext("link") or source.base_url).strip()
         description_html = item.findtext("description") or ""
         fields, categories = _parse_description_fields(description_html)
-        summary = fields.get("overview") or fields.get("description") or (strip_html(description_html) or "")
+        summary = (
+            fields.get("overview")
+            or fields.get("description")
+            or (strip_html(description_html) or "")
+        )
         published_at = parse_date_string(item.findtext("pubDate"))
 
         if not title or not link:
@@ -185,7 +196,6 @@ def collect_generic_rss_documents(
                 "officialUrl": link,
                 "opportunityType": "public_design_services_procurement",
                 "procedureType": fields.get("tender_type"),
-                "implementationPath": "service_contract_award_after_competitive_selection",
                 "evidenceLevel": "official_listing",
                 "evidenceNote": f"Official {source.name} feed entry.",
                 "publishedAt": published_at,

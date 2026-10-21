@@ -2,14 +2,20 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import date, datetime
+from datetime import date
 from typing import Any
 
+from arch_competition_ops.extractors.classification import (
+    infer_building_categories,
+    infer_competition_types,
+    infer_project_types,
+)
 from arch_competition_ops.models import CompetitionRecord, SourceDefinition
 from arch_competition_ops.normalizers.competition import (
     UNKNOWN_OPPORTUNITY_TYPE,
-    compute_qualification_score as compute_normalized_qualification_score,
-    infer_licensed_architect_required as infer_normalized_licensed_architect_required,
+    compute_extraction_confidence,
+    compute_qualification_score,
+    infer_licensed_architect_required,
     infer_local_partner_required,
     normalize_evidence_level,
     normalize_implementation_path,
@@ -17,6 +23,7 @@ from arch_competition_ops.normalizers.competition import (
     normalize_opportunity_type,
     normalize_procedure_type,
 )
+from arch_competition_ops.normalizers.dates import parse_date, slash_order_for_jurisdiction
 from arch_competition_ops.normalizers.money import parse_money_number
 
 
@@ -52,7 +59,7 @@ def pick_first_value(payload: dict[str, Any], paths: list[str]) -> str | None:
         value = get_nested_value(payload, path)
         if isinstance(value, str) and normalize_whitespace(value):
             return normalize_whitespace(value)
-        if isinstance(value, (int, float)):
+        if isinstance(value, int | float):
             return str(value)
     return None
 
@@ -61,7 +68,9 @@ def pick_list_value(payload: dict[str, Any], paths: list[str]) -> list[str]:
     for path in paths:
         value = get_nested_value(payload, path)
         if isinstance(value, list):
-            normalized_values = [normalize_whitespace(str(item)) for item in value if str(item).strip()]
+            normalized_values = [
+                normalize_whitespace(str(item)) for item in value if str(item).strip()
+            ]
             return [item for item in normalized_values if item]
         if isinstance(value, str) and normalize_whitespace(value):
             return [normalize_whitespace(value)]  # type: ignore[list-item]
@@ -76,144 +85,22 @@ def pick_regex(payload: str, patterns: list[str]) -> str | None:
     return None
 
 
-def parse_iso_date(raw_value: str | None) -> date | None:
-    if not raw_value:
-        return None
+def parse_source_date(raw_value: str | None, source: SourceDefinition) -> date | None:
+    """Parse a date from ``source``; slash-date order follows the source jurisdiction."""
+    return parse_date(raw_value, slash_order=slash_order_for_jurisdiction(source.jurisdiction))
 
-    cleaned = re.sub(r"\s+", " ", raw_value.strip())
-    for candidate in (cleaned, cleaned.replace("/", "-"), cleaned.split("T")[0], cleaned.split(" ")[0]):
-        try:
-            return date.fromisoformat(candidate)
-        except ValueError:
-            continue
 
-    for fmt in ("%B %d, %Y", "%b %d, %Y", "%d.%m.%Y"):
-        try:
-            return datetime.strptime(cleaned, fmt).date()
-        except ValueError:
-            continue
+def is_distinct_notice_url(source: SourceDefinition, source_url: str) -> bool:
+    """True when ``source_url`` points somewhere more specific than the source's landing page.
 
-    dotted_match = re.search(r"\b(\d{2}\.\d{2}\.\d{4})\b", cleaned)
-    if dotted_match:
-        try:
-            return datetime.strptime(dotted_match.group(1), "%d.%m.%Y").date()
-        except ValueError:
-            return None
-
-    month_name_match = re.search(r"\b([A-Za-z]{3,9} \d{1,2}, \d{4})\b", cleaned)
-    if month_name_match:
-        for fmt in ("%B %d, %Y", "%b %d, %Y"):
-            try:
-                return datetime.strptime(month_name_match.group(1), fmt).date()
-            except ValueError:
-                continue
-    return None
+    Used to avoid treating a placeholder ``base_url`` (what callers fall back to when they have no
+    notice URL) as the official notice page.
+    """
+    return source_url.rstrip("/") != source.base_url.rstrip("/")
 
 
 def parse_money_amount(raw_value: str | None) -> float | None:
     return parse_money_number(raw_value)
-
-
-def infer_competition_types(*chunks: str | None) -> list[str]:
-    haystack = " ".join(chunk for chunk in chunks if chunk).lower()
-    inferred: list[str] = []
-    keyword_map = {
-        "public_building": [
-            "library",
-            "civic",
-            "public building",
-            "公共建筑",
-            "图书馆",
-            "文化中心",
-            "办公楼",
-            "综合体",
-            "景区",
-        ],
-        "urban_design": [
-            "square",
-            "urban",
-            "public space",
-            "masterplan",
-            "城市设计",
-            "公共空间",
-        ],
-        "landscape": ["landscape", "park", "garden", "plaza", "景观", "园林"],
-        "healthcare": ["hospital", "healthcare", "clinic", "医院", "医疗", "卫生院"],
-        "education": ["school", "campus", "education", "学校", "教学楼", "校园", "幼儿园"],
-        "housing": ["housing", "residential", "老旧小区", "住宅", "小区", "安置房", "安置片区"],
-        "interior": ["interior", "interiors", "室内", "精装修", "公区精装"],
-        "adaptive_reuse": ["adaptive reuse", "reuse", "conversion", "城市更新", "更新改造", "老旧小区改造", "旧改"],
-        "masterplan": ["masterplan", "planning", "规划", "修建性详细规划", "总体规划"],
-        "architecture": [
-            "design",
-            "architecture",
-            "architect",
-            "建筑设计",
-            "设计服务",
-            "方案设计",
-            "初步设计",
-            "建筑方案",
-        ],
-    }
-
-    for category, keywords in keyword_map.items():
-        if any(keyword in haystack for keyword in keywords):
-            inferred.append(category)
-
-    return inferred or ["architecture"]
-
-
-def infer_project_types(
-    competition_types: list[str],
-    *,
-    project_types: list[str] | None = None,
-) -> list[str]:
-    if project_types:
-        return project_types
-
-    inferred: list[str] = []
-    type_set = set(competition_types)
-    if "adaptive_reuse" in type_set:
-        inferred.append("urban_regeneration")
-    if "landscape" in type_set:
-        inferred.append("environment_design")
-    if "masterplan" in type_set or "urban_design" in type_set:
-        inferred.append("urban_planning")
-    if "interior" in type_set:
-        inferred.append("interior_project")
-    if any(marker in type_set for marker in ("architecture", "public_building", "healthcare", "education", "housing")):
-        inferred.append("building_project")
-    return inferred
-
-
-def infer_building_categories(
-    competition_types: list[str],
-    *,
-    building_categories: list[str] | None = None,
-) -> list[str]:
-    if building_categories:
-        return building_categories
-
-    inferred: list[str] = []
-    type_set = set(competition_types)
-    mapping = (
-        ("healthcare", "healthcare"),
-        ("education", "education"),
-        ("housing", "housing"),
-        ("public_building", "civic_public"),
-    )
-    for competition_type, building_category in mapping:
-        if competition_type in type_set:
-            inferred.append(building_category)
-    return inferred
-
-
-def infer_licensed_architect_required(*chunks: str | None) -> bool | None:
-    return infer_normalized_licensed_architect_required(*chunks)
-
-
-def compute_qualification_score(record: CompetitionRecord) -> float:
-    return compute_normalized_qualification_score(record)
 
 
 def build_base_record(
@@ -227,13 +114,15 @@ def build_base_record(
     official_notice_id: str | None,
     deadline_at: date | None,
     estimated_contract_value_eur: float | None,
-    eligibility_summary: str | None,
-    implementation_path: str | None,
     cpv_codes: list[str],
     evidence_note: str | None,
+    eligibility_summary: str | None = None,
+    description: str | None = None,
+    implementation_path: str | None = None,
     jurisdiction: str | None = None,
     evidence_level: str | None = None,
     official_url: str | None = None,
+    source_url_is_notice_page: bool = False,
     brief_pdf_url: str | None = None,
     documents_portal_url: str | None = None,
     estimated_contract_value_text: str | None = None,
@@ -246,6 +135,24 @@ def build_base_record(
     project_modes: list[str] | None = None,
     status: str = "discovered",
 ) -> CompetitionRecord:
+    """Build a record from extracted evidence only (AGENTS.md truth rules).
+
+    Nothing here is defaulted to a plausible value: fees, audience, implementation path, and
+    official URL stay empty unless the notice said so.
+
+    * ``organizer`` is the buyer named in the notice (``authority_name``) or ``''``; the publishing
+      platform goes to ``source_id``/``source_name``.
+    * ``official_url`` is the explicit official link. The only inferred case is
+      ``source_url_is_notice_page=True`` on a ``primary``-tier source: the caller asserts that
+      ``source_url`` *is* the authority's own notice page (not a search API endpoint, listing, or
+      aggregator page), so it is the official link. Anything else leaves it empty.
+    * ``eligibility_summary`` is the notice's own qualification clause, verbatim, or ``None``.
+      Licence/local-partner requirements are inferred from it and from nothing else.
+      Project prose goes to ``description``, which only feeds classification and keyword
+      filtering and is never persisted.
+    * fees are always ``None`` here: no extractor reads a fee from a notice yet, and only an
+      explicit "free" statement may be recorded as 0.
+    """
     normalized_title = normalize_whitespace(title) or title
     normalized_opportunity_type = (
         normalize_opportunity_type(opportunity_type)
@@ -253,21 +160,28 @@ def build_base_record(
         or UNKNOWN_OPPORTUNITY_TYPE
     )
     normalized_procedure_type = normalize_procedure_type(procedure_type)
-    normalized_implementation_path = normalize_implementation_path(
-        implementation_path,
-        opportunity_type=normalized_opportunity_type,
-    )
+    normalized_implementation_path = normalize_implementation_path(implementation_path)
+    normalized_authority = normalize_whitespace(authority_name)
+    normalized_eligibility = normalize_whitespace(eligibility_summary)
+    normalized_description = normalize_whitespace(description)
     inferred_competition_types = infer_competition_types(
         normalized_title,
-        eligibility_summary,
-        normalized_implementation_path,
+        normalized_eligibility,
+        normalized_description,
         normalized_procedure_type,
     )
+    resolved_official_url = official_url
+    if not resolved_official_url and source_url_is_notice_page and source.source_tier == "primary":
+        resolved_official_url = source_url
+    clause_text = normalized_eligibility
+
     record = CompetitionRecord(
         title=normalized_title,
-        organizer=source.name,
-        authority_name=normalize_whitespace(authority_name),
-        official_url=official_url or source_url,
+        organizer=normalized_authority or "",
+        source_id=source.source_id,
+        source_name=source.name,
+        authority_name=normalized_authority,
+        official_url=resolved_official_url,
         source_url=source_url,
         status=status,
         opportunity_type=normalized_opportunity_type,
@@ -284,32 +198,33 @@ def build_base_record(
         building_categories=infer_building_categories(
             inferred_competition_types,
             building_categories=building_categories,
+            text=(
+                f"{normalized_title} {normalized_eligibility or ''} "
+                f"{normalized_description or ''} {normalized_authority or ''}"
+            ),
         ),
         official_sectors=official_sectors or [],
         built_asset_types=built_asset_types or [],
         design_scopes=design_scopes or [],
         project_modes=project_modes or [],
-        audience=["professionals", "multidisciplinary"],
+        audience=[],
         cpv_codes=cpv_codes,
         implementation_path=normalized_implementation_path,
-        licensed_architect_required=infer_licensed_architect_required(
-            eligibility_summary,
-            normalized_title,
-            normalized_procedure_type,
-        ),
-        local_partner_required=infer_local_partner_required(eligibility_summary),
-        registration_fee_eur=0.0,
-        submission_fee_eur=0.0,
+        licensed_architect_required=infer_licensed_architect_required(clause_text),
+        local_partner_required=infer_local_partner_required(clause_text),
+        registration_fee_eur=None,
+        submission_fee_eur=None,
         estimated_contract_value_eur=estimated_contract_value_eur,
         estimated_contract_value_text=normalize_whitespace(estimated_contract_value_text),
         location_label=normalize_whitespace(location_label),
         deadline_at=deadline_at,
-        eligibility_summary=normalize_whitespace(eligibility_summary),
+        eligibility_summary=normalized_eligibility,
+        description=normalized_description,
         brief_pdf_url=brief_pdf_url,
         documents_portal_url=documents_portal_url,
-        extraction_confidence=0.78,
         evidence_level=normalize_evidence_level(evidence_level, source_tier=source.source_tier),
         evidence_note=normalize_whitespace(evidence_note),
     )
+    record.extraction_confidence = compute_extraction_confidence(record)
     record.qualification_score = compute_qualification_score(record)
     return record

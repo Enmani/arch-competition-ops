@@ -1,7 +1,7 @@
 ---
 title: Changelog Guide
-status: 已完成
-updated_at: 2026-04-21
+status: done
+updated_at: 2026-10-21
 related_docs:
   - docs/ai/doc-governance-standard.md
   - docs/AGENTS.md

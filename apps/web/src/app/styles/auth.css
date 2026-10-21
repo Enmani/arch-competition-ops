@@ -1,0 +1,94 @@
+/* Login and register pages. */
+
+.auth-page,
+.auth-panel,
+.auth-form,
+.auth-field {
+  display: grid;
+}
+
+.auth-page {
+  min-height: calc(100svh - var(--shell-topbar-height) - 2rem);
+  place-items: start center;
+  padding-top: clamp(2rem, 8svh, 5rem);
+}
+
+.auth-panel {
+  width: min(100%, 32rem);
+  gap: var(--space-lg);
+  padding: var(--space-xl);
+  border: 1px solid var(--line-strong);
+  background: color-mix(in oklch, var(--surface) 94%, var(--surface-alt) 6%);
+  box-shadow: var(--shadow);
+}
+
+.auth-panel h1 {
+  margin: 0;
+  font-family: var(--font-display), var(--font-cjk-fallback), sans-serif;
+  font-size: clamp(2rem, 4vw, 3.6rem);
+  line-height: 0.92;
+  text-transform: uppercase;
+}
+
+.auth-panel p {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+.auth-form {
+  gap: var(--space-md);
+}
+
+.auth-field {
+  gap: 0.35rem;
+}
+
+.auth-field label {
+  color: var(--ink-faint);
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.auth-field input {
+  width: 100%;
+  height: var(--dock-control-h);
+  min-height: var(--dock-control-h);
+  padding: 0.5rem var(--dock-control-px);
+  border: 1px solid var(--line-strong);
+  background: color-mix(in oklch, var(--surface) 96%, var(--surface-alt) 4%);
+  color: var(--ink);
+}
+
+.auth-submit {
+  width: 100%;
+}
+
+.auth-error {
+  padding: 0.75rem 0.85rem;
+  border: 1px solid color-mix(in oklch, var(--danger) 45%, var(--line) 55%);
+  background: color-mix(in oklch, var(--danger) 8%, var(--surface) 92%);
+  color: color-mix(in oklch, var(--danger) 84%, var(--ink) 16%) !important;
+}
+
+.auth-secondary {
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--line);
+  font-size: 0.92rem;
+}
+
+.auth-link {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.account-label {
+  max-width: 13rem;
+  overflow: hidden;
+  color: var(--ink-soft);
+  cursor: default;
+  letter-spacing: 0;
+  pointer-events: none;
+  text-overflow: ellipsis;
+  text-transform: none;
+}

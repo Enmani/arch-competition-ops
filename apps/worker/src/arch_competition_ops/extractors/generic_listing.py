@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from arch_competition_ops.extractors.common import (
     build_base_record,
-    parse_iso_date,
     parse_money_amount,
+    parse_source_date,
     pick_first_value,
     pick_list_value,
     try_load_json,
@@ -25,6 +25,10 @@ def parse_generic_listing_notice(
         raise ValueError("Generic listing parser could not determine a title from the payload")
 
     value_raw = pick_first_value(data, ["estimatedValueEur", "estimatedValue"])
+    # "eligibility"/"requirements" keys carry a qualification clause and are the only source of
+    # eligibility_summary. "summary"/"description" are project prose: used for classification,
+    # never stored as eligibility and never used to infer requirements.
+    eligibility_clause = pick_first_value(data, ["eligibility", "requirements"])
     record = build_base_record(
         source,
         source_url,
@@ -33,13 +37,16 @@ def parse_generic_listing_notice(
         opportunity_type=pick_first_value(data, ["opportunityType"]),
         procedure_type=pick_first_value(data, ["procedureType"]),
         official_notice_id=pick_first_value(data, ["officialNoticeId", "noticeId", "id"]),
-        deadline_at=parse_iso_date(pick_first_value(data, ["deadline", "deadlineAt"])),
+        deadline_at=parse_source_date(pick_first_value(data, ["deadline", "deadlineAt"]), source),
         estimated_contract_value_eur=parse_money_amount(value_raw),
-        eligibility_summary=pick_first_value(data, ["summary", "description"]),
+        eligibility_summary=eligibility_clause,
+        description=pick_first_value(data, ["summary", "description"]),
         implementation_path=pick_first_value(data, ["implementationPath"]),
         cpv_codes=pick_list_value(data, ["cpv", "cpvCodes"]),
-        evidence_note=pick_first_value(data, ["evidenceNote"]) or (
-            "Secondary discovery listing. Verify against the linked official notice before taking action."
+        evidence_note=pick_first_value(data, ["evidenceNote"])
+        or (
+            "Secondary discovery listing. "
+            "Verify against the linked official notice before taking action."
         ),
         evidence_level=pick_first_value(data, ["evidenceLevel"]),
         official_url=pick_first_value(data, ["officialUrl"]),

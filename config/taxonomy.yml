@@ -137,3 +137,17 @@ audience:
   - professionals
   - open
   - multidisciplinary
+
+design_scopes:
+  - interior_design
+  - architectural_design
+  - scheme
+  - preliminary
+  - construction_docs
+  - planning
+  - design_service
+
+project_modes:
+  - new_build
+  - renovation
+  - extension

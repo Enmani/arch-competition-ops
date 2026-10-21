@@ -1,86 +1,14 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import {
-  STORED_OPS_REVIEW_REASON_CODES,
-  STORED_OPS_REVIEW_STATUSES,
-  authenticateD1AuthUser,
-  countD1AuthUsers,
-  createD1AuthSession,
-  createD1AuthUser,
-  createD1SavedSearch,
-  createD1WatchlistEntry,
-  deleteD1AuthSession,
-  deleteD1AuthSessionsForUser,
-  deleteD1SavedSearch,
-  deleteD1WatchlistEntry,
-  getD1AuthSession,
-  getD1DiscoverSurfaceData,
-  getD1DuplicatePressureSummary,
-  getD1OpportunityFeedItemBySlug,
-  getD1OpsReviewSummary,
-  getD1OpsSnapshot,
-  getD1SourceHealth,
-  isD1OpportunityWatched,
-  listD1WatchedOpportunityIds,
-  queryD1OpportunityFeed,
-  queryD1OpsReviewQueue,
-  queryD1SavedSearches,
-  queryD1WatchlistEntries,
-  writeD1OpsReviewDecision,
-  type D1DatabaseLike,
-  type StoredAuthErrorCode,
-  type StoredAuthLoginInput,
-  type StoredAuthSession,
-  type StoredAuthSessionCreateInput,
-  type StoredAuthSessionWithToken,
-  type StoredAuthUser,
-  type StoredAuthUserCreateInput,
-  type StoredDiscoverSurfaceData,
-  type StoredDuplicatePressureSummary,
-  type StoredOpportunityFeedItem,
-  type StoredOpportunityQuery,
-  type StoredOpsReviewDecisionInput,
-  type StoredOpsReviewDecisionStatus,
-  type StoredOpsReviewQueueItem,
-  type StoredOpsReviewQueueQuery,
-  type StoredOpsReviewReasonCode,
-  type StoredOpsReviewSummary,
-  type StoredSavedSearch,
-  type StoredSavedSearchCreateInput,
-  type StoredSavedSearchDeleteInput,
-  type StoredSavedSearchQuery,
-  type StoredSourceHealthItem,
-  type StoredWatchlistEntry,
-  type StoredWatchlistEntryCreateInput,
-  type StoredWatchlistEntryDeleteInput,
-  type StoredWatchlistEntryQuery,
-} from "@arch-competition/storage/cloudflare";
 
-type LocalStorageModule = {
-  authenticateStoredAuthUser: (input: StoredAuthLoginInput) => StoredAuthUser | null;
-  countStoredAuthUsers: () => number;
-  createStoredAuthSession: (input: StoredAuthSessionCreateInput) => StoredAuthSessionWithToken;
-  createStoredAuthUser: (input: StoredAuthUserCreateInput) => StoredAuthUser;
-  createStoredSavedSearch: (input: StoredSavedSearchCreateInput) => StoredSavedSearch;
-  createStoredWatchlistEntry: (input: StoredWatchlistEntryCreateInput) => StoredWatchlistEntry;
-  deleteStoredAuthSession: (token: string | null | undefined) => boolean;
-  deleteStoredAuthSessionsForUser: (userId: string) => number;
-  deleteStoredSavedSearch: (input: StoredSavedSearchDeleteInput) => boolean;
-  deleteStoredWatchlistEntry: (input: StoredWatchlistEntryDeleteInput) => boolean;
-  getStoredAuthSession: (token: string | null | undefined) => StoredAuthSession | null;
-  getStoredDiscoverSurfaceData: (filters?: StoredOpportunityQuery) => StoredDiscoverSurfaceData;
-  getStoredDuplicatePressureSummary: () => StoredDuplicatePressureSummary;
-  getStoredOpportunityFeedItemBySlug: (slug: string) => StoredOpportunityFeedItem | undefined;
-  getStoredOpsReviewSummary: () => StoredOpsReviewSummary;
-  getStoredOpsSnapshot: () => { primary: number; total: number; verified: number };
-  getStoredSourceHealth: (limit?: number) => StoredSourceHealthItem[];
-  isStoredOpportunityWatched: (input: StoredWatchlistEntryCreateInput) => boolean;
-  listStoredWatchedOpportunityIds: (workspaceKey: string) => string[];
-  queryStoredOpportunityFeed: (filters?: StoredOpportunityQuery) => StoredOpportunityFeedItem[];
-  queryStoredOpsReviewQueue: (query?: StoredOpsReviewQueueQuery) => StoredOpsReviewQueueItem[];
-  queryStoredSavedSearches: (query: StoredSavedSearchQuery) => StoredSavedSearch[];
-  queryStoredWatchlistEntries: (query: StoredWatchlistEntryQuery) => StoredWatchlistEntry[];
-  writeStoredOpsReviewDecision: (input: StoredOpsReviewDecisionInput) => StoredOpsReviewQueueItem;
-};
+import {
+  asD1Driver,
+  createStorage,
+  type D1DatabaseLike,
+  type Storage,
+  type StoredOpportunityFeedItem,
+} from "@arch-competition/storage";
+
+export type { StoredOpportunityFeedItem };
 
 declare global {
   interface CloudflareEnv {
@@ -88,267 +16,50 @@ declare global {
   }
 }
 
-export {
-  STORED_OPS_REVIEW_REASON_CODES,
-  STORED_OPS_REVIEW_STATUSES,
-  type StoredAuthErrorCode,
-  type StoredAuthSession,
-  type StoredAuthUser,
-  type StoredDiscoverSurfaceData,
-  type StoredDuplicatePressureSummary,
-  type StoredOpportunityFeedItem,
-  type StoredOpportunityQuery,
-  type StoredOpsReviewDecisionStatus,
-  type StoredOpsReviewQueueItem,
-  type StoredOpsReviewQueueQuery,
-  type StoredOpsReviewReasonCode,
-  type StoredOpsReviewSummary,
-  type StoredSavedSearch,
-  type StoredSourceHealthItem,
-  type StoredWatchlistEntry,
+/**
+ * The single, type-safe way the web app obtains storage.
+ *
+ * - Cloudflare Workers (OpenNext) and `ARCH_COMPETITION_USE_D1_IN_DEV=1`: the `DB` D1 binding.
+ * - `next dev`: better-sqlite3 on the local opportunity database (`ARCH_COMPETITION_OPS_DB`,
+ *   default data/competitions.sqlite), one cached connection pair per process, migrations
+ *   applied on first use.
+ * Both paths run the identical storage code; there is no per-runtime copy of any query.
+ *
+ * The local branch is guarded by a literal `process.env.NODE_ENV === "development"` test so the
+ * production bundler removes it, keeping better-sqlite3 and the filesystem out of the Worker.
+ */
+const d1Storages = new WeakMap<object, Storage>();
+
+const getD1Storage = async (): Promise<Storage> => {
+  const development = process.env.NODE_ENV === "development";
+  let binding: unknown;
+  try {
+    const context = development ? await getCloudflareContext({ async: true }) : getCloudflareContext();
+    binding = context.env.DB;
+  } catch (error) {
+    throw new Error(
+      "Cloudflare bindings are unavailable. Run through the Cloudflare runtime (build:web:cloudflare / preview) or `npm run dev:web`.",
+      { cause: error },
+    );
+  }
+
+  const driver = asD1Driver(binding);
+  let storage = d1Storages.get(driver);
+  if (!storage) {
+    storage = createStorage({ writer: driver });
+    d1Storages.set(driver, storage);
+  }
+  return storage;
 };
 
-export const getCloudflareD1Database = async () => {
-  const isLocalDevelopment = process.env.NODE_ENV === "development";
-  const useD1InLocalDevelopment =
-    process.env.ARCH_COMPETITION_USE_D1 === "1" ||
-    process.env.ARCH_COMPETITION_USE_D1_IN_DEV === "1";
-
-  if (isLocalDevelopment && !useD1InLocalDevelopment) {
-    return null;
+export const getStorage = async (): Promise<Storage> => {
+  if (process.env.NODE_ENV === "development" && process.env.ARCH_COMPETITION_USE_D1_IN_DEV !== "1") {
+    const { getLocalStorage } = await import("@arch-competition/storage/node");
+    return getLocalStorage();
   }
-
-  const cloudflareContext = isLocalDevelopment
-    ? await getCloudflareContext({ async: true })
-    : getCloudflareContext();
-  const database = cloudflareContext.env.DB ?? null;
-
-  if (!database && !isLocalDevelopment) {
-    throw new Error("Cloudflare D1 binding `DB` is unavailable in the production runtime.");
-  }
-
-  return database;
+  return getD1Storage();
 };
 
-const defaultLocalStoragePackageName = "@arch-competition/storage";
-
-const loadLocalStorage = async () => {
-  const localStoragePackageName =
-    process.env.ARCH_COMPETITION_LOCAL_STORAGE_PACKAGE ?? defaultLocalStoragePackageName;
-
-  if (localStoragePackageName === defaultLocalStoragePackageName) {
-    return import("@arch-competition/storage") as Promise<LocalStorageModule>;
-  }
-
-  return import(/* webpackIgnore: true */ localStoragePackageName) as Promise<LocalStorageModule>;
-};
-
-const withStorage = async <T>(
-  handlers: {
-    d1: (database: D1DatabaseLike) => Promise<T>;
-    local: (storage: LocalStorageModule) => T | Promise<T>;
-  },
-) => {
-  const database = await getCloudflareD1Database();
-  if (database) {
-    return handlers.d1(database);
-  }
-
-  const isLocalDevelopment = process.env.NODE_ENV === "development";
-  if (!isLocalDevelopment) {
-    throw new Error("Local SQLite storage fallback is only available during development.");
-  }
-
-  const storage = await loadLocalStorage();
-  return handlers.local(storage);
-};
-
-export const getWebDiscoverSurfaceData = async (
-  filters: StoredOpportunityQuery = {},
-): Promise<StoredDiscoverSurfaceData> =>
-  withStorage({
-    d1: (database) => getD1DiscoverSurfaceData(database, filters),
-    local: (storage) => storage.getStoredDiscoverSurfaceData(filters),
-  });
-
-export const queryWebOpportunityFeed = async (
-  filters: StoredOpportunityQuery = {},
-): Promise<StoredOpportunityFeedItem[]> =>
-  withStorage({
-    d1: (database) => queryD1OpportunityFeed(database, filters),
-    local: (storage) => storage.queryStoredOpportunityFeed(filters),
-  });
-
+/** Used by the opportunity image route (owned by the preview pipeline). */
 export const getWebOpportunityFeedItemBySlug = async (slug: string) =>
-  withStorage({
-    d1: (database) => getD1OpportunityFeedItemBySlug(database, slug),
-    local: (storage) => storage.getStoredOpportunityFeedItemBySlug(slug),
-  });
-
-export const getWebOpsSnapshot = async () =>
-  withStorage({
-    d1: (database) => getD1OpsSnapshot(database),
-    local: (storage) => storage.getStoredOpsSnapshot(),
-  });
-
-export const getWebSourceHealth = async (
-  limit = 20,
-): Promise<StoredSourceHealthItem[]> =>
-  withStorage({
-    d1: (database) => getD1SourceHealth(database, limit),
-    local: (storage) => storage.getStoredSourceHealth(limit),
-  });
-
-export const getWebDuplicatePressureSummary = async (): Promise<StoredDuplicatePressureSummary> =>
-  withStorage({
-    d1: (database) => getD1DuplicatePressureSummary(database),
-    local: (storage) => storage.getStoredDuplicatePressureSummary(),
-  });
-
-export const getWebOpsReviewSummary = async (): Promise<StoredOpsReviewSummary> =>
-  withStorage({
-    d1: (database) => getD1OpsReviewSummary(database),
-    local: (storage) => storage.getStoredOpsReviewSummary(),
-  });
-
-export const queryWebOpsReviewQueue = async (
-  query: StoredOpsReviewQueueQuery = {},
-): Promise<StoredOpsReviewQueueItem[]> =>
-  withStorage({
-    d1: (database) => queryD1OpsReviewQueue(database, query),
-    local: (storage) => storage.queryStoredOpsReviewQueue(query),
-  });
-
-export const writeWebOpsReviewDecision = async (
-  input: StoredOpsReviewDecisionInput,
-): Promise<StoredOpsReviewQueueItem> =>
-  withStorage({
-    d1: (database) => writeD1OpsReviewDecision(database, input),
-    local: (storage) => storage.writeStoredOpsReviewDecision(input),
-  });
-
-export const queryWebSavedSearches = async (
-  query: StoredSavedSearchQuery,
-): Promise<StoredSavedSearch[]> =>
-  withStorage({
-    d1: (database) => queryD1SavedSearches({ database, ...query }),
-    local: (storage) => storage.queryStoredSavedSearches(query),
-  });
-
-export const createWebSavedSearch = async (
-  input: StoredSavedSearchCreateInput,
-): Promise<StoredSavedSearch> =>
-  withStorage({
-    d1: (database) => createD1SavedSearch({ database, ...input }),
-    local: (storage) => storage.createStoredSavedSearch(input),
-  });
-
-export const deleteWebSavedSearch = async (
-  input: StoredSavedSearchDeleteInput,
-) =>
-  withStorage({
-    d1: (database) => deleteD1SavedSearch({ database, ...input }),
-    local: (storage) => storage.deleteStoredSavedSearch(input),
-  });
-
-export const queryWebWatchlistEntries = async (
-  query: StoredWatchlistEntryQuery,
-): Promise<StoredWatchlistEntry[]> =>
-  withStorage({
-    d1: (database) => queryD1WatchlistEntries({ database, ...query }),
-    local: (storage) => storage.queryStoredWatchlistEntries(query),
-  });
-
-export const listWebWatchedOpportunityIds = async (workspaceKey: string): Promise<string[]> =>
-  withStorage({
-    d1: (database) => listD1WatchedOpportunityIds(database, workspaceKey),
-    local: (storage) => storage.listStoredWatchedOpportunityIds(workspaceKey),
-  });
-
-export const isWebOpportunityWatched = async (
-  input: StoredWatchlistEntryCreateInput,
-) =>
-  withStorage({
-    d1: (database) => isD1OpportunityWatched({ database, ...input }),
-    local: (storage) => storage.isStoredOpportunityWatched(input),
-  });
-
-export const createWebWatchlistEntry = async (
-  input: StoredWatchlistEntryCreateInput,
-): Promise<StoredWatchlistEntry> =>
-  withStorage({
-    d1: (database) => createD1WatchlistEntry({ database, ...input }),
-    local: (storage) => storage.createStoredWatchlistEntry(input),
-  });
-
-export const deleteWebWatchlistEntry = async (
-  input: StoredWatchlistEntryDeleteInput,
-) =>
-  withStorage({
-    d1: (database) => deleteD1WatchlistEntry({ database, ...input }),
-    local: (storage) => storage.deleteStoredWatchlistEntry(input),
-  });
-
-export const createWebAuthUser = async (
-  input: StoredAuthUserCreateInput,
-): Promise<StoredAuthUser> =>
-  withStorage({
-    d1: (database) => createD1AuthUser(database, input),
-    local: (storage) => storage.createStoredAuthUser(input),
-  });
-
-export const authenticateWebAuthUser = async (
-  input: StoredAuthLoginInput,
-): Promise<StoredAuthUser | null> =>
-  withStorage({
-    d1: (database) => authenticateD1AuthUser(database, input),
-    local: (storage) => storage.authenticateStoredAuthUser(input),
-  });
-
-export const createWebAuthSession = async (
-  input: StoredAuthSessionCreateInput,
-): Promise<StoredAuthSessionWithToken> =>
-  withStorage({
-    d1: (database) => createD1AuthSession(database, input),
-    local: (storage) => storage.createStoredAuthSession(input),
-  });
-
-export const getWebAuthSession = async (
-  token: string | null | undefined,
-): Promise<StoredAuthSession | null> =>
-  withStorage({
-    d1: (database) => getD1AuthSession(database, token),
-    local: (storage) => storage.getStoredAuthSession(token),
-  });
-
-export const deleteWebAuthSession = async (token: string | null | undefined) =>
-  withStorage({
-    d1: (database) => deleteD1AuthSession(database, token),
-    local: (storage) => storage.deleteStoredAuthSession(token),
-  });
-
-export const countWebAuthUsers = async () =>
-  withStorage({
-    d1: (database) => countD1AuthUsers(database),
-    local: (storage) => storage.countStoredAuthUsers(),
-  });
-
-export const deleteWebAuthSessionsForUser = async (userId: string) =>
-  withStorage({
-    d1: (database) => deleteD1AuthSessionsForUser(database, userId),
-    local: (storage) => storage.deleteStoredAuthSessionsForUser(userId),
-  });
-
-export const isAuthStorageError = (
-  error: unknown,
-): error is Error & { code: StoredAuthErrorCode } => {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-
-  const code = (error as unknown as { code?: unknown }).code;
-  return (
-    typeof code === "string" &&
-    ["email_taken", "invalid_email", "unknown_user", "weak_password"].includes(code)
-  );
-};
+  (await getStorage()).opportunities.getBySlug(slug);

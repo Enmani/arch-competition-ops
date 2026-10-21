@@ -1,12 +1,11 @@
 ---
 title: Changelog
-status: 已完成
-updated_at: 2026-04-21
+status: done
+updated_at: 2026-10-21
 related_docs:
   - docs/ai/doc-governance-standard.md
   - docs/changelog/AGENTS.md
   - docs/changelog/_template.md
-  - docs/changelog/CHANGELOG_2026-04-21.md
 ---
 
 # Changelog
@@ -37,7 +36,6 @@ This folder holds dated closeout trace for meaningful repo rounds.
 - `Validation`
 - `Modified Files`
 
-## Current Files
+## Files
 
-- [CHANGELOG_2026-04-21.md](./CHANGELOG_2026-04-21.md)
-- [_template.md](./_template.md)
+One `CHANGELOG_YYYY-MM-DD.md` per day, listed by name in this folder. The shape for a new section is in [_template.md](./_template.md). There is no root `CHANGELOG.md`.

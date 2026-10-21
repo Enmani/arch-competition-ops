@@ -1,11 +1,10 @@
 ---
 title: Roadmaps Docs Index
 status: done
-updated_at: 2026-04-19
+updated_at: 2026-10-21
 vision_doc: vision.md
 related_docs:
   - docs/ai/doc-governance-standard.md
-  - docs/roadmaps/_template.md
   - docs/roadmaps/2026-04-19-near-term-product-roadmap.md
 ---
 
@@ -24,7 +23,6 @@ Do not use this folder for detailed implementation slicing.
 ## Current Files
 
 - [2026-04-19-near-term-product-roadmap.md](./2026-04-19-near-term-product-roadmap.md)
-- [_template.md](./_template.md)
 
 ## Notes
 

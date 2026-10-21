@@ -1,0 +1,150 @@
+/* Discover filter controls: field stacks, search shell, toggles and dock/toolbar actions. */
+
+.field-stack input,
+.field-stack select,
+.toggle-copy,
+.search-shell,
+.discover-dock-summary {
+  height: var(--dock-control-h);
+  min-height: var(--dock-control-h);
+  padding: 0.5rem var(--dock-control-px);
+  border: 1px solid var(--line-strong);
+  background: color-mix(in oklch, var(--surface) 96%, var(--surface-alt) 4%);
+  color: var(--ink);
+  transition:
+    border-color 180ms var(--ease-out-quart),
+    background-color 180ms var(--ease-out-quart),
+    box-shadow 180ms var(--ease-out-quart),
+    transform 180ms var(--ease-out-quart);
+}
+
+.field-stack input::placeholder {
+  color: color-mix(in oklch, var(--ink-faint) 75%, var(--surface) 25%);
+}
+
+.field-stack input,
+.field-stack select {
+  width: 100%;
+}
+
+.search-shell {
+  position: relative;
+  display: block;
+  overflow: hidden;
+}
+
+.discover-dock.is-pending .search-shell,
+.discover-dock.is-pending .field-stack input,
+.discover-dock.is-pending .field-stack select,
+.discover-dock.is-pending .toggle-copy,
+.discover-dock.is-pending .discover-dock-summary {
+  border-color: color-mix(in oklch, var(--accent) 40%, var(--line-strong) 60%);
+}
+
+.search-icon {
+  position: absolute;
+  top: 50%;
+  left: 0.72rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 0.85rem;
+  height: 0.85rem;
+  color: var(--ink-faint);
+  pointer-events: none;
+  transform: translateY(-50%);
+  transition: color 180ms var(--ease-out-quart);
+}
+
+.search-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.search-shell:focus-within .search-icon {
+  color: var(--accent);
+}
+
+.field-stack .search-input {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  padding: 0 0.72rem 0 2.1rem;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.field-stack .search-input::-webkit-search-decoration,
+.field-stack .search-input::-webkit-search-cancel-button,
+.field-stack .search-input::-webkit-search-results-button,
+.field-stack .search-input::-webkit-search-results-decoration {
+  display: none;
+}
+
+.field-stack .search-input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.field-stack select {
+  appearance: auto;
+}
+
+.discover-dock-summary {
+  padding: 0;
+}
+
+.toggle-field {
+  align-content: end;
+}
+
+.toggle-copy {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.55rem;
+  color: var(--ink-soft);
+  font-size: 0.88rem;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.toggle-copy:hover {
+  transform: translateY(-1px);
+}
+
+.toggle-copy input {
+  width: 0.95rem;
+  height: 0.95rem;
+  accent-color: var(--accent);
+}
+
+.toggle-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toolbar-actions {
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.45rem;
+}
+
+.toolbar-actions .button {
+  height: var(--topbar-control-h);
+  min-height: var(--topbar-control-h);
+  padding: 0 0.72rem;
+  font-size: 0.66rem;
+}
+
+.dock-actions .button {
+  height: var(--dock-control-h);
+  min-height: var(--dock-control-h);
+  padding: 0 0.72rem;
+  font-size: 0.66rem;
+  white-space: nowrap;
+}

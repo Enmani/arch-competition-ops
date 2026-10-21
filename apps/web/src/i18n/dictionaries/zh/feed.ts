@@ -1,0 +1,25 @@
+export const feed = {
+  sections: {
+    commercial: "商业面",
+    qualification: "资格面",
+    trace: "证据面",
+  },
+  fields: {
+    opportunity: "机会类型",
+    procedure: "程序类型",
+    participationCost: "参与成本",
+    prizeNote: "奖金说明",
+    eligibility: "资格要求",
+    localPartner: "本地合作方",
+    qualificationScore: "资格评分",
+    audience: "目标对象",
+    noticeId: "公告编号",
+    evidenceStack: "证据",
+    discoveryTrail: "抓取轨迹",
+    extractionConfidence: "抽取置信度",
+    languages: "语言",
+    regions: "地区",
+    competitionTags: "竞赛标签",
+    cpv: "CPV",
+  },
+};

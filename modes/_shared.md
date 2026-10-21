@@ -23,6 +23,8 @@ This repository is for professional architecture opportunity intelligence.
 - title
 - authority_name
 - organizer
+- source_id
+- source_name
 - official_url
 - source_url
 - official_notice_id
@@ -47,3 +49,12 @@ This repository is for professional architecture opportunity intelligence.
 - evidence_level
 - qualification_score
 - evidence_note
+
+## Field Semantics
+
+- `organizer` is the real buyer or organizer named in the notice. Unknown is the empty string. The publishing platform goes to `source_id` / `source_name`, never to `organizer`.
+- `registration_fee_eur` / `submission_fee_eur` are `null` unless the source explicitly states a fee; `0` only when it explicitly states the call is free.
+- `official_url` is written only when the notice links to an official page; do not copy `source_url` into it.
+- `eligibility_summary` holds only the notice's own qualification clause, verbatim; project descriptions never go there. Empty when the source has no such clause.
+- `audience`, `implementation_path`, `licensed_architect_required`, and `local_partner_required` stay empty unless the notice states them (the last two only from a qualification clause).
+- `extraction_confidence` is computed from how many evidence fields were found, not assigned by hand.

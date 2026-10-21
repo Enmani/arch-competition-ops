@@ -1,20 +1,28 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 # AI maintenance note:
-# - url_list_path/url_list are for long portal sets; do not hardcode city lists into source YAML bodies.
-# - buyer_allowlist_path/buyer_allowlist are for country or authority focus lists such as Italy SCP buyers.
-# - collector lets new packs opt into an existing collector family without editing the registry per source id.
-# - New country onboarding should usually mean a new pack file plus an existing collector family, not a bespoke Python branch.
+# - url_list_path/url_list are for long portal sets; do not hardcode city lists into source YAML.
+# - buyer_allowlist_path/buyer_allowlist are for country or authority focus lists such as Italy
+#   SCP buyers.
+# - collector names the collector family (see collectors/registry.py); every source declares one,
+#   there is no per-source-id lookup.
+# - New country onboarding should usually mean a new pack file plus an existing collector family,
+#   not a bespoke Python branch.
+
 
 class SourceDefinition(BaseModel):
+    # extra="forbid": a typo such as `enabeld: false` in YAML must fail loudly, not silently
+    # leave the source enabled.
+    model_config = ConfigDict(extra="forbid")
+
     source_id: str
     name: str
     kind: str
     jurisdiction: str
     base_url: str
-    collector: str | None = None
+    collector: str
     url_list_path: str | None = None
     url_list: list[str] = Field(default_factory=list)
     buyer_allowlist_path: str | None = None
@@ -31,10 +39,14 @@ class SourceDefinition(BaseModel):
 
 
 class SourceCatalog(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     sources: list[SourceDefinition] = Field(default_factory=list)
 
 
 class TargetingPreferences(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     regions: list[str] = Field(default_factory=list)
     languages: list[str] = Field(default_factory=list)
     audience: list[str] = Field(default_factory=list)
@@ -58,6 +70,8 @@ class TargetingPreferences(BaseModel):
 
 
 class Taxonomy(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     regions: list[str] = Field(default_factory=list)
     languages: list[str] = Field(default_factory=list)
     source_kinds: list[str] = Field(default_factory=list)
@@ -72,3 +86,5 @@ class Taxonomy(BaseModel):
     audience: list[str] = Field(default_factory=list)
     project_types: list[str] = Field(default_factory=list)
     building_categories: list[str] = Field(default_factory=list)
+    design_scopes: list[str] = Field(default_factory=list)
+    project_modes: list[str] = Field(default_factory=list)

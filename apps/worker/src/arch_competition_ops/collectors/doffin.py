@@ -6,14 +6,15 @@ from arch_competition_ops.collectors.base import CollectedSourceDocument
 from arch_competition_ops.collectors.common import (
     fetch_json_get,
     fetch_json_post,
+)
+from arch_competition_ops.collectors.relevance import (
     has_built_environment_context,
     is_design_relevant,
-    normalize_text,
-    parse_date_string,
 )
 from arch_competition_ops.models import SourceDefinition
+from arch_competition_ops.normalizers.dates import parse_date_string
 from arch_competition_ops.normalizers.money import format_money_text
-
+from arch_competition_ops.normalizers.text import normalize_text
 
 DOFFIN_DESIGN_CPV_CODES = [
     "71200000",
@@ -162,7 +163,11 @@ def collect_doffin_documents(
                 if str(code).strip()
             ]
 
-            if publication_date_from and publication_date and publication_date < publication_date_from:
+            if (
+                publication_date_from
+                and publication_date
+                and publication_date < publication_date_from
+            ):
                 continue
             if not title or not _is_relevant_doffin_notice(title, description, cpv_codes):
                 continue
@@ -184,7 +189,6 @@ def collect_doffin_documents(
                     "cpv": cpv_codes,
                     "opportunityType": "public_design_services_procurement",
                     "procedureType": detail_payload.get("noticeType") or hit.get("type"),
-                    "implementationPath": "service_contract_award_after_competitive_selection",
                     "evidenceLevel": "official_notice",
                     "evidenceNote": "Official Doffin search and notice-detail API record.",
                     "publishedAt": publication_date,

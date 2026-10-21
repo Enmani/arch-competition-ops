@@ -6,13 +6,14 @@ from arch_competition_ops.collectors.base import CollectedSourceDocument
 from arch_competition_ops.collectors.common import (
     build_url,
     fetch_json_get,
+)
+from arch_competition_ops.collectors.relevance import (
     has_built_environment_context,
     is_design_relevant,
-    normalize_text,
-    parse_date_string,
 )
 from arch_competition_ops.models import SourceDefinition
-
+from arch_competition_ops.normalizers.dates import parse_date_string
+from arch_competition_ops.normalizers.text import normalize_text
 
 TENDERNED_DESIGN_MARKERS = (
     "architect",
@@ -127,7 +128,11 @@ def collect_tenderned_documents(
             title = str(row.get("aanbestedingNaam") or "").strip()
             description = str(row.get("opdrachtBeschrijving") or "").strip()
             publication_date = parse_date_string(str(row.get("publicatieDatum") or ""))
-            if publication_date_from and publication_date and publication_date < publication_date_from:
+            if (
+                publication_date_from
+                and publication_date
+                and publication_date < publication_date_from
+            ):
                 continue
             if not title or not _is_candidate_tenderned_notice(title, description):
                 continue
@@ -150,7 +155,9 @@ def collect_tenderned_documents(
 
             link_payload = row.get("link") if isinstance(row.get("link"), dict) else {}
             official_url = _resolve_site_url(publicatie_id, link_payload.get("href"))
-            links_payload = detail_payload.get("links") if isinstance(detail_payload.get("links"), dict) else {}
+            links_payload = (
+                detail_payload.get("links") if isinstance(detail_payload.get("links"), dict) else {}
+            )
             pdf_url = None
             if isinstance(links_payload.get("pdf"), dict):
                 pdf_url = _resolve_href(links_payload.get("pdf", {}).get("href"))
@@ -159,7 +166,9 @@ def collect_tenderned_documents(
                 {
                     "title": title,
                     "buyer": str(
-                        detail_payload.get("opdrachtgeverNaam") or row.get("opdrachtgeverNaam") or ""
+                        detail_payload.get("opdrachtgeverNaam")
+                        or row.get("opdrachtgeverNaam")
+                        or ""
                     ).strip()
                     or None,
                     "noticeId": publicatie_id,
@@ -181,7 +190,6 @@ def collect_tenderned_documents(
                         if isinstance(row.get("procedure"), dict)
                         else None
                     ),
-                    "implementationPath": "service_contract_award_after_competitive_selection",
                     "evidenceLevel": "official_notice",
                     "evidenceNote": "Official TenderNed publication and detail API record.",
                     "publishedAt": publication_date,

@@ -2,6 +2,7 @@ import sqlite3
 from datetime import date
 
 from arch_competition_ops.models import CompetitionRecord
+from arch_competition_ops.normalizers.competition import compute_extraction_confidence
 from arch_competition_ops.review_queue import refresh_review_queue
 from arch_competition_ops.storage import (
     ensure_schema,
@@ -10,7 +11,9 @@ from arch_competition_ops.storage import (
 )
 
 
-def test_refresh_review_queue_builds_candidates_and_deactivates_stale_worker_items(tmp_path) -> None:
+def test_refresh_review_queue_builds_candidates_and_deactivates_stale_worker_items(
+    tmp_path,
+) -> None:
     db_path = tmp_path / "competitions.sqlite"
     ensure_schema(db_path)
 
@@ -55,7 +58,7 @@ def test_refresh_review_queue_builds_candidates_and_deactivates_stale_worker_ite
             status="discovered",
             opportunity_type="public_design_services_procurement",
             deadline_at=date(2026, 9, 1),
-            extraction_confidence=0.62,
+            extraction_confidence=0.35,
             evidence_level="official_listing",
             evidence_note="Official source wins over aggregator conflict.",
         ),
@@ -211,11 +214,13 @@ def test_refresh_review_queue_builds_candidates_and_deactivates_stale_worker_ite
         queue_id="source-run-failed:ted_design_notices",
         decision="accepted",
         actor_label="local_operator",
-        note="Temporary acceptance before the next failing run.",
+        note="Acceptance of this exact failure.",
     )
 
     refreshed_candidates = refresh_review_queue(db_path)
 
+    # The worker regenerates the candidate as pending, but the stored decision is only reopened
+    # when the underlying payload changes (see test_decision_survives_refresh...).
     assert any(
         candidate["queue_id"] == "source-run-failed:ted_design_notices"
         and candidate["status"] == "pending"
@@ -239,6 +244,85 @@ def test_refresh_review_queue_builds_candidates_and_deactivates_stale_worker_ite
             ("source-run-failed:ted_design_notices",),
         ).fetchone()
 
-    assert reopened_row["status"] == "pending"
+    assert reopened_row["status"] == "accepted"
     assert reopened_row["is_active"] == 1
     assert latest_decision_row["decision"] == "accepted"
+
+
+def _failing_source_health(db_path, *, last_run_completed_at: str) -> None:
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            """
+            INSERT OR REPLACE INTO source_health (
+                source_id, source_name, source_kind, source_tier, last_status,
+                last_run_started_at, last_run_completed_at, last_success_at,
+                last_document_count, last_upserted_count, last_parse_failure_count,
+                duplicate_group_count, max_duplicate_group_size, last_error, updated_at
+            ) VALUES ('s1', 'Source One', 'official_procurement', 'primary', 'failed',
+                      ?, ?, NULL, 0, 0, 0, 0, 0, 'boom', ?)
+            """,
+            (last_run_completed_at, last_run_completed_at, last_run_completed_at),
+        )
+        connection.commit()
+
+
+def _queue_status(db_path, queue_id: str) -> str:
+    with sqlite3.connect(db_path) as connection:
+        return connection.execute(
+            "SELECT status FROM ops_review_queue_items WHERE queue_id = ?", (queue_id,)
+        ).fetchone()[0]
+
+
+def test_decision_survives_refresh_until_the_payload_changes(tmp_path) -> None:
+    db_path = tmp_path / "competitions.sqlite"
+    ensure_schema(db_path)
+    _failing_source_health(db_path, last_run_completed_at="2026-04-20T06:05:00+00:00")
+    queue_id = "source-run-failed:s1"
+
+    refresh_review_queue(db_path)
+    record_review_queue_decision(db_path, queue_id=queue_id, decision="rejected", actor_label="op")
+    assert _queue_status(db_path, queue_id) == "rejected"
+
+    refresh_review_queue(db_path)  # same facts: the operator's decision stands
+    refresh_review_queue(db_path)
+    assert _queue_status(db_path, queue_id) == "rejected"
+
+    _failing_source_health(db_path, last_run_completed_at="2026-04-21T06:05:00+00:00")
+    refresh_review_queue(db_path)  # a new failed run changes the payload: reopened
+    assert _queue_status(db_path, queue_id) == "pending"
+
+
+def test_low_confidence_queue_only_holds_records_with_little_evidence(tmp_path) -> None:
+    db_path = tmp_path / "competitions.sqlite"
+    ensure_schema(db_path)
+    thin = CompetitionRecord(
+        title="Title only listing",
+        source_id="s1",
+        source_url="https://example.invalid/thin",
+        extraction_confidence=compute_extraction_confidence(
+            CompetitionRecord(title="x", source_url="https://example.invalid/x")
+        ),
+    )
+    rich_source = CompetitionRecord(
+        title="Fully described notice",
+        source_id="s1",
+        source_url="https://example.invalid/rich",
+        authority_name="Comune di Parma",
+        official_notice_id="N-1",
+        deadline_at=date(2026, 9, 1),
+        procedure_type="open",
+        official_url="https://example.invalid/rich-official",
+    )
+    rich = rich_source.model_copy(
+        update={"extraction_confidence": compute_extraction_confidence(rich_source)}
+    )
+    upsert_competition(db_path, thin)
+    upsert_competition(db_path, rich)
+
+    low_confidence_titles = {
+        candidate["title"]
+        for candidate in refresh_review_queue(db_path)
+        if candidate["reason_code"] == "low_confidence_record"
+    }
+
+    assert low_confidence_titles == {"Title only listing"}

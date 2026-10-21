@@ -2,10 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-import arch_competition_ops.verifiers.simap as simap_verifier
+import arch_competition_ops.verifiers.authority_pages as authority_pages
 from arch_competition_ops.extractors import parse_source_payload
+from arch_competition_ops.http import HttpTransportError
 from arch_competition_ops.models import SourceDefinition
-from arch_competition_ops.verifiers.simap import clear_verifier_caches, verify_simap_record
+from arch_competition_ops.settings import Settings
+from arch_competition_ops.verifiers.authority_pages import clear_verifier_caches
+from arch_competition_ops.verifiers.simap import verify_simap_record
 
 
 def test_verify_simap_record_uses_authority_sitemap_to_upgrade_official_url_and_prize_summary(
@@ -13,6 +16,7 @@ def test_verify_simap_record_uses_authority_sitemap_to_upgrade_official_url_and_
 ) -> None:
     source = SourceDefinition(
         source_id="simap_public_design_notices",
+        collector="simap_project_api",
         name="simap Swiss Public Procurement",
         kind="official_procurement",
         jurisdiction="switzerland",
@@ -81,11 +85,11 @@ def test_verify_simap_record_uses_authority_sitemap_to_upgrade_official_url_and_
   </body>
 </html>
 """.strip()
-        raise AssertionError(f"unexpected url {url}")
+        raise HttpTransportError("offline test fake", url=url)
 
     clear_verifier_caches()
     monkeypatch.setattr(
-        "arch_competition_ops.verifiers.simap._fetch_text",
+        "arch_competition_ops.verifiers.authority_pages._fetch_text",
         fake_fetch_text,
     )
 
@@ -94,6 +98,7 @@ def test_verify_simap_record_uses_authority_sitemap_to_upgrade_official_url_and_
         payload=payload,
         source_url=source_url,
         record=record,
+        settings=Settings(),
     )
 
     assert verified.official_url == official_page_url
@@ -117,6 +122,7 @@ def test_verify_simap_record_uses_browser_fallback_to_extract_prize_summary_and_
 ) -> None:
     source = SourceDefinition(
         source_id="simap_public_design_notices",
+        collector="simap_project_api",
         name="simap Swiss Public Procurement",
         kind="official_procurement",
         jurisdiction="switzerland",
@@ -183,7 +189,7 @@ def test_verify_simap_record_uses_browser_fallback_to_extract_prize_summary_and_
   </body>
 </html>
 """.strip()
-        raise AssertionError(f"unexpected url {url}")
+        raise HttpTransportError("offline test fake", url=url)
 
     def fake_render_page(*, url: str, storage_dir, timeout_ms: int = 20000) -> _FakeBrowserPage:
         assert url == official_page_url
@@ -210,16 +216,17 @@ def test_verify_simap_record_uses_browser_fallback_to_extract_prize_summary_and_
 
     clear_verifier_caches()
     monkeypatch.setattr(
-        "arch_competition_ops.verifiers.simap._fetch_text",
+        "arch_competition_ops.verifiers.authority_pages._fetch_text",
         fake_fetch_text,
     )
-    monkeypatch.setattr(simap_verifier, "render_page", fake_render_page, raising=False)
+    monkeypatch.setattr(authority_pages, "render_page", fake_render_page)
 
     verified = verify_simap_record(
         source=source,
         payload=payload,
         source_url=source_url,
         record=record,
+        settings=Settings(),
     )
 
     assert verified.official_url == official_page_url
@@ -235,6 +242,7 @@ def test_verify_simap_record_keeps_source_official_url_when_browser_match_adds_n
 ) -> None:
     source = SourceDefinition(
         source_id="simap_public_design_notices",
+        collector="simap_project_api",
         name="simap Swiss Public Procurement",
         kind="official_procurement",
         jurisdiction="switzerland",
@@ -301,7 +309,7 @@ def test_verify_simap_record_keeps_source_official_url_when_browser_match_adds_n
   </body>
 </html>
 """.strip()
-        raise AssertionError(f"unexpected url {url}")
+        raise HttpTransportError("offline test fake", url=url)
 
     def fake_render_page(*, url: str, storage_dir, timeout_ms: int = 20000) -> _FakeBrowserPage:
         assert url == official_page_url
@@ -327,16 +335,17 @@ def test_verify_simap_record_keeps_source_official_url_when_browser_match_adds_n
 
     clear_verifier_caches()
     monkeypatch.setattr(
-        "arch_competition_ops.verifiers.simap._fetch_text",
+        "arch_competition_ops.verifiers.authority_pages._fetch_text",
         fake_fetch_text,
     )
-    monkeypatch.setattr(simap_verifier, "render_page", fake_render_page, raising=False)
+    monkeypatch.setattr(authority_pages, "render_page", fake_render_page)
 
     verified = verify_simap_record(
         source=source,
         payload=payload,
         source_url=source_url,
         record=record,
+        settings=Settings(),
     )
 
     assert verified.official_url == "https://konkurado.ch/de/kooperation-leimbach-mitte"
@@ -346,3 +355,88 @@ def test_verify_simap_record_keeps_source_official_url_when_browser_match_adds_n
     assert verified.last_verified_at is None
     assert "Official secondary verification" not in (verified.evidence_note or "")
     assert "browser fallback" not in (verified.evidence_note or "").lower()
+
+
+# -- hardening ------------------------------------------------------------------------------------
+
+
+def _simap_source() -> SourceDefinition:
+    return SourceDefinition(
+        source_id="simap_public_design_notices",
+        collector="simap_project_api",
+        name="simap Swiss Public Procurement",
+        kind="official_procurement",
+        jurisdiction="switzerland",
+        base_url="https://www.simap.ch/",
+        scan_method="api",
+        extractor="simap_notice_parser",
+        verifier="simap_official_enricher",
+        source_tier="primary",
+    )
+
+
+def _verify_with_site(monkeypatch, fetch):
+    from support import SIMAP_SOURCE_URL, herbstweg_simap_payload
+
+    source, payload = _simap_source(), herbstweg_simap_payload()
+    record = parse_source_payload(source, payload, source_url=SIMAP_SOURCE_URL)
+    clear_verifier_caches()
+    monkeypatch.setattr("arch_competition_ops.verifiers.authority_pages._fetch_text", fetch)
+    monkeypatch.setattr(
+        authority_pages,
+        "render_page",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("no browser in tests")),
+    )
+    return record, verify_simap_record(source, payload, SIMAP_SOURCE_URL, record, Settings())
+
+
+def test_url_shape_alone_never_makes_a_page_the_official_page(monkeypatch) -> None:
+    from support import stadt_zuerich_site
+
+    # The URL has ".html", a procurement path and the project token, but the page is about
+    # something else entirely: no title evidence, so no upgrade and no prize copied.
+    unrelated = (
+        "<html><head><title>Schulanlage Leimbach | Stadt Zürich</title></head>"
+        "<body><h1>Schulanlage Leimbach</h1><p>Preisgeld CHF 1 000</p></body></html>"
+    )
+
+    original_url = "https://konkurado.ch/de/ws-herbstweg"
+    record, verified = _verify_with_site(monkeypatch, stadt_zuerich_site(unrelated))
+
+    assert verified.official_url == original_url == record.official_url
+    assert verified.prize_summary is None
+    assert verified.last_verified_at is None
+
+
+def test_sitemaps_declared_for_other_hosts_are_not_followed(monkeypatch) -> None:
+    from support import OFFICIAL_PAGE_URL, stadt_zuerich_site
+
+    inner = stadt_zuerich_site("<html></html>")
+    requested: list[str] = []
+
+    def fetch(url: str) -> str:
+        requested.append(url)
+        if url.endswith("/robots.txt") and "stadt-zuerich" in url:
+            return "Sitemap: http://169.254.169.254/latest/sitemap.xml\nSitemap: https://evil.example/s.xml"
+        return inner(url)
+
+    _verify_with_site(monkeypatch, fetch)
+
+    assert not any("169.254" in url or "evil.example" in url for url in requested)
+    assert OFFICIAL_PAGE_URL not in requested  # nothing legitimate was discovered either
+
+
+def test_canonical_link_pointing_off_site_is_ignored(monkeypatch) -> None:
+    from support import OFFICIAL_PAGE_URL, stadt_zuerich_site
+
+    page = (
+        "<html><head><title>Erneuerung Wohnsiedlung Herbstweg | Stadt Zürich</title>"
+        '<link rel="canonical" href="https://phishing.example/herbstweg"/></head>'
+        "<body><h1>Erneuerung Wohnsiedlung Herbstweg</h1><p>Preisgeld CHF 167 000 exkl. MWST</p>"
+        "</body></html>"
+    )
+
+    _record, verified = _verify_with_site(monkeypatch, stadt_zuerich_site(page))
+
+    assert verified.official_url == OFFICIAL_PAGE_URL
+    assert verified.prize_summary == "Preisgeld CHF 167 000 exkl. MWST"

@@ -1,0 +1,92 @@
+/* Opportunity detail page. */
+
+.detail-layout {
+  gap: var(--space-xl);
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(18rem, 0.92fr);
+  gap: var(--space-xl);
+  align-items: start;
+}
+
+.detail-grid > section,
+.detail-hero {
+  gap: var(--space-lg);
+}
+
+.detail-stack,
+.detail-section,
+.detail-card-grid,
+.detail-note-card {
+  display: grid;
+}
+
+.detail-stack {
+  gap: var(--space-xl);
+}
+
+.detail-section {
+  gap: var(--space-md);
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--line-strong);
+}
+
+.detail-section-anchored {
+  position: relative;
+}
+
+.detail-section-anchored::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 3.2rem;
+  border-top: 1px solid color-mix(in oklch, var(--accent) 42%, var(--line-strong) 58%);
+}
+
+.detail-section h2 {
+  margin: 0;
+  font-family: var(--font-display), var(--font-cjk-fallback), sans-serif;
+  font-size: clamp(1.6rem, 2vw, 2.15rem);
+  line-height: 0.94;
+  text-transform: uppercase;
+}
+
+.detail-item {
+  gap: 0.2rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+}
+
+.detail-item:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.detail-card-grid {
+  gap: var(--space-md);
+}
+
+.detail-note-card {
+  gap: var(--space-md);
+}
+
+.detail-note-text {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+.detail-label,
+.band-label,
+.section-kicker {
+  font-size: 0.72rem;
+  color: var(--accent);
+}
+
+@media (max-width: 960px) {
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,30 @@
+# Normalise every text file to LF in the working tree on every machine, even with
+# core.autocrlf=true. This keeps content hashes of tracked files identical across Windows and
+# Linux/CI. (The preview algorithm version is a manual constant and no longer hashes sources.)
+* text=auto eol=lf
+
+# PowerShell: LF is fine for both Windows PowerShell 5.1 and pwsh 7, and keeps the
+# files hash-stable. Scripts must stay ASCII-only (or carry a UTF-8 BOM), because
+# 5.1 reads BOM-less files as the ANSI code page.
+*.ps1  text eol=lf
+*.psm1 text eol=lf
+*.psd1 text eol=lf
+
+# cmd.exe needs CRLF for labels / goto to work reliably.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Binary assets: never touch line endings, never diff as text.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.webp binary
+*.avif binary
+*.ico  binary
+*.pdf  binary
+*.woff binary
+*.woff2 binary
+*.sqlite binary
+*.sqlite3 binary
+*.db   binary

@@ -3,7 +3,6 @@ from __future__ import annotations
 import re
 import unicodedata
 
-
 COUNTRY_CODE_BY_JURISDICTION = {
     "austria": "at",
     "belgium": "be",
@@ -222,7 +221,9 @@ def _authority_location_candidates(authority_name: str | None) -> list[str]:
         return []
 
     patterns = [
-        r"\b(?:gemeindeverwaltung|gemeinde|commune de|ville de|city of|municipality of|ayuntamiento de|municipio de|comune(?: di)?|citt[aà] di|stadt)\s+(.+?)(?:\s*\(|\s+-|,|$)",
+        r"\b(?:gemeindeverwaltung|gemeinde|commune de|ville de|city of|municipality of"
+        r"|ayuntamiento de|municipio de|comune(?: di)?|citt[aà] di|stadt)"
+        r"\s+(.+?)(?:\s*\(|\s+-|,|$)",
         r"^(.+?)\s+parish council\b",
         r"^(.+?)\s+district council\b",
     ]

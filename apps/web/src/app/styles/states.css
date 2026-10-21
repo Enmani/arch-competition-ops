@@ -1,0 +1,175 @@
+/* Cross-cutting states: skip link, framework pages (404 / error / 403 / loading), inline
+   API errors, saved searches, and the global keyboard-focus fallback. */
+
+/* Any focusable element not covered by a component rule still gets the shared ring. */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+#main-content:focus {
+  outline: none;
+}
+
+.skip-link {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 100;
+  padding: 0.6rem 0.9rem;
+  background: var(--accent);
+  color: var(--surface);
+  transform: translateY(-120%);
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+.inline-form {
+  display: contents;
+}
+
+.nav-link-button {
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+/* Disabled-looking anchors/spans: not clickable, not a tab stop. */
+.button[aria-disabled="true"] {
+  pointer-events: none;
+}
+
+.status-page {
+  display: grid;
+  place-items: center;
+  min-height: 60vh;
+  padding: var(--space-3xl) var(--space-lg);
+}
+
+.status-panel {
+  display: grid;
+  gap: var(--space-md);
+  width: min(100%, 36rem);
+  padding: var(--space-xl);
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+}
+
+.status-panel h1,
+.status-panel p {
+  margin: 0;
+}
+
+.status-panel p {
+  color: var(--ink-soft);
+}
+
+.status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  padding-top: var(--space-sm);
+}
+
+.status-reference {
+  color: var(--ink-faint);
+  font-size: 0.72rem;
+  word-break: break-all;
+}
+
+.loading-skeleton {
+  display: grid;
+  gap: var(--space-md);
+  padding: var(--space-xl) 0;
+}
+
+.loading-bar {
+  height: 1rem;
+  background: var(--surface-strong);
+  animation: loading-pulse 1.4s var(--ease-in-out-quiet) infinite;
+}
+
+.loading-bar:nth-child(2) {
+  width: 70%;
+}
+
+.loading-bar:nth-child(3) {
+  width: 40%;
+}
+
+@keyframes loading-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-bar {
+    animation: none;
+  }
+}
+
+.watch-toggle-error,
+.discover-feed-error,
+.saved-searches-error,
+.save-search-message.is-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 0.78rem;
+}
+
+.save-search-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) 0;
+}
+
+.save-search-form input {
+  min-height: var(--dock-control-h);
+  padding: 0 var(--dock-control-px);
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+}
+
+.save-search-message {
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+}
+
+.saved-searches {
+  display: grid;
+  gap: var(--space-md);
+}
+
+.saved-searches-list {
+  display: grid;
+  gap: var(--space-sm);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.saved-searches-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+  padding-bottom: var(--space-sm);
+  border-bottom: 1px solid var(--line);
+}
+
+.saved-searches-name {
+  flex: 1 1 10rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.saved-searches-empty {
+  margin: 0;
+  color: var(--ink-soft);
+}

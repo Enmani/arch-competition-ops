@@ -12,9 +12,10 @@ type SiteShellProps = PropsWithChildren<{
   authUserEmail?: string | null;
   copy: AppDictionary["shell"];
   locale: AppLocale;
+  showOpsLink?: boolean;
 }>;
 
-export const SiteShell = ({ authUserEmail, children, copy, locale }: SiteShellProps) => {
+export const SiteShell = ({ authUserEmail, children, copy, locale, showOpsLink = false }: SiteShellProps) => {
   const pathname = usePathname();
   const frameRef = useRef<HTMLDivElement | null>(null);
   const topbarRef = useRef<HTMLElement | null>(null);
@@ -29,11 +30,12 @@ export const SiteShell = ({ authUserEmail, children, copy, locale }: SiteShellPr
   const navigation = [
     { href: buildLocalePath(locale, "/discover"), label: copy.nav.radar },
     { href: buildLocalePath(locale, "/dashboard"), label: copy.nav.workspace },
-    { href: buildLocalePath(locale, "/ops"), label: copy.nav.pipeline },
+    // The pipeline view is administrator-only (ARCH_OPS_ADMIN_EMAILS); hide the link for everyone else.
+    ...(showOpsLink ? [{ href: buildLocalePath(locale, "/ops"), label: copy.nav.pipeline }] : []),
   ];
   const utilityLinks = [{ href: buildLocalePath(locale, "/support"), label: copy.utility.support }];
   const authLinks = authUserEmail
-    ? [{ href: `/api/auth/logout?locale=${locale}`, label: copy.utility.logout }]
+    ? []
     : [
         { href: buildLocalePath(locale, "/login"), label: copy.utility.login },
         { href: buildLocalePath(locale, "/register"), label: copy.utility.register },
@@ -98,6 +100,9 @@ export const SiteShell = ({ authUserEmail, children, copy, locale }: SiteShellPr
 
   return (
     <div className="page-shell">
+      <a className="skip-link" href="#main-content">
+        {copy.skipToContent}
+      </a>
       <div className="site-frame route-shell" ref={frameRef}>
         <header className="topbar" ref={topbarRef}>
           <div className="brand-stack">
@@ -124,7 +129,7 @@ export const SiteShell = ({ authUserEmail, children, copy, locale }: SiteShellPr
                 );
               })}
             </nav>
-            <div className="utility-row" aria-label={copy.ariaLabels.context}>
+            <div className="utility-row" role="group" aria-label={copy.ariaLabels.context}>
               {utilityLinks.map((item) => {
                 const active = resolveActive(item.href);
                 return (
@@ -139,9 +144,18 @@ export const SiteShell = ({ authUserEmail, children, copy, locale }: SiteShellPr
                 );
               })}
               {authUserEmail ? (
-                <span className="nav-link account-label" title={authUserEmail}>
-                  {authUserEmail}
-                </span>
+                <>
+                  <span className="nav-link account-label" title={authUserEmail}>
+                    {authUserEmail}
+                  </span>
+                  {/* Logout is a POST (a GET link could be triggered by any other site). */}
+                  <form action="/api/auth/logout" className="inline-form" method="post">
+                    <input name="locale" type="hidden" value={locale} />
+                    <button className="nav-link nav-link-button" type="submit">
+                      {copy.utility.logout}
+                    </button>
+                  </form>
+                </>
               ) : null}
               {authLinks.map((item) => {
                 const active = resolveActive(item.href);
@@ -159,13 +173,14 @@ export const SiteShell = ({ authUserEmail, children, copy, locale }: SiteShellPr
               <LocaleSwitcher
                 activeLocale={locale}
                 ariaLabel={copy.localeSwitcherLabel}
-                localeAbbreviations={copy.localeAbbreviations}
                 localeNames={copy.localeNames}
               />
             </div>
           </div>
         </header>
-        {children}
+        <div id="main-content" tabIndex={-1}>
+          {children}
+        </div>
       </div>
     </div>
   );

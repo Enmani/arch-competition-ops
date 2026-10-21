@@ -1,7 +1,7 @@
-import type { StoredOpportunityFeedItem } from "@arch-competition/storage/cloudflare";
+import type { StoredOpportunityFeedItem } from "@arch-competition/storage";
 
-import type { AppLocale } from "@/i18n/config";
-import type { AppDictionary } from "@/i18n/dictionaries";
+import type { AppLocale } from "../i18n/config";
+import type { DisplayCopy } from "../i18n/slices";
 import {
   formatCompactCurrency,
   formatCurrency,
@@ -10,9 +10,9 @@ import {
   formatParticipationCost,
   formatStampLabel,
   translateMappedValue,
-} from "@/i18n/format";
-import { formatTokenLabel } from "@/lib/discover";
-import { pickOpportunityDisplayLocality } from "@/lib/opportunity-location";
+} from "../i18n/format";
+import { formatTokenLabel } from "./discover";
+import { pickOpportunityDisplayLocality } from "@arch-competition/previews/location";
 
 const combiningDiacriticPattern = /[\u0300-\u036f]/g;
 
@@ -48,7 +48,7 @@ export const joinValues = (
 };
 
 export const truthFlag = (
-  dictionary: AppDictionary,
+  dictionary: DisplayCopy,
   value: boolean | null,
   positive: string,
   negative: string,
@@ -61,7 +61,7 @@ export const truthFlag = (
 };
 
 const formatProjectCategoryLabel = (
-  dictionary: AppDictionary,
+  dictionary: DisplayCopy,
   opportunity: StoredOpportunityFeedItem,
   fallback: string,
 ) => {
@@ -89,7 +89,7 @@ const formatProjectCategoryLabel = (
 };
 
 export const getOpportunityDisplayMeta = (
-  dictionary: AppDictionary,
+  dictionary: DisplayCopy,
   locale: AppLocale,
   opportunity: StoredOpportunityFeedItem,
 ) => {
@@ -125,13 +125,9 @@ export const getOpportunityDisplayMeta = (
   );
   const deadlineLabel = formatDeadlineLabel(locale, dictionary, opportunity.deadlineAt);
   const deadlineValueLabel =
-    formatLocalizedDate(
-      locale,
-      opportunity.deadlineAt,
-      locale === "zh"
-        ? { year: "numeric", month: "numeric", day: "numeric" }
-        : { day: "2-digit", month: "short", year: "numeric" },
-    ) ?? dictionary.common.deadlinePending;
+    formatLocalizedDate(locale, opportunity.deadlineAt) ?? dictionary.common.deadlinePending;
+  // '' means the buyer is not published; never fall back to the platform name or invent one.
+  const authorityLabel = opportunity.authorityName.trim() || dictionary.common.organizerNotPublished;
   const cardValueLabel =
     formatCompactCurrency(locale, opportunity.estimatedContractValueEur) ??
     opportunity.estimatedContractValueText ??
@@ -185,6 +181,7 @@ export const getOpportunityDisplayMeta = (
   );
 
   return {
+    authorityLabel,
     cardCategoryLabel,
     cardValueLabel,
     deadlineLabel,
@@ -205,107 +202,19 @@ export const getOpportunityDisplayMeta = (
   };
 };
 
-export const formatAudienceLabel = (
-  dictionary: AppDictionary,
-  opportunity: StoredOpportunityFeedItem,
-) =>
-  joinValues(
-    opportunity.audience,
-    (value) =>
-      translateMappedValue(
-        value,
-        dictionary.taxonomy.audiences,
-        formatTokenLabel(value),
-      ),
-    dictionary.common.unstated,
-  );
+type TaxonomyListKey =
+  | "audiences"
+  | "builtAssetTypes"
+  | "competitionTags"
+  | "designScopes"
+  | "officialSectors"
+  | "projectModes"
+  | "regions";
 
-export const formatRegionsLabel = (
-  dictionary: AppDictionary,
-  opportunity: StoredOpportunityFeedItem,
-) =>
+/** Joins a list of controlled-vocabulary values as localized labels (unknown values are title-cased). */
+export const formatTaxonomyList = (copy: DisplayCopy, key: TaxonomyListKey, values: readonly string[]) =>
   joinValues(
-    opportunity.regions,
-    (value) =>
-      translateMappedValue(
-        value,
-        dictionary.taxonomy.regions,
-        formatTokenLabel(value),
-      ),
-    dictionary.common.unstated,
-  );
-
-export const formatCompetitionTagsLabel = (
-  dictionary: AppDictionary,
-  opportunity: StoredOpportunityFeedItem,
-) =>
-  joinValues(
-    opportunity.competitionTypes,
-    (value) =>
-      translateMappedValue(
-        value,
-        dictionary.taxonomy.competitionTags,
-        formatTokenLabel(value),
-      ),
-    dictionary.common.unstated,
-  );
-
-export const formatOfficialSectorsLabel = (
-  dictionary: AppDictionary,
-  opportunity: StoredOpportunityFeedItem,
-) =>
-  joinValues(
-    opportunity.officialSectors,
-    (value) =>
-      translateMappedValue(
-        value,
-        dictionary.taxonomy.officialSectors,
-        formatTokenLabel(value),
-      ),
-    dictionary.common.unstated,
-  );
-
-export const formatBuiltAssetTypesLabel = (
-  dictionary: AppDictionary,
-  opportunity: StoredOpportunityFeedItem,
-) =>
-  joinValues(
-    opportunity.builtAssetTypes,
-    (value) =>
-      translateMappedValue(
-        value,
-        dictionary.taxonomy.builtAssetTypes,
-        formatTokenLabel(value),
-      ),
-    dictionary.common.unstated,
-  );
-
-export const formatDesignScopesLabel = (
-  dictionary: AppDictionary,
-  opportunity: StoredOpportunityFeedItem,
-) =>
-  joinValues(
-    opportunity.designScopes,
-    (value) =>
-      translateMappedValue(
-        value,
-        dictionary.taxonomy.designScopes,
-        formatTokenLabel(value),
-      ),
-    dictionary.common.unstated,
-  );
-
-export const formatProjectModesLabel = (
-  dictionary: AppDictionary,
-  opportunity: StoredOpportunityFeedItem,
-) =>
-  joinValues(
-    opportunity.projectModes,
-    (value) =>
-      translateMappedValue(
-        value,
-        dictionary.taxonomy.projectModes,
-        formatTokenLabel(value),
-      ),
-    dictionary.common.unstated,
+    [...values],
+    (value) => translateMappedValue(value, copy.taxonomy[key], formatTokenLabel(value)),
+    copy.common.unstated,
   );

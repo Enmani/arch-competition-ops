@@ -1,10 +1,9 @@
 import { type ReactNode } from "react";
 
-import { LocaleDocument } from "@/components/locale-document";
 import { SiteShell } from "@/components/site-shell";
 import { locales } from "@/i18n/config";
 import { getDictionary, resolveLocaleOrNotFound } from "@/i18n/server";
-import { getCurrentAuthUser } from "@/lib/auth";
+import { getCurrentAuthUser, isAdminEmail } from "@/lib/auth";
 
 type LocaleLayoutProps = {
   children: ReactNode;
@@ -21,8 +20,12 @@ const LocaleLayout = async ({ children, params }: LocaleLayoutProps) => {
 
   return (
     <>
-      <LocaleDocument locale={locale} />
-      <SiteShell authUserEmail={authUser?.email ?? null} copy={dictionary.shell} locale={locale}>
+      <SiteShell
+        authUserEmail={authUser?.email ?? null}
+        copy={dictionary.shell}
+        locale={locale}
+        showOpsLink={authUser !== null && isAdminEmail(authUser.email)}
+      >
         {children}
       </SiteShell>
     </>

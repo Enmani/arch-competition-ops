@@ -10,15 +10,17 @@ from arch_competition_ops.settings import Settings
 
 # AI maintenance note:
 # - Keep config/sources.yml as a thin manifest.
-# - Add country work in config/source_packs/countries/{country}.yml, not by appending to one giant YAML.
+# - Add country work in config/source_packs/countries/{country}.yml, not by appending to one YAML.
 # - Put bulky URL sets and buyer allowlists in config/source_lists/ and load them by path.
 # - This loader is the single expansion point for pack includes and external list refs.
+
 
 def load_yaml_file(path: Path) -> dict[str, Any]:
     if not path.exists():
         raise FileNotFoundError(f"Missing config file: {path}")
 
-    payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+    # utf-8-sig tolerates a BOM that Windows editors still add; committed files are BOM-free.
+    payload = yaml.safe_load(path.read_text(encoding="utf-8-sig"))
     if payload is None:
         return {}
     if not isinstance(payload, dict):
@@ -31,7 +33,7 @@ def load_line_list(path: Path) -> list[str]:
         raise FileNotFoundError(f"Missing list file: {path}")
 
     values: list[str] = []
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
+    for raw_line in path.read_text(encoding="utf-8-sig").splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#"):
             continue
@@ -114,9 +116,11 @@ def _collect_sources_from_data(
 
 def load_source_catalog(settings: Settings) -> SourceCatalog:
     data = load_yaml_file(settings.resolve_path(settings.source_config))
-    return SourceCatalog.model_validate({
-        "sources": _collect_sources_from_data(settings, data),
-    })
+    return SourceCatalog.model_validate(
+        {
+            "sources": _collect_sources_from_data(settings, data),
+        }
+    )
 
 
 def load_targeting_preferences(settings: Settings) -> TargetingPreferences:

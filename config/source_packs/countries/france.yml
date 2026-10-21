@@ -1,9 +1,10 @@
-﻿sources:
+sources:
   - source_id: boamp_design_notices
     name: BOAMP Design and Public Procurement Notices
     kind: official_procurement
     jurisdiction: france
     base_url: https://www.boamp.fr/
+    collector: boamp_opendatasoft
     scan_method: api
     extractor: boamp_notice_parser
     source_tier: primary

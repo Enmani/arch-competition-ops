@@ -1,0 +1,34 @@
+{
+  "name": "@arch-competition/previews",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Opportunity card previews: offline generation (satellite imagery, official images) and the runtime-safe lookup used by the Web image route.",
+  "exports": {
+    "./version": "./src/version.ts",
+    "./jurisdictions": "./src/jurisdictions.ts",
+    "./location": "./src/location.ts",
+    "./placeholder": "./src/placeholder/render.ts",
+    "./serve": "./src/serve/index.ts",
+    "./serve/fs": "./src/serve/fs-source.ts",
+    "./manifest": "./src/manifest/index.ts"
+  },
+  "scripts": {
+    "prewarm": "node bin/prewarm.mjs",
+    "build:outlines": "node scripts/build-country-outlines.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.9.0",
+    "sharp": "^0.34.5",
+    "tsx": "^4.19.3"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/d3-geo": "^3.1.0",
+    "@types/topojson-client": "^3.1.5",
+    "d3-geo": "^3.1.1",
+    "topojson-client": "^3.1.0",
+    "world-atlas": "^2.0.2"
+  }
+}

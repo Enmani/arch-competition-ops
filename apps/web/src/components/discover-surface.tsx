@@ -1,23 +1,22 @@
 import Link from "next/link";
 
-import { buildLocalePath, type AppLocale } from "@/i18n/config";
-import type { AppDictionary } from "@/i18n/dictionaries";
-import {
-  countActiveDiscoverFilters,
-  discoverRecencyValues,
-  discoverSortValues,
-  type DiscoverSearchParams,
-  readDiscoverFilters,
-} from "@/lib/discover";
-import {
-  getWebDiscoverSurfaceData,
-  listWebWatchedOpportunityIds,
-} from "@/lib/server-storage";
-import { isWorkspaceWritesEnabled, resolveWorkspaceKey } from "@/lib/workspace";
-import { DiscoverFeed } from "@/components/discover-feed";
-import { DiscoverDock } from "@/components/discover-dock";
+import { DISCOVER_MAX_LIMIT } from "@arch-competition/core";
+import { workspaceKeyForUser, type StoredOpportunityFeedItem } from "@arch-competition/storage";
 
-const DISCOVER_INITIAL_BATCH = 36;
+import { DiscoverDock } from "@/components/discover-dock";
+import { DiscoverFeed } from "@/components/discover-feed";
+import { buildLocalePath, serializeSearchParams, type AppLocale } from "@/i18n/config";
+import type { AppDictionary } from "@/i18n/dictionaries";
+import { pickDiscoverDockCopy, pickDiscoverFeedCopy } from "@/i18n/slices";
+import { getCurrentAuthUser } from "@/lib/auth";
+import {
+  buildDiscoverPageSearchParams,
+  countActiveDiscoverFilters,
+  readDiscoverPageState,
+  type DiscoverSearchParams,
+} from "@/lib/discover";
+import { appendFeedPage, createFeedState } from "@/lib/feed-pagination";
+import { getStorage } from "@/lib/server-storage";
 
 type DiscoverSurfaceProps = {
   dictionary: AppDictionary;
@@ -25,57 +24,59 @@ type DiscoverSurfaceProps = {
   searchParams: DiscoverSearchParams;
 };
 
-export const DiscoverSurface = async ({
-  dictionary,
-  locale,
-  searchParams,
-}: DiscoverSurfaceProps) => {
-  const filters = readDiscoverFilters(searchParams);
-  const { opportunities, filterOptions, total } = await getWebDiscoverSurfaceData({
-    ...filters,
-    limit: DISCOVER_INITIAL_BATCH,
-    offset: 0,
-  });
-  const activeFilterCount = countActiveDiscoverFilters(filters);
+export const DiscoverSurface = async ({ dictionary, locale, searchParams }: DiscoverSurfaceProps) => {
+  const { filters, loaded } = readDiscoverPageState(searchParams);
+  const storage = await getStorage();
+  const user = await getCurrentAuthUser();
+
+  // `loaded` restores a deep list (reload, back button, shared link). The API caps one page at
+  // DISCOVER_MAX_LIMIT, so the first page also returns the total and filter options and the
+  // rest is fetched as plain pages in parallel.
+  const firstSize = Math.min(loaded, DISCOVER_MAX_LIMIT);
+  const extraPages = Array.from(
+    { length: Math.ceil((loaded - firstSize) / DISCOVER_MAX_LIMIT) },
+    (_, index) => ({
+      limit: Math.min(DISCOVER_MAX_LIMIT, loaded - firstSize - index * DISCOVER_MAX_LIMIT),
+      offset: firstSize + index * DISCOVER_MAX_LIMIT,
+    }),
+  );
+  const [first, extras, watchedOpportunityIds] = await Promise.all([
+    storage.opportunities.discover({ ...filters, limit: firstSize, offset: 0 }),
+    Promise.all(extraPages.map((page) => storage.opportunities.feed({ ...filters, ...page }))),
+    user ? storage.watchlist.listIds(workspaceKeyForUser(user.id)) : Promise.resolve([] as string[]),
+  ]);
+  const { filterOptions, opportunities, total } = first;
+  const feed = extras.reduce(
+    (state, page) => appendFeedPage(state, { opportunities: page, total }),
+    createFeedState<StoredOpportunityFeedItem>(opportunities, total),
+  );
+
   const routeBase = buildLocalePath(locale, "/discover");
-  const workspaceKey = resolveWorkspaceKey();
-  const workspaceWritesEnabled = isWorkspaceWritesEnabled();
-  const watchedOpportunityIds = await listWebWatchedOpportunityIds(workspaceKey);
-  const sortOptions = [
-    { label: dictionary.discover.filterOptions.sortByDeadline, value: "deadline" },
-    { label: dictionary.discover.filterOptions.sortByLatest, value: "latest" },
-    { label: dictionary.discover.filterOptions.sortByContractValue, value: "highest_value" },
-  ] as const;
-  const recencyOptions = [
-    { label: dictionary.discover.filterOptions.anyCaptureDate, value: "" },
-    { label: dictionary.discover.filterOptions.last7Days, value: "7" },
-    { label: dictionary.discover.filterOptions.last30Days, value: "30" },
-    { label: dictionary.discover.filterOptions.last90Days, value: "90" },
-    { label: dictionary.discover.filterOptions.last365Days, value: "365" },
-  ] as const;
+  const filtersKey = serializeSearchParams(buildDiscoverPageSearchParams(filters)) || "none";
 
   return (
     <main className="discover-page">
       <DiscoverDock
-        activeFilterCount={activeFilterCount}
-        dictionary={dictionary}
+        activeFilterCount={countActiveDiscoverFilters(filters)}
+        copy={pickDiscoverDockCopy(dictionary)}
         filterOptions={filterOptions}
         filters={filters}
-        recencyOptions={recencyOptions}
         routeBase={routeBase}
-        sortOptions={sortOptions}
+        signedIn={user !== null}
       />
 
-      {opportunities.length > 0 ? (
+      {feed.items.length > 0 ? (
         <DiscoverFeed
-          dictionary={dictionary}
+          copy={pickDiscoverFeedCopy(dictionary)}
           filters={filters}
-          initialItems={opportunities}
+          initialItems={feed.items}
+          initialNextOffset={feed.nextOffset}
+          initialTotal={feed.total}
           initialWatchedIds={watchedOpportunityIds}
+          key={filtersKey}
           locale={locale}
           routeBase={routeBase}
-          total={total}
-          workspaceWritesEnabled={workspaceWritesEnabled}
+          signedIn={user !== null}
         />
       ) : (
         <section className="empty-state">

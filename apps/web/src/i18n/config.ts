@@ -3,6 +3,9 @@ export const locales = ["zh", "en"] as const;
 export type AppLocale = (typeof locales)[number];
 
 export const defaultLocale: AppLocale = "zh";
+
+/** BCP 47 tags handed to `Intl` (formatting only; the `lang` attribute uses the bare locale). */
+export const intlLocaleTags: Record<AppLocale, string> = { en: "en-GB", zh: "zh-CN" };
 export const localeCookieName = "arch_competition_ops_locale";
 
 export const isLocale = (value: string): value is AppLocale =>

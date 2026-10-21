@@ -1,0 +1,87 @@
+/* Ops review queue (summary, toolbar, status badges, row actions). */
+
+.ops-review-summary {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin-bottom: 1rem;
+}
+
+.ops-review-toolbar,
+.ops-review-actions,
+.ops-review-meta {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.ops-review-toolbar {
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.ops-review-filter {
+  min-width: min(100%, 13rem);
+  flex: 0 1 13rem;
+}
+
+.ops-review-empty {
+  padding: 1rem;
+  border: 1px solid var(--line);
+  background: var(--surface-alt);
+}
+
+.ops-review-error,
+.ops-review-summary-text,
+.ops-review-note {
+  margin: 0.4rem 0 0;
+}
+
+.ops-review-error {
+  color: var(--danger);
+}
+
+.ops-review-meta {
+  gap: 0.45rem;
+  margin-top: 0.45rem;
+}
+
+.ops-review-reason,
+.ops-review-status {
+  white-space: nowrap;
+}
+
+.ops-review-status.status-pending {
+  border-color: color-mix(in oklch, var(--accent) 45%, var(--line) 55%);
+  background: color-mix(in oklch, var(--accent-soft) 55%, var(--surface) 45%);
+  color: var(--accent);
+}
+
+.ops-review-status.status-needs_follow_up {
+  border-color: color-mix(in oklch, var(--danger) 35%, var(--line) 65%);
+  background: color-mix(in oklch, var(--danger) 10%, var(--surface) 90%);
+  color: color-mix(in oklch, var(--danger) 80%, var(--ink) 20%);
+}
+
+.ops-review-actions {
+  gap: 0.4rem;
+}
+
+.ops-review-actions .button {
+  height: var(--topbar-control-h);
+  min-height: var(--topbar-control-h);
+  padding: 0 0.72rem;
+  font-size: 0.64rem;
+}
+
+.ops-review-actions .button:disabled {
+  cursor: default;
+  color: var(--ink-faint);
+  border-color: var(--line);
+  background: color-mix(in oklch, var(--surface) 92%, var(--bg) 8%);
+  transform: none;
+}
+
+@media (max-width: 960px) {
+  .ops-metric-grid {
+    grid-template-columns: 1fr;
+  }
+}

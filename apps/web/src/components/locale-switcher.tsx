@@ -3,17 +3,11 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 
-import {
-  buildLocalePath,
-  localeCookieName,
-  stripLocalePrefix,
-  type AppLocale,
-} from "@/i18n/config";
+import { buildLocalePath, stripLocalePrefix, type AppLocale } from "@/i18n/config";
 
 type LocaleSwitcherProps = {
   activeLocale: AppLocale;
   ariaLabel: string;
-  localeAbbreviations: Record<AppLocale, string>;
   localeNames: Record<AppLocale, string>;
 };
 
@@ -31,17 +25,14 @@ export const LocaleSwitcher = ({
   const href = buildLocalePath(targetLocale, barePathname);
   const localizedHref = search ? `${href}?${search}` : href;
 
-  const setLocaleCookie = () => {
-    document.cookie = `${localeCookieName}=${targetLocale}; path=/; max-age=31536000; samesite=lax`;
-  };
-
   return (
-    <div aria-label={ariaLabel} className="locale-switcher">
+    <div className="locale-switcher">
       <Link
         aria-label={`${ariaLabel}: ${targetLabel}`}
         className="locale-trigger"
         href={localizedHref}
-        onClick={setLocaleCookie}
+        hrefLang={targetLocale}
+        lang={targetLocale}
         title={targetLabel}
       >
         <span aria-hidden="true" className="locale-globe">

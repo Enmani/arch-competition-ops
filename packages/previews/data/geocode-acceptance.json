@@ -1,0 +1,67 @@
+{
+  "rejectedAddressTypes": [
+    "city",
+    "county",
+    "country",
+    "municipality",
+    "postcode",
+    "province",
+    "region",
+    "state",
+    "town"
+  ],
+  "acceptedExactAddressTypes": [
+    "amenity",
+    "building",
+    "commercial",
+    "construction",
+    "farm",
+    "hamlet",
+    "hospital",
+    "house",
+    "industrial",
+    "isolated_dwelling",
+    "locality",
+    "neighbourhood",
+    "neighborhood",
+    "office",
+    "residential",
+    "retail",
+    "road",
+    "school",
+    "service",
+    "square",
+    "suburb",
+    "village"
+  ],
+  "acceptedBroadAddressTypes": [
+    "city",
+    "hamlet",
+    "locality",
+    "municipality",
+    "neighbourhood",
+    "neighborhood",
+    "place",
+    "quarter",
+    "road",
+    "square",
+    "suburb",
+    "town",
+    "village"
+  ],
+  "acceptedCategories": [
+    "building",
+    "highway",
+    "landuse",
+    "place"
+  ],
+  "acceptedSiteCategories": [
+    "amenity",
+    "building",
+    "landuse"
+  ],
+  "acceptedLocalityCategories": [
+    "boundary",
+    "place"
+  ]
+}

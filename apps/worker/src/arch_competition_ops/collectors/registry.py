@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import inspect
 from collections.abc import Callable
+from pathlib import Path
 
 from arch_competition_ops.collectors.anac import collect_anac_documents
 from arch_competition_ops.collectors.base import CollectedSourceDocument
@@ -20,20 +22,20 @@ from arch_competition_ops.collectors.ted import collect_ted_documents
 from arch_competition_ops.collectors.tenderned import collect_tenderned_documents
 from arch_competition_ops.models import SourceDefinition
 
-
 Collector = Callable[..., list[CollectedSourceDocument]]
 
 # AI maintenance note:
-# - Keep one reusable collector family per upstream shape.
-# - New country packs should prefer `collector: <family>` in YAML before adding another source-id-specific registration.
+# - Keys are collector *families* (one per upstream shape). A source selects its family with the
+#   required `collector:` field in YAML; there is no lookup by source_id.
+# - New country packs should reuse a family before adding another one.
 COLLECTORS: dict[str, Collector] = {
-    "ted_design_notices": collect_ted_documents,
-    "boamp_design_notices": collect_boamp_documents,
-    "simap_public_design_notices": collect_simap_documents,
-    "anac_bdncp_contracts": collect_anac_documents,
-    "serviziocontrattipubblici_hub": collect_scp_documents,
+    "ted_search_api": collect_ted_documents,
+    "boamp_opendatasoft": collect_boamp_documents,
+    "simap_project_api": collect_simap_documents,
+    "anac_legal_publicity_api": collect_anac_documents,
+    "scp_open_data_csv": collect_scp_documents,
     "municipal_buyer_profiles": collect_municipal_buyer_profile_documents,
-    "competitions_archi": collect_competitions_archi_documents,
+    "competitions_archi_feed": collect_competitions_archi_documents,
     "generic_rss_feed": collect_generic_rss_documents,
     "canadabuys_csv": collect_canadabuys_documents,
     "contracts_finder_ocds": collect_contracts_finder_documents,
@@ -45,20 +47,33 @@ COLLECTORS: dict[str, Collector] = {
 }
 
 
+class UnknownCollectorError(ValueError):
+    """A source names a collector family that is not registered."""
+
+
 def collect_source_documents(
     source: SourceDefinition,
     *,
     limit: int = 20,
     publication_date_from: str | None = None,
+    archive_dir: Path | None = None,
 ) -> list[CollectedSourceDocument]:
-    collector = COLLECTORS.get(source.source_id)
-    if collector is None and source.collector:
-        collector = COLLECTORS.get(source.collector)
+    """Run the collector family declared by ``source.collector``.
+
+    ``archive_dir`` is passed only to families that keep raw responses as evidence (they declare
+    an ``archive_dir`` keyword); the others never see it.
+    """
+    collector = COLLECTORS.get(source.collector)
     if collector is None:
-        if source.collector:
-            raise ValueError(
-                f"No collector registered for source id '{source.source_id}' or collector family "
-                f"'{source.collector}'"
-            )
-        raise ValueError(f"No collector registered for source id: {source.source_id}")
-    return collector(source, limit=limit, publication_date_from=publication_date_from)
+        raise UnknownCollectorError(
+            f"Source '{source.source_id}' uses collector family '{source.collector}', which is "
+            f"not registered. Known families: {', '.join(sorted(COLLECTORS))}"
+        )
+
+    options: dict[str, object] = {
+        "limit": limit,
+        "publication_date_from": publication_date_from,
+    }
+    if archive_dir is not None and "archive_dir" in inspect.signature(collector).parameters:
+        options["archive_dir"] = archive_dir
+    return collector(source, **options)

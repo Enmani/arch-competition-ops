@@ -14,7 +14,8 @@ def collect_scaffold_only_documents(
 
     if source.enabled:
         raise ValueError(
-            f"Source '{source.source_id}' is marked enabled but still points at the scaffold-only collector"
+            f"Source '{source.source_id}' is marked enabled but still points at the "
+            "scaffold-only collector"
         )
 
     return []

@@ -4,11 +4,12 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": {
-      "workerd": "./src/cloudflare.ts",
-      "default": "./src/index.ts"
-    },
-    "./cloudflare": "./src/cloudflare.ts"
+    ".": "./src/index.ts",
+    "./node": "./src/node.ts",
+    "./testing": "./src/testing.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "@arch-competition/core": "0.1.0",

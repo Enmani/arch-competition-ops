@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urljoin
 
-from arch_competition_ops.collectors.common import strip_html
+from arch_competition_ops.normalizers.text import strip_html
 
 _EVENT_LOOP: asyncio.AbstractEventLoop | None = None
 

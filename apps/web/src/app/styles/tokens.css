@@ -1,0 +1,106 @@
+/* Design tokens, resets and base typography. */
+
+:root {
+  --bg: oklch(96.8% 0.008 103);
+  --bg-alt: oklch(94.6% 0.01 103);
+  --surface: oklch(98.8% 0.005 103);
+  --surface-alt: oklch(96.4% 0.008 103);
+  --surface-strong: oklch(93.8% 0.01 103);
+  --ink: oklch(20% 0.018 103);
+  --ink-soft: oklch(42% 0.018 103);
+  --ink-faint: oklch(56% 0.014 103);
+  --line: oklch(86% 0.009 103);
+  --line-strong: oklch(72% 0.015 103);
+  --accent: oklch(36% 0.074 151);
+  --accent-soft: oklch(93% 0.028 151);
+  --danger: oklch(49% 0.125 28);
+  --shadow: 0 12px 40px oklch(20% 0.018 103 / 0.06);
+  --shadow-soft: 0 10px 28px oklch(20% 0.018 103 / 0.08);
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out-quiet: cubic-bezier(0.65, 0, 0.35, 1);
+  --route-fade-duration: 320ms;
+  --topbar-control-h: 1.75rem;
+  --topbar-pad-y: max(0.3rem, env(safe-area-inset-top));
+  --topbar-pad-x: 0.45rem;
+  --dock-summary-h: 2.3rem;
+  --dock-control-h: 2.65rem;
+  --dock-control-px: 0.72rem;
+  --space-xs: 0.25rem;
+  --space-sm: 0.5rem;
+  --space-md: 0.75rem;
+  --space-lg: 1rem;
+  --space-xl: 1.5rem;
+  --space-2xl: 2rem;
+  --space-3xl: 3rem;
+  --focus-ring: 2px solid var(--accent);
+  --focus-ring-offset: 2px;
+  /* Appended after the next/font families so Chinese glyphs do not fall to the OS default. */
+  --font-cjk-fallback: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC",
+    "Source Han Sans SC";
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    linear-gradient(180deg, var(--surface) 0%, var(--bg) 46%, var(--bg-alt) 100%);
+  color: var(--ink);
+  font-family: var(--font-sans), var(--font-cjk-fallback), sans-serif;
+  font-size: 1rem;
+  line-height: 1.6;
+  text-rendering: optimizeLegibility;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0,
+      transparent calc(100% / 12 - 1px),
+      color-mix(in oklch, var(--line) 62%, transparent) calc(100% / 12 - 1px),
+      color-mix(in oklch, var(--line) 62%, transparent) calc(100% / 12)
+    );
+  opacity: 0.42;
+  pointer-events: none;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button,
+select,
+input {
+  appearance: none;
+}
+
+button {
+  cursor: pointer;
+}
+
+input[type="checkbox"] {
+  appearance: auto;
+}

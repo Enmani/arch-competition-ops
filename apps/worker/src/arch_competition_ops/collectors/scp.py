@@ -8,20 +8,22 @@ from datetime import date
 from arch_competition_ops.collectors.base import CollectedSourceDocument
 from arch_competition_ops.collectors.common import (
     fetch_text_get,
+)
+from arch_competition_ops.collectors.relevance import (
     has_built_environment_context,
     is_design_relevant,
-    normalize_text,
-    parse_date_string,
 )
 from arch_competition_ops.models import SourceDefinition
-
+from arch_competition_ops.normalizers.dates import parse_date_string, slash_order_for_jurisdiction
+from arch_competition_ops.normalizers.text import normalize_text
 
 SCP_AVVISI_CSV_URL = "https://dati.mit.gov.it/scp/v_od_avvisi.csv"
 
 # AI maintenance note:
 # - Extend Italy city targeting through config/source_lists/italy_city_authorities.txt.
-# - Keep this collector generic; do not fork it per city unless the upstream feed shape truly changes.
-# - If a future country needs a similar buyer-name filter, prefer reusing this pattern over adding ad hoc code paths.
+# - Keep this collector generic; do not fork it per city unless the upstream feed shape changes.
+# - If a future country needs a similar buyer-name filter, reuse this pattern instead of adding
+#   ad hoc code paths.
 
 
 def _default_fetch_text(url: str) -> str:
@@ -45,8 +47,13 @@ def collect_scp_documents(
 ) -> list[CollectedSourceDocument]:
     csv_text = (fetch_text or _default_fetch_text)(SCP_AVVISI_CSV_URL)
     reader = csv.DictReader(io.StringIO(csv_text))
-    min_publication_date = date.fromisoformat(publication_date_from) if publication_date_from else None
-    buyer_allowlist = [normalize_text(pattern) for pattern in source.buyer_allowlist if pattern.strip()]
+    min_publication_date = (
+        date.fromisoformat(publication_date_from) if publication_date_from else None
+    )
+    slash_order = slash_order_for_jurisdiction(source.jurisdiction)
+    buyer_allowlist = [
+        normalize_text(pattern) for pattern in source.buyer_allowlist if pattern.strip()
+    ]
 
     rows: list[tuple[str | None, CollectedSourceDocument]] = []
     for row in reader:
@@ -62,11 +69,14 @@ def collect_scp_documents(
             continue
         normalized_title = normalize_text(title)
         if not has_built_environment_context(title) and not any(
-            marker in normalized_title for marker in ("architett", "progettazione", "maitrise d oeuvre")
+            marker in normalized_title
+            for marker in ("architett", "progettazione", "maitrise d oeuvre")
         ):
             continue
 
-        publication_date = parse_date_string(row.get("data_pubblicazione_scp"))
+        publication_date = parse_date_string(
+            row.get("data_pubblicazione_scp"), slash_order=slash_order
+        )
         if min_publication_date and publication_date:
             if date.fromisoformat(publication_date) < min_publication_date:
                 continue
@@ -77,7 +87,7 @@ def collect_scp_documents(
                 "title": title,
                 "buyer": buyer,
                 "procedureType": row.get("tipo_avviso"),
-                "deadline": parse_date_string(row.get("scadenza_avviso")),
+                "deadline": parse_date_string(row.get("scadenza_avviso"), slash_order=slash_order),
                 "publicationDate": publication_date,
                 "summary": row.get("tipo_avviso"),
                 "url": row.get("url_avviso") or source.base_url,

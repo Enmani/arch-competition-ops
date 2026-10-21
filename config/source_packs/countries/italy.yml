@@ -1,9 +1,10 @@
-﻿sources:
+sources:
   - source_id: anac_bdncp_contracts
     name: ANAC BDNCP
     kind: official_procurement
     jurisdiction: italy
     base_url: https://www.anticorruzione.it/-/banca-dati-nazionale-dei-contratti-pubblici
+    collector: anac_legal_publicity_api
     scan_method: html
     extractor: bdncp_notice_parser
     source_tier: primary
@@ -22,6 +23,7 @@
     jurisdiction: italy
     base_url: https://www.serviziocontrattipubblici.it/
     buyer_allowlist_path: config/source_lists/italy_city_authorities.txt
+    collector: scp_open_data_csv
     scan_method: html
     extractor: procurement_hub_parser
     source_tier: primary

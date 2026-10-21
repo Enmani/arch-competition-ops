@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from arch_competition_ops.extractors.common import (
     build_base_record,
-    parse_iso_date,
     parse_money_amount,
+    parse_source_date,
     pick_first_value,
     pick_list_value,
     pick_regex,
@@ -12,7 +12,9 @@ from arch_competition_ops.extractors.common import (
 from arch_competition_ops.models import CompetitionRecord, SourceDefinition
 
 
-def parse_simap_notice(payload: str, source: SourceDefinition, source_url: str) -> CompetitionRecord:
+def parse_simap_notice(
+    payload: str, source: SourceDefinition, source_url: str
+) -> CompetitionRecord:
     data = try_load_json(payload)
     official_url = None
     prize_summary = None
@@ -26,7 +28,11 @@ def parse_simap_notice(payload: str, source: SourceDefinition, source_url: str) 
         deadline_raw = pick_first_value(data, ["deadline", "submissionDeadline"])
         value_raw = pick_first_value(data, ["estimatedValueEur", "estimatedValue"])
         value_text = pick_first_value(data, ["estimatedValueText"])
-        eligibility_summary = pick_first_value(data, ["eligibility", "summary", "description"])
+        eligibility_clause = pick_first_value(data, ["eligibility"])
+        eligibility_summary = eligibility_clause or pick_first_value(
+            data, ["summary", "description"]
+        )
+        eligibility_is_clause = eligibility_clause is not None
         procedure_type = pick_first_value(data, ["procedureType", "processType"])
         cpv_codes = pick_list_value(data, ["cpv", "cpvCodes"])
         official_url = pick_first_value(data, ["officialUrl"])
@@ -54,8 +60,12 @@ def parse_simap_notice(payload: str, source: SourceDefinition, source_url: str) 
         value_text = None
         eligibility_summary = pick_regex(
             payload,
-            [r"Teilnahmebedingungen[^:]*:\s*([^<\n]+)", r"Conditions de participation[^:]*:\s*([^<\n]+)"],
+            [
+                r"Teilnahmebedingungen[^:]*:\s*([^<\n]+)",
+                r"Conditions de participation[^:]*:\s*([^<\n]+)",
+            ],
         )
+        eligibility_is_clause = eligibility_summary is not None
         procedure_type = pick_regex(
             payload,
             [r"Verfahrensart[^:]*:\s*([^<\n]+)", r"Procédure[^:]*:\s*([^<\n]+)"],
@@ -66,7 +76,9 @@ def parse_simap_notice(payload: str, source: SourceDefinition, source_url: str) 
     if not title:
         raise ValueError("simap parser could not determine a title from the payload")
 
-    evidence_note = "Parsed from simap notice payload. Non-EUR value may need manual currency normalization."
+    evidence_note = (
+        "Parsed from simap notice payload. Non-EUR value may need manual currency normalization."
+    )
     if value_raw and "CHF" in value_raw.upper():
         estimated_value = None
     else:
@@ -78,12 +90,12 @@ def parse_simap_notice(payload: str, source: SourceDefinition, source_url: str) 
         title=title,
         authority_name=authority_name,
         opportunity_type="public_design_contest",
-        procedure_type=procedure_type or "planning_competition",
+        procedure_type=procedure_type,
         official_notice_id=official_notice_id,
-        deadline_at=parse_iso_date(deadline_raw),
+        deadline_at=parse_source_date(deadline_raw, source),
         estimated_contract_value_eur=estimated_value,
-        eligibility_summary=eligibility_summary,
-        implementation_path="service_contract_award_after_competitive_selection",
+        eligibility_summary=eligibility_summary if eligibility_is_clause else None,
+        description=eligibility_summary,
         cpv_codes=cpv_codes,
         evidence_note=evidence_note,
         official_url=official_url,

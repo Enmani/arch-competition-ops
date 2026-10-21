@@ -1,7 +1,9 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 
 import { buildLocalePath } from "@/i18n/config";
 import { getDictionary, resolveLocaleOrNotFound } from "@/i18n/server";
+import { buildPageMetadata } from "@/lib/page-metadata";
 import type { AppDictionary } from "@/i18n/dictionaries";
 
 export const dynamic = "force-dynamic";
@@ -28,6 +30,9 @@ const resolveErrorMessage = (dictionary: AppDictionary, error: string) => {
     : dictionary.auth.errors.unexpected;
 };
 
+export const generateMetadata = async ({ params }: Pick<LocalizedRegisterPageProps, "params">): Promise<Metadata> =>
+  buildPageMetadata(resolveLocaleOrNotFound((await params).locale), "register", "/register", { index: false });
+
 const LocalizedRegisterPage = async ({
   params,
   searchParams,
@@ -40,7 +45,8 @@ const LocalizedRegisterPage = async ({
     dictionary,
     readSearchValue(resolvedSearchParams, "error"),
   );
-  const email = readSearchValue(resolvedSearchParams, "email");
+  // The return path is re-validated by the API route; it is only carried through as a hidden field.
+  const next = readSearchValue(resolvedSearchParams, "next");
 
   return (
     <main className="auth-page">
@@ -57,11 +63,11 @@ const LocalizedRegisterPage = async ({
 
         <form action="/api/auth/register" className="auth-form" method="post">
           <input name="locale" type="hidden" value={locale} />
+          <input name="next" type="hidden" value={next} />
           <div className="auth-field">
             <label htmlFor="register-email">{dictionary.auth.fields.email}</label>
             <input
               autoComplete="email"
-              defaultValue={email}
               id="register-email"
               name="email"
               required

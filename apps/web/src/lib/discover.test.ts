@@ -1,7 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { countActiveDiscoverFilters, readDiscoverFilters } from "./discover";
+import { serializeSearchParams } from "../i18n/config";
+import {
+  buildDiscoverPageSearchParams,
+  collectDiscoverSearchParams,
+  countActiveDiscoverFilters,
+  DISCOVER_MAX_LOADED,
+  DISCOVER_PAGE_SIZE,
+  readDiscoverFilters,
+  readDiscoverPageState,
+} from "./discover";
 
 test("readDiscoverFilters keeps repeated project and building filter params as arrays", () => {
   const filters = readDiscoverFilters({
@@ -45,4 +54,54 @@ test("countActiveDiscoverFilters counts multi-select values individually", () =>
   });
 
   assert.equal(total, 10);
+});
+
+const roundTrip = (query: string) => {
+  const { filters, loaded } = readDiscoverPageState(collectDiscoverSearchParams(new URLSearchParams(query)));
+  return { filters, loaded, query: serializeSearchParams(buildDiscoverPageSearchParams(filters, loaded)) };
+};
+
+test("every filter the form submits survives a parse and serialize round trip", () => {
+  const query =
+    "search=school&jurisdiction=italy&publishedWithinDays=30&deadlineBefore=2027-01-31&deadlineAfter=2026-12-01" +
+    "&projectType=urban_planning&buildingCategory=education&designScope=scheme&projectMode=renovation" +
+    "&minEstimatedValueEur=10000&maxEstimatedValueEur=500000&licensedArchitectRequired=true&includeExpired=true" +
+    "&procedureType=open&implementationPath=direct_award&minQualificationScore=60&sort=latest";
+  const result = roundTrip(query);
+
+  assert.equal(result.filters.procedureType, "open");
+  assert.equal(result.filters.implementationPath, "direct_award");
+  assert.equal(result.filters.minQualificationScore, 60);
+  assert.deepEqual([...new URLSearchParams(result.query)].sort(), [...new URLSearchParams(query)].sort());
+});
+
+test("the default sort and an empty form leave the URL clean", () => {
+  assert.equal(roundTrip("sort=deadline&search=").query, "");
+});
+
+test("limit and offset belong to the API: the page ignores them and uses loaded instead", () => {
+  const { filters, loaded } = readDiscoverPageState({ limit: "5", offset: "40", search: "x" });
+  assert.equal(filters.limit, undefined);
+  assert.equal(filters.offset, undefined);
+  assert.equal(loaded, DISCOVER_PAGE_SIZE);
+});
+
+test("loaded is clamped between one page and the restore cap, and omitted when default", () => {
+  assert.equal(readDiscoverPageState({ loaded: "3" }).loaded, DISCOVER_PAGE_SIZE);
+  assert.equal(readDiscoverPageState({ loaded: "99999" }).loaded, DISCOVER_MAX_LOADED);
+  assert.equal(readDiscoverPageState({ loaded: "abc" }).loaded, DISCOVER_PAGE_SIZE);
+  assert.equal(readDiscoverPageState({ loaded: ["72", "5"] }).loaded, 72);
+  assert.equal(roundTrip("loaded=72&search=a").query, "?search=a&loaded=72");
+  assert.equal(roundTrip("loaded=36&search=a").query, "?search=a");
+});
+
+test("invalid values in an old bookmark are dropped instead of failing the page", () => {
+  const { filters } = readDiscoverPageState({
+    deadlineBefore: "2026-13-45",
+    minQualificationScore: "lots",
+    sort: "nope",
+  });
+  assert.equal(filters.deadlineBefore, undefined);
+  assert.equal(filters.minQualificationScore, undefined);
+  assert.equal(filters.sort, "deadline");
 });

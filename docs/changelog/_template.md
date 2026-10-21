@@ -1,6 +1,6 @@
 ---
 title: Changelog Template
-status: 已完成
+status: done
 updated_at: 2026-04-21
 related_docs:
   - docs/changelog/README.md

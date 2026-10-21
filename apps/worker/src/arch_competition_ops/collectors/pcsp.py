@@ -6,18 +6,17 @@ import xml.etree.ElementTree as ET
 
 from arch_competition_ops.collectors.base import CollectedSourceDocument
 from arch_competition_ops.collectors.common import (
-    extract_cpv_codes,
     fetch_text_get,
+    parse_money_value,
+)
+from arch_competition_ops.collectors.relevance import (
     has_built_environment_context,
     is_design_relevant,
-    normalize_text,
-    parse_date_string,
-    parse_money_value,
-    strip_html,
 )
 from arch_competition_ops.models import SourceDefinition
+from arch_competition_ops.normalizers.dates import parse_date_string, slash_order_for_jurisdiction
 from arch_competition_ops.normalizers.money import format_money_text
-
+from arch_competition_ops.normalizers.text import extract_cpv_codes, normalize_text, strip_html
 
 ATOM_NS = {"atom": "http://www.w3.org/2005/Atom"}
 SUMMARY_FIELD_PATTERN = re.compile(r"\s*([^:;]+):\s*(.*?)(?=(?:;\s*[^:;]+:)|$)")
@@ -147,7 +146,7 @@ def _pick_value(mapping: dict[str, str], *keys: str) -> str | None:
     return None
 
 
-def _pick_deadline(fields: dict[str, str]) -> str | None:
+def _pick_deadline(fields: dict[str, str], source: SourceDefinition) -> str | None:
     return parse_date_string(
         _pick_value(
             fields,
@@ -155,7 +154,9 @@ def _pick_deadline(fields: dict[str, str]) -> str | None:
             "end_date_for_the_submission_of_offers",
             "FechaSolicitudParticipacion",
             "end_date_for_requests_to_participate",
-        )
+        ),
+        # The detail page prints dd/mm/yyyy; the order comes from the source's jurisdiction.
+        slash_order=slash_order_for_jurisdiction(source.jurisdiction),
     )
 
 
@@ -211,7 +212,9 @@ def collect_pcsp_documents(
     for entry in root.findall("atom:entry", ATOM_NS):
         title = (entry.findtext("atom:title", default="", namespaces=ATOM_NS) or "").strip()
         summary = entry.findtext("atom:summary", default="", namespaces=ATOM_NS) or ""
-        updated = parse_date_string(entry.findtext("atom:updated", default="", namespaces=ATOM_NS) or "")
+        updated = parse_date_string(
+            entry.findtext("atom:updated", default="", namespaces=ATOM_NS) or ""
+        )
         summary_fields = _parse_summary_fields(summary)
         state = (summary_fields.get("estado") or "").strip().upper()
         detail_url = _extract_entry_link(entry)
@@ -235,8 +238,10 @@ def collect_pcsp_documents(
                 break
             continue
 
-        deadline = _pick_deadline(detail_fields)
-        notice_id = _pick_value(detail_fields, "Expediente", "file") or summary_fields.get("id_licitacion")
+        deadline = _pick_deadline(detail_fields, source)
+        notice_id = _pick_value(detail_fields, "Expediente", "file") or summary_fields.get(
+            "id_licitacion"
+        )
         if notice_id and notice_id in seen_notice_ids:
             continue
         estimated_value_raw = _pick_value(
@@ -250,7 +255,8 @@ def collect_pcsp_documents(
 
         payload = json.dumps(
             {
-                "title": _pick_value(detail_fields, "ObjetoContrato", "subject_of_the_contract") or title,
+                "title": _pick_value(detail_fields, "ObjetoContrato", "subject_of_the_contract")
+                or title,
                 "buyer": _pick_value(detail_fields, "OC", "contracting_party")
                 or summary_fields.get("organo_de_contratacion"),
                 "noticeId": notice_id,
@@ -265,10 +271,13 @@ def collect_pcsp_documents(
                     raw_text=estimated_value_raw,
                 ),
                 "opportunityType": "public_design_services_procurement",
-                "procedureType": _pick_value(detail_fields, "Procedimiento", "procurement_procedure"),
-                "implementationPath": "service_contract_award_after_competitive_selection",
+                "procedureType": _pick_value(
+                    detail_fields, "Procedimiento", "procurement_procedure"
+                ),
                 "evidenceLevel": "official_notice",
-                "evidenceNote": "Official PCSP syndication Atom entry enriched with the public detail page.",
+                "evidenceNote": (
+                    "Official PCSP syndication Atom entry enriched with the public detail page."
+                ),
                 "publishedAt": updated,
             },
             ensure_ascii=False,

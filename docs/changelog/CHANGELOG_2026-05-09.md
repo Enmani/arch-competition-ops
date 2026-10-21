@@ -1,6 +1,6 @@
 ---
 title: Changelog 2026-05-09
-status: 已完成
+status: done
 updated_at: 2026-05-09
 related_docs:
   - CLOUDFLARE_DEPLOY_RUNBOOK.md

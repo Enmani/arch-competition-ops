@@ -1,10 +1,11 @@
 import type {
   StoredDuplicatePressureSummary,
   StoredSourceHealthItem,
-} from "@arch-competition/storage/cloudflare";
+} from "@arch-competition/storage";
 
 import type { AppLocale } from "@/i18n/config";
 import type { AppDictionary } from "@/i18n/dictionaries";
+import { DATE_TIME_FORMAT, formatLocalizedDate } from "@/i18n/format";
 
 type OpsSourceHealthTableProps = {
   duplicatePressure: StoredDuplicatePressureSummary;
@@ -13,27 +14,8 @@ type OpsSourceHealthTableProps = {
   rows: StoredSourceHealthItem[];
 };
 
-const localeCode = (locale: AppLocale) => (locale === "zh" ? "zh-CN" : "en-GB");
-
-const formatTimestamp = (
-  value: string | null,
-  locale: AppLocale,
-  fallback: string,
-) => {
-  if (!value) {
-    return fallback;
-  }
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat(localeCode(locale), {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
-};
+const formatTimestamp = (value: string | null, locale: AppLocale, fallback: string) =>
+  value ? (formatLocalizedDate(locale, value, DATE_TIME_FORMAT) ?? value) : fallback;
 
 const resolveFreshnessLabel = (
   row: StoredSourceHealthItem,
@@ -111,13 +93,13 @@ const OpsSourceHealthTable = ({
           <table>
             <thead>
               <tr>
-                <th>{health.table.source}</th>
-                <th>{health.table.freshness}</th>
-                <th>{health.table.lastRun}</th>
-                <th>{health.table.volume}</th>
-                <th>{health.table.parseFailures}</th>
-                <th>{health.table.duplicatePressure}</th>
-                <th>{health.table.status}</th>
+                <th scope="col">{health.table.source}</th>
+                <th scope="col">{health.table.freshness}</th>
+                <th scope="col">{health.table.lastRun}</th>
+                <th scope="col">{health.table.volume}</th>
+                <th scope="col">{health.table.parseFailures}</th>
+                <th scope="col">{health.table.duplicatePressure}</th>
+                <th scope="col">{health.table.status}</th>
               </tr>
             </thead>
             <tbody>

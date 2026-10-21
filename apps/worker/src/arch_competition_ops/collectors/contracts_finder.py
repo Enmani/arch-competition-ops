@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import json
-from datetime import date
 
+from arch_competition_ops import clock
 from arch_competition_ops.collectors.base import CollectedSourceDocument
-from arch_competition_ops.collectors.common import build_url, fetch_json_get, normalize_text
+from arch_competition_ops.collectors.common import (
+    build_url,
+    fetch_json_get,
+)
 from arch_competition_ops.models import SourceDefinition
 from arch_competition_ops.normalizers.money import format_money_text
-
+from arch_competition_ops.normalizers.text import normalize_text
 
 UK_RELEVANT_CPV_PREFIXES = (
     "712",
@@ -57,8 +60,9 @@ def _default_fetch_json(url: str) -> dict:
 
 
 def _resolve_search_window(publication_date_from: str | None) -> tuple[str, str]:
-    published_from = publication_date_from or date.today().replace(day=1).isoformat()
-    published_to = date.today().isoformat()
+    today = clock.today()
+    published_from = publication_date_from or today.replace(day=1).isoformat()
+    published_to = today.isoformat()
     return f"{published_from}T00:00:00", f"{published_to}T23:59:59"
 
 
@@ -187,8 +191,8 @@ def collect_contracts_finder_documents(
                 "officialUrl": official_url,
                 "cpv": [cpv_code] if cpv_code else [],
                 "opportunityType": "public_design_services_procurement",
-                "procedureType": tender.get("procurementMethodDetails") or tender.get("procurementMethod"),
-                "implementationPath": "service_contract_award_after_competitive_selection",
+                "procedureType": tender.get("procurementMethodDetails")
+                or tender.get("procurementMethod"),
                 "evidenceLevel": "official_notice",
                 "evidenceNote": "Official UK Contracts Finder OCDS tender release.",
                 "publishedAt": tender.get("datePublished") or release.get("date"),

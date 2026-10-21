@@ -3,7 +3,6 @@ from __future__ import annotations
 import re
 from typing import Any
 
-
 SPACE_LIKE_CHARACTERS = ("\u00a0", "\u202f")
 SCIENTIFIC_NUMBER_PATTERN = re.compile(r"(\d+(?:\.\d+)?[eE][+-]?\d+)")
 MONEY_NUMBER_PATTERN = re.compile(
@@ -65,7 +64,7 @@ def _parse_number_token(token: str) -> float | None:
 def parse_money_number(raw_value: Any) -> float | None:
     if raw_value is None:
         return None
-    if isinstance(raw_value, (int, float)):
+    if isinstance(raw_value, int | float):
         return float(raw_value)
 
     normalized = normalize_money_text(str(raw_value))

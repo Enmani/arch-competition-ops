@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import json
-import unicodedata
+from collections.abc import Callable
 from datetime import date
 from typing import Any
-from urllib import request
 
 from arch_competition_ops.collectors.base import CollectedSourceDocument
+from arch_competition_ops.collectors.common import fetch_json_post
 from arch_competition_ops.models import SourceDefinition
-
+from arch_competition_ops.normalizers.money import format_money_text
+from arch_competition_ops.normalizers.text import normalize_text
 
 TED_SEARCH_URL = "https://api.ted.europa.eu/v3/notices/search"
 TED_FIELDS = [
@@ -20,6 +21,7 @@ TED_FIELDS = [
     "organisation-name-buyer",
     "procedure-type",
     "estimated-value-lot",
+    "estimated-value-cur-lot",
 ]
 
 STRONG_POSITIVE_TITLE_MARKERS = (
@@ -74,15 +76,7 @@ FALLBACK_RELEVANT_CPV_CODES = {
 
 
 def _default_fetch_json(url: str, body: dict[str, Any]) -> dict[str, Any]:
-    payload = json.dumps(body).encode("utf-8")
-    http_request = request.Request(
-        url,
-        data=payload,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    with request.urlopen(http_request, timeout=30) as response:  # noqa: S310
-        return json.loads(response.read().decode("utf-8"))
+    return fetch_json_post(url, body, headers={"Accept": "application/json"})
 
 
 def _normalize_publication_date(raw_value: str | None) -> str:
@@ -111,21 +105,19 @@ def _pick_localized_value(payload: Any, preferred_language: str = "eng") -> str 
 
 
 def _pick_first_string(payload: Any) -> str | None:
+    """First usable scalar as text; TED returns numbers (values) as well as strings."""
+    if isinstance(payload, bool):
+        return None
+    if isinstance(payload, int | float):
+        return str(payload)
     if isinstance(payload, str):
         return payload.strip() or None
     if isinstance(payload, list):
         for item in payload:
-            if isinstance(item, str) and item.strip():
-                return item.strip()
+            picked = _pick_first_string(item)
+            if picked:
+                return picked
     return None
-
-
-def _normalize_text(value: str) -> str:
-    normalized = unicodedata.normalize("NFKD", value)
-    ascii_only = normalized.encode("ascii", "ignore").decode("ascii")
-    alphanumeric_only = "".join(char if char.isalnum() else " " for char in ascii_only.lower())
-    collapsed = " ".join(alphanumeric_only.split())
-    return collapsed
 
 
 def _dedupe_preserving_order(values: list[str]) -> list[str]:
@@ -149,7 +141,7 @@ def _extract_cpv_codes(notice: dict[str, Any]) -> list[str]:
 
 
 def _is_relevant_design_notice(title: str, cpv_codes: list[str]) -> bool:
-    normalized_title = _normalize_text(title)
+    normalized_title = normalize_text(title)
 
     if any(marker in normalized_title for marker in NEGATIVE_TITLE_MARKERS):
         return False
@@ -163,26 +155,45 @@ def _is_relevant_design_notice(title: str, cpv_codes: list[str]) -> bool:
     return any(code in FALLBACK_RELEVANT_CPV_CODES for code in cpv_codes)
 
 
+def _estimated_value(notice: dict[str, Any]) -> tuple[str | None, str | None]:
+    """``(euro amount, display text)`` for the lot value.
+
+    ``estimated-value-cur-lot`` (BT-27-Lot-Currency) is listed in the official TED field list
+    (https://docs.ted.europa.eu/ODS/latest/reuse/field-list.html). Without currency evidence the
+    amount is never called euros: the euro field stays empty and only display text, marked as
+    currency-less, is kept. Only an explicit ``EUR`` fills the euro field.
+    """
+    amount = _pick_first_string(notice.get("estimated-value-lot"))
+    if amount is None:
+        return None, None
+    currency = (_pick_first_string(notice.get("estimated-value-cur-lot")) or "").upper() or None
+    text = format_money_text(amount=amount, currency=currency)
+    if currency is None and text:
+        text = f"{text} (currency not stated)"
+    return (amount if currency == "EUR" else None), text
+
+
 def _build_notice_payload(notice: dict[str, Any]) -> tuple[str, str]:
     title = _pick_localized_value(notice.get("notice-title")) or "Untitled TED notice"
-    buyer = _pick_localized_value(notice.get("organisation-name-buyer")) or "Unknown authority"
     notice_id = _pick_first_string(notice.get("publication-number")) or _pick_first_string(
         notice.get("notice-identifier")
     )
-    deadline = _pick_first_string(notice.get("deadline-receipt-expressions-date-lot"))
-    estimated_value = _pick_first_string(notice.get("estimated-value-lot"))
-    procedure_type = _pick_first_string(notice.get("procedure-type")) or "open"
-    cpv_codes = _extract_cpv_codes(notice)
+    value_eur, value_text = _estimated_value(notice)
 
     links = notice.get("links", {})
     html_direct = links.get("htmlDirect", {}) if isinstance(links, dict) else {}
     html_links = links.get("html", {}) if isinstance(links, dict) else {}
-    detail_url = (
+    notice_page_url = (
         html_direct.get("ENG")
         or html_direct.get("eng")
         or html_links.get("ENG")
         or html_links.get("eng")
-        or links.get("xml", {}).get("MUL")
+    )
+    # source_url must always exist; the API endpoint is a valid fallback for it, but only a real
+    # notice page is an official URL.
+    detail_url = (
+        notice_page_url
+        or (links.get("xml", {}).get("MUL") if isinstance(links, dict) else None)
         or TED_SEARCH_URL
     )
 
@@ -190,12 +201,14 @@ def _build_notice_payload(notice: dict[str, Any]) -> tuple[str, str]:
         {
             "noticeId": notice_id,
             "title": title,
-            "buyer": buyer,
-            "procedureType": procedure_type,
-            "deadline": deadline,
-            "estimatedValueEur": estimated_value,
-            "cpv": cpv_codes,
+            "buyer": _pick_localized_value(notice.get("organisation-name-buyer")),
+            "procedureType": _pick_first_string(notice.get("procedure-type")),
+            "deadline": _pick_first_string(notice.get("deadline-receipt-expressions-date-lot")),
+            "estimatedValueEur": value_eur,
+            "estimatedValueText": value_text,
+            "cpv": _extract_cpv_codes(notice),
             "publicationDate": _pick_first_string(notice.get("publication-date")),
+            "officialUrl": notice_page_url,
         },
         ensure_ascii=False,
     )
@@ -207,7 +220,7 @@ def collect_ted_documents(
     *,
     limit: int = 20,
     publication_date_from: str | None = None,
-    fetch_json: callable | None = None,
+    fetch_json: Callable[[str, dict[str, Any]], dict[str, Any]] | None = None,
 ) -> list[CollectedSourceDocument]:
     query_date = _normalize_publication_date(publication_date_from)
     body = {
