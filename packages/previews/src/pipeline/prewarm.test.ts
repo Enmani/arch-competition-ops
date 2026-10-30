@@ -105,7 +105,7 @@ test("generates a satellite image with attribution, records it, then skips uncha
     const entry = manifest?.entries["road-work"];
     assert.ok(entry);
     assert.equal(entry.kind, "satellite");
-    assert.equal(entry.algorithmVersion, "v1");
+    assert.equal(entry.algorithmVersion, "v2");
     assert.equal(entry.generatedAt, FIXED_NOW.toISOString());
     assert.match(entry.attribution ?? "", /Esri/);
     assert.ok(entry.locator && Math.abs(entry.locator.lat - 41.1005) < 1e-9);
