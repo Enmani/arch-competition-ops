@@ -137,6 +137,7 @@ def collect_simap_documents(
     limit: int = 20,
     publication_date_from: str | None = None,
     fetch_json: callable | None = None,
+    include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
     get_json = fetch_json or _default_fetch_json
     min_publication_date = (
@@ -209,9 +210,12 @@ def collect_simap_documents(
             if not title:
                 continue
             normalized_title = normalize_text(title)
-            if not has_built_environment_context(title) and not any(
-                marker in normalized_title
-                for marker in ("architett", "architecture", "maitre d oeuvre", "planification")
+            if not include_unclassified and (
+                not has_built_environment_context(title)
+                and not any(
+                    marker in normalized_title
+                    for marker in ("architett", "architecture", "maitre d oeuvre", "planification")
+                )
             ):
                 continue
 

@@ -1,78 +1,34 @@
-/* Discover feed: opportunity tiles, media frame, meta boxes and the watch toggle. */
-
-.watch-toggle-state {
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-.watch-toggle-state {
-  font-size: 0.68rem;
-}
+/* Discover feed: opportunity tiles and the watch toggle.
+   A tile is an image, a title and one hairline-separated meta row on bare paper: no frames,
+   no boxes, no hover lift. The title underline is the only hover cue. */
 
 .waterfall-feed {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 1fr));
-  gap: clamp(0.8rem, 0.8vw, 1.15rem);
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
+  gap: var(--space-3xl) var(--space-xl);
   align-items: start;
 }
 
 .opportunity-tile {
   display: grid;
-  gap: 0.45rem;
+  gap: var(--space-md);
   min-width: 0;
   opacity: 0;
-  transform: translateY(0.85rem);
-  animation: tile-enter 520ms var(--ease-out-expo) forwards;
-  animation-delay: calc(min(var(--tile-index, 0), 9) * 48ms);
-}
-
-.opportunity-tile-link,
-.opportunity-title-box,
-.opportunity-meta-box {
-  border: 1px solid var(--line-strong);
-  background: color-mix(in oklch, var(--surface) 95%, var(--surface-alt) 5%);
+  animation: tile-enter 360ms var(--ease-out-quart) forwards;
+  animation-delay: calc(min(var(--tile-index, 0), 9) * 30ms);
 }
 
 .opportunity-tile-link {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0.62rem;
-  min-height: 100%;
-  padding: 0.45rem;
-  transition:
-    border-color 180ms var(--ease-out-quart),
-    background-color 180ms var(--ease-out-quart),
-    transform 220ms var(--ease-out-quart),
-    box-shadow 220ms var(--ease-out-quart);
-}
-
-.opportunity-media-frame {
-  position: relative;
+  gap: var(--space-lg);
   min-width: 0;
-  overflow: clip;
-  padding: 0.18rem;
-  border: 1px solid color-mix(in oklch, var(--line-strong) 82%, var(--accent) 18%);
-  background: color-mix(in oklch, var(--surface-alt) 92%, var(--bg) 8%);
 }
 
 .opportunity-media {
   position: relative;
-  isolation: isolate;
   overflow: hidden;
-  aspect-ratio: 1 / 1.02;
-  background:
-    linear-gradient(180deg, color-mix(in oklch, var(--ink) 82%, transparent) 0%, transparent 32%),
-    linear-gradient(180deg, transparent 42%, color-mix(in oklch, var(--ink) 68%, transparent) 100%),
-    color-mix(in oklch, var(--ink) 90%, var(--surface) 10%);
-}
-
-.opportunity-media::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background:
-    linear-gradient(180deg, transparent 0%, transparent 54%, color-mix(in oklch, var(--ink) 55%, transparent) 100%);
-  pointer-events: none;
+  aspect-ratio: 1 / 1;
+  background: var(--surface-strong);
 }
 
 .opportunity-media img {
@@ -80,96 +36,98 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
-  filter: saturate(0.95) contrast(0.96);
-  transition: transform 380ms var(--ease-out-expo), filter 220ms var(--ease-out-quart);
 }
 
+/* Shown only when the notice states a value; a missing value is simply absent, not announced. */
 .opportunity-value-chip {
   position: absolute;
-  right: 0.9rem;
-  bottom: 0.9rem;
-  z-index: 1;
-  display: inline-flex;
-  align-items: flex-end;
-  justify-content: flex-end;
-  max-width: min(calc(100% - 1.8rem), 14rem);
-  padding: 0.32rem 0.5rem;
-  border: 1px solid color-mix(in oklch, var(--line) 72%, var(--surface) 28%);
-  background: color-mix(in oklch, var(--surface) 72%, var(--ink) 28%);
+  right: var(--space-md);
+  bottom: var(--space-md);
+  max-width: calc(100% - var(--space-xl));
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--surface);
   color: var(--ink);
-  font-size: clamp(1rem, 1vw, 1.2rem);
-  font-weight: 700;
-  line-height: 1.05;
-  text-align: right;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  line-height: 1.4;
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
-  box-shadow: 0 14px 30px oklch(20% 0.018 103 / 0.18);
 }
 
 .opportunity-tile-copy {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0.55rem;
-}
-
-.opportunity-title-box,
-.opportunity-meta-box {
-  padding: 0.7rem 0.78rem;
-}
-
-.opportunity-title-box {
-  min-height: 5.4rem;
+  gap: var(--space-sm);
+  min-width: 0;
 }
 
 .opportunity-tile-title {
   display: -webkit-box;
   margin: 0;
   overflow: hidden;
-  font-family: var(--font-display), var(--font-cjk-fallback), sans-serif;
-  font-size: clamp(1.45rem, 1.6vw, 1.95rem);
-  line-height: 0.94;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  line-height: 1.3;
+  text-decoration: underline transparent;
+  text-underline-offset: 0.2em;
+  transition: text-decoration-color 180ms var(--ease-out-quart);
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
 }
 
-.opportunity-meta-strip {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(9.6rem, 0.9fr);
-  gap: 0.55rem;
+.opportunity-tile-category {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: var(--fs-sm);
 }
 
-.opportunity-meta-box {
+.opportunity-meta-strip {
   display: flex;
-  min-height: 3.35rem;
-  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-lg);
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--line);
+  color: var(--ink-soft);
+  font-size: var(--fs-sm);
+  line-height: 1.4;
 }
 
 .opportunity-meta-value {
-  display: -webkit-box;
-  overflow: hidden;
-  color: var(--ink-soft);
-  font-size: 0.88rem;
-  line-height: 1.35;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  min-width: 0;
+}
+
+.opportunity-meta-deadline {
+  flex: none;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .opportunity-tile-actions,
 .detail-hero-actions {
   display: flex;
-  justify-content: flex-end;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-md);
 }
 
-.detail-hero-actions {
-  margin-top: 0.85rem;
+/* The card's watch control is a text action, not a second boxed button under the tile. */
+.opportunity-tile-actions .button {
+  height: auto;
+  min-height: var(--space-3xl);
+  padding: 0;
+  border: 0;
+  color: var(--ink-soft);
+  text-decoration: underline;
+  text-underline-offset: 0.25em;
+}
+
+.opportunity-tile-actions .button:hover {
+  color: var(--ink);
 }
 
 .watch-toggle {
   display: flex;
   align-items: center;
-  gap: 0.55rem;
+  gap: var(--space-md);
   min-width: 0;
 }
 
@@ -181,56 +139,31 @@
 .watch-toggle-button.is-active {
   border-color: var(--accent);
   color: var(--accent);
-  background: color-mix(in oklch, var(--accent-soft) 48%, var(--surface) 52%);
+  font-weight: 600;
 }
 
 .watch-toggle-state {
   color: var(--ink-faint);
-  transition:
-    color 180ms var(--ease-out-quart),
-    opacity 180ms var(--ease-out-quart),
-    transform 180ms var(--ease-out-quart);
+  font-size: var(--fs-sm);
 }
 
 @keyframes tile-enter {
   from {
     opacity: 0;
-    transform: translateY(0.85rem);
   }
 
   to {
     opacity: 1;
-    transform: translateY(0);
   }
 }
 
 @media (hover: hover) {
-  .opportunity-tile-link:hover {
-    border-color: color-mix(in oklch, var(--accent) 40%, var(--line-strong) 60%);
-    background: color-mix(in oklch, var(--surface-alt) 88%, var(--accent-soft) 12%);
-  }
-
-  .opportunity-tile-link:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-soft);
-  }
-
-  .opportunity-tile-link:hover .opportunity-media img {
-    transform: scale(1.035);
-    filter: saturate(1) contrast(1);
+  .opportunity-tile-link:hover .opportunity-tile-title {
+    text-decoration-color: currentColor;
   }
 }
 
 @media (max-width: 640px) {
-  .opportunity-tile-actions,
-  .detail-hero-actions {
-    justify-content: flex-start;
-  }
-
-  .opportunity-meta-strip {
-    grid-template-columns: 1fr;
-  }
-
   .waterfall-feed {
     grid-template-columns: 1fr;
   }

@@ -153,25 +153,24 @@ export const buildOpportunityLocatorPlaceholderSvg = (
   const anchor = resolveLocationAnchor(outline, placeholderOpportunity);
   const anchorX = anchor.x;
   const anchorY = anchor.y;
-  const gridCellOpacity = outline ? "0.038" : "0.09";
-  const gridFrameOpacity = outline ? "0.1" : "0.18";
-  const guideOpacity = outline ? "0.06" : "0.12";
-  const horizonOpacity = outline ? "0.035" : "0.08";
+  const gridCellOpacity = outline ? "0.05" : "0.1";
+  const gridFrameOpacity = outline ? "0.16" : "0.24";
+  const guideOpacity = outline ? "0.08" : "0.14";
+  const horizonOpacity = outline ? "0.05" : "0.1";
 
   const cityText = cityLabel
-    ? `<text x="82" y="${markerLabelY}" fill="#f1efe3" font-family="'Arial Narrow', Arial, sans-serif" font-size="34" font-weight="700" letter-spacing="0.04em">${escapeXml(
+    ? `<text x="82" y="${markerLabelY}" fill="#21201b" font-family="'Arial Narrow', Arial, sans-serif" font-size="34" font-weight="700" letter-spacing="0.04em">${escapeXml(
         cityLabel.toUpperCase(),
       )}</text>`
     : "";
   const countryText = countryLabel
-    ? `<text x="82" y="648" fill="#d1d0c4" fill-opacity="0.82" font-family="Arial, sans-serif" font-size="18" letter-spacing="0.18em">${escapeXml(
+    ? `<text x="82" y="648" fill="#5d5b50" font-family="Arial, sans-serif" font-size="18" letter-spacing="0.18em">${escapeXml(
         countryLabel.toUpperCase(),
       )}</text>`
     : "";
   const outlineMarkup = outline
     ? `
-  <path d="${outline.pathData}" fill="#13120f" fill-opacity="0.3" stroke="#13120f" stroke-opacity="0.46" stroke-width="12" stroke-linejoin="round" stroke-linecap="round" />
-  <path id="country-outline" data-country-key="${escapeXml(jurisdictionKey)}" data-outline-source="world-atlas" d="${outline.pathData}" fill="#2c4036" fill-opacity="0.66" stroke="#8fb4a0" stroke-opacity="0.94" stroke-width="3.2" stroke-linejoin="round" stroke-linecap="round" />
+  <path id="country-outline" data-country-key="${escapeXml(jurisdictionKey)}" data-outline-source="world-atlas" d="${outline.pathData}" fill="#21201b" fill-opacity="0.07" stroke="#21201b" stroke-opacity="0.78" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round" />
 `
     : "";
 
@@ -179,19 +178,15 @@ export const buildOpportunityLocatorPlaceholderSvg = (
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 720" role="img" aria-label="Opportunity location placeholder">
   <defs>
     <pattern id="locator-grid" width="72" height="72" patternUnits="userSpaceOnUse">
-      <path d="M 72 0 L 0 0 0 72" fill="none" stroke="#d1d0c4" stroke-opacity="${gridCellOpacity}" stroke-width="1" />
+      <path d="M 72 0 L 0 0 0 72" fill="none" stroke="#21201b" stroke-opacity="${gridCellOpacity}" stroke-width="1" />
     </pattern>
-    <linearGradient id="locator-wash" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#2b2923" />
-      <stop offset="100%" stop-color="#191813" />
-    </linearGradient>
   </defs>
 
-  <rect width="720" height="720" fill="#21201b" />
-  <rect x="52" y="52" width="616" height="616" fill="url(#locator-wash)" stroke="#d1d0c4" stroke-opacity="0.68" stroke-width="2" />
-  <rect x="82" y="82" width="556" height="484" fill="url(#locator-grid)" stroke="#d1d0c4" stroke-opacity="${gridFrameOpacity}" stroke-width="1" />
-  <path d="M82 243H638 M82 404H638 M221 82V566 M499 82V566" fill="none" stroke="#d1d0c4" stroke-opacity="${guideOpacity}" stroke-width="1.4" />
-  <path d="M82 120H638 M82 528H638" fill="none" stroke="#d1d0c4" stroke-opacity="${horizonOpacity}" stroke-width="1" />
+  <rect width="720" height="720" fill="#ece9de" />
+  <rect x="52" y="52" width="616" height="616" fill="#f4f2ea" stroke="#21201b" stroke-opacity="0.4" stroke-width="1.5" />
+  <rect x="82" y="82" width="556" height="484" fill="url(#locator-grid)" stroke="#21201b" stroke-opacity="${gridFrameOpacity}" stroke-width="1" />
+  <path d="M82 243H638 M82 404H638 M221 82V566 M499 82V566" fill="none" stroke="#21201b" stroke-opacity="${guideOpacity}" stroke-width="1.2" />
+  <path d="M82 120H638 M82 528H638" fill="none" stroke="#21201b" stroke-opacity="${horizonOpacity}" stroke-width="1" />
 
   ${outlineMarkup}
 
@@ -203,8 +198,8 @@ export const buildOpportunityLocatorPlaceholderSvg = (
     <path d="M0 -68V-24 M0 24V68 M-68 0H-24 M24 0H68" fill="none" stroke="#285f47" stroke-width="4" stroke-linecap="square" />
   </g>
 
-  <rect x="82" y="82" width="118" height="54" fill="#f1efe3" fill-opacity="0.94" />
-  <text x="96" y="120" fill="#21201b" font-family="'Arial Narrow', Arial, sans-serif" font-size="34" font-weight="700" letter-spacing="0.12em">${escapeXml(
+  <rect x="82" y="82" width="118" height="54" fill="#21201b" />
+  <text x="96" y="120" fill="#f4f2ea" font-family="'Arial Narrow', Arial, sans-serif" font-size="34" font-weight="700" letter-spacing="0.12em">${escapeXml(
     jurisdictionCode,
   )}</text>
 

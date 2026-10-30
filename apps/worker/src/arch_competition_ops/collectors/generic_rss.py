@@ -156,6 +156,7 @@ def collect_generic_rss_documents(
     limit: int = 20,
     publication_date_from: str | None = None,
     fetch_text: callable | None = None,
+    include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
     raw_feed = (fetch_text or _default_fetch_text)(source.base_url)
     root = ET.fromstring(raw_feed)
@@ -182,7 +183,7 @@ def collect_generic_rss_documents(
             continue
         if is_preannouncement_rss_notice(title, summary, categories):
             continue
-        if not _is_relevant_rss_notice(title, summary, categories):
+        if not include_unclassified and (not _is_relevant_rss_notice(title, summary, categories)):
             continue
 
         payload = json.dumps(

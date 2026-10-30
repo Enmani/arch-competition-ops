@@ -5,11 +5,22 @@ targeting:
     - italy
     - france
     - switzerland
+    - spain
+    - netherlands
+    - poland
+    - sweden
+    - norway
+    - united_kingdom
   languages:
     - en
     - it
     - fr
     - de
+    - es
+    - nl
+    - pl
+    - sv
+    - "no"
   audience:
     - professionals
     - multidisciplinary

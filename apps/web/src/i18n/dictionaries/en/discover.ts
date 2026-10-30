@@ -42,7 +42,7 @@ export const discover = {
     qualificationScore: "For example 60",
   },
   buttons: {
-    applyScreen: "Filter",
+    applyScreen: "Apply",
     resetFilters: "Reset",
     clearFilters: "Clear",
     loadMore: "Load more opportunities",

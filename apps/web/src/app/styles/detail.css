@@ -1,76 +1,91 @@
-/* Opportunity detail page. */
+/* Opportunity detail page: a title, one summary strip, then hairline-ruled fact lists. */
 
 .detail-layout {
-  gap: var(--space-xl);
+  gap: var(--space-3xl);
+  padding-top: var(--space-2xl);
+}
+
+.detail-hero {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-lg);
+  max-width: 64rem;
+}
+
+.detail-hero h1 {
+  margin: 0;
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+/* Authority, location, deadline and value: the four things a screening decision needs first. */
+.detail-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: var(--space-lg) var(--space-xl);
+  width: 100%;
+  margin: 0;
+  padding: var(--space-lg) 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.detail-summary-item {
+  display: grid;
+  gap: var(--space-xs);
+  min-width: 0;
+}
+
+.detail-summary-item dd {
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .detail-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.08fr) minmax(18rem, 0.92fr);
-  gap: var(--space-xl);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-3xl);
   align-items: start;
 }
 
-.detail-grid > section,
-.detail-hero {
-  gap: var(--space-lg);
-}
-
-.detail-stack,
-.detail-section,
-.detail-card-grid,
-.detail-note-card {
-  display: grid;
-}
-
 .detail-stack {
-  gap: var(--space-xl);
+  display: grid;
+  gap: var(--space-2xl);
 }
 
 .detail-section {
+  display: grid;
   gap: var(--space-md);
-  padding-top: var(--space-md);
-  border-top: 1px solid var(--line-strong);
-}
-
-.detail-section-anchored {
-  position: relative;
-}
-
-.detail-section-anchored::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 3.2rem;
-  border-top: 1px solid color-mix(in oklch, var(--accent) 42%, var(--line-strong) 58%);
 }
 
 .detail-section h2 {
   margin: 0;
-  font-family: var(--font-display), var(--font-cjk-fallback), sans-serif;
-  font-size: clamp(1.6rem, 2vw, 2.15rem);
-  line-height: 0.94;
-  text-transform: uppercase;
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.detail-list {
+  display: grid;
+  margin: 0;
 }
 
 .detail-item {
-  gap: 0.2rem;
-  padding-top: 0.75rem;
+  display: grid;
+  gap: var(--space-xs);
+  padding: var(--space-md) 0;
   border-top: 1px solid var(--line);
 }
 
-.detail-item:first-child {
-  padding-top: 0;
-  border-top: 0;
+.detail-item dd {
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
-.detail-card-grid {
-  gap: var(--space-md);
-}
-
-.detail-note-card {
-  gap: var(--space-md);
+.detail-note {
+  display: grid;
+  gap: var(--space-xs);
 }
 
 .detail-note-text {
@@ -78,15 +93,29 @@
   color: var(--ink-soft);
 }
 
-.detail-label,
-.band-label,
-.section-kicker {
-  font-size: 0.72rem;
-  color: var(--accent);
+.detail-links {
+  margin-top: var(--space-sm);
+}
+
+.detail-missing {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs) var(--space-lg);
+  margin: 0;
+  padding-top: var(--space-lg);
+  border-top: 1px solid var(--line);
+  color: var(--ink-faint);
+  font-size: var(--fs-sm);
+}
+
+.detail-missing .detail-label {
+  color: var(--ink-soft);
+  font-weight: 600;
 }
 
 @media (max-width: 960px) {
   .detail-grid {
     grid-template-columns: 1fr;
+    gap: var(--space-2xl);
   }
 }

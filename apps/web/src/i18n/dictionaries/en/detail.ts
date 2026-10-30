@@ -1,11 +1,9 @@
 import type { AppDictionary } from "../types";
 
 export const detail = {
-  eyebrow: "Detail",
   keyFacts: "Facts",
   evidenceActions: "Evidence and links",
   sourceNote: "Note",
-  links: "Links",
   fields: {
     authority: "Authority",
     opportunityType: "Opportunity type",

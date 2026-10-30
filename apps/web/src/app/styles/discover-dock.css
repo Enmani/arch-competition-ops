@@ -1,15 +1,15 @@
-/* Discover page: page frame, feed footer, collapsible filter dock and filter grids. */
+/* Discover page: page frame, feed footer and the filter dock (one compact bar + a collapsible panel). */
 
 .discover-page {
-  gap: 0.7rem;
+  gap: var(--space-xl);
   padding-top: 0;
 }
 
 .discover-feed-footer {
   display: grid;
   justify-items: center;
-  gap: 0.55rem;
-  padding: 0.4rem 0 0.85rem;
+  gap: var(--space-md);
+  padding: var(--space-lg) 0 var(--space-xl);
 }
 
 .discover-load-more {
@@ -19,48 +19,125 @@
 .discover-feed-status {
   margin: 0;
   color: var(--ink-faint);
-  font-size: 0.72rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font-size: var(--fs-sm);
 }
 
 .discover-dock {
   position: sticky;
   top: var(--shell-topbar-height);
   z-index: 30;
-  border-bottom: 1px solid var(--line-strong);
-  background: color-mix(in oklch, var(--bg) 94%, var(--surface) 6%);
-  transition:
-    background-color 180ms var(--ease-out-quart),
-    border-color 180ms var(--ease-out-quart),
-    opacity 180ms var(--ease-out-quart);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+  transition: opacity 180ms var(--ease-out-quart);
 }
 
 .discover-dock.is-pending {
   opacity: 0.94;
 }
 
-.discover-dock-summary {
-  display: inline-flex;
-  flex: 0 0 var(--dock-control-h);
-  width: var(--dock-control-h);
-  align-items: center;
-  justify-content: center;
-  gap: 0;
-  min-height: var(--dock-control-h);
-  padding: 0;
-  border: 1px solid var(--line-strong);
-  background: color-mix(in oklch, var(--surface) 96%, var(--surface-alt) 4%);
-  cursor: pointer;
-  text-align: center;
-  transition:
-    border-color 180ms var(--ease-out-quart),
-    background-color 180ms var(--ease-out-quart),
-    box-shadow 180ms var(--ease-out-quart),
-    transform 180ms var(--ease-out-quart),
-    opacity 180ms var(--ease-out-quart);
+.filter-form {
+  gap: var(--space-sm);
+  padding: var(--space-md) 0;
 }
 
+/* Always-visible bar: search, country, sort, panel toggle, actions. */
+.dock-bar {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1fr) minmax(8.5rem, 11rem) minmax(8.5rem, 11rem) auto auto;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.dock-bar > * {
+  min-width: 0;
+}
+
+.dock-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+}
+
+.dock-actions .button,
+.dock-toggle {
+  height: var(--control-h);
+  min-height: var(--control-h);
+  padding: 0 var(--space-lg);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+
+.dock-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  transition: border-color 180ms var(--ease-out-quart);
+}
+
+.dock-toggle:hover,
+.discover-dock.is-open .dock-toggle {
+  border-color: var(--ink);
+}
+
+.dock-toggle:focus-visible,
+.dock-reset:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.dock-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 var(--space-xs);
+  background: var(--ink);
+  color: var(--surface);
+  font-size: var(--fs-sm);
+  line-height: 1;
+}
+
+.dock-reset {
+  display: inline-flex;
+  align-items: center;
+  height: var(--control-h);
+  padding: 0 var(--space-xs);
+  color: var(--ink-faint);
+  font-size: var(--fs-sm);
+  text-decoration: underline;
+  text-underline-offset: 0.25em;
+  white-space: nowrap;
+}
+
+.dock-reset:hover {
+  color: var(--ink);
+}
+
+.dock-reset[aria-disabled="true"] {
+  opacity: 0.52;
+  pointer-events: none;
+}
+
+.discover-dock-toggle {
+  flex: none;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-right: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+  transform: translateY(-0.12rem) rotate(45deg);
+  transition: transform 220ms var(--ease-out-expo);
+}
+
+.discover-dock.is-open .discover-dock-toggle {
+  transform: translateY(0.1rem) rotate(225deg);
+}
+
+/* Collapsible panel: grid-rows 0fr -> 1fr animates height without measuring it. */
 .discover-dock-body {
   grid-template-rows: 0fr;
   overflow: hidden;
@@ -74,193 +151,132 @@
 .discover-dock-panel {
   min-height: 0;
   overflow: hidden;
-  gap: 0.45rem;
+  gap: var(--space-lg);
   opacity: 0;
   transform: translateY(-0.35rem);
   transition:
     opacity 180ms var(--ease-out-quart),
-    transform 280ms var(--ease-out-expo),
-    padding-bottom 280ms var(--ease-out-expo);
-  will-change: transform, opacity;
+    transform 280ms var(--ease-out-expo);
 }
 
 .discover-dock:not(.is-open) .discover-dock-panel {
   pointer-events: none;
 }
 
+/* The sticky dock must never cover the whole viewport: a tall panel scrolls inside itself. */
 .discover-dock.is-open .discover-dock-panel {
+  max-height: min(58vh, 30rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   opacity: 1;
+  padding: var(--space-sm) 0 var(--space-xs);
   transform: translateY(0);
-  padding-top: 0.05rem;
-  padding-bottom: 0.45rem;
 }
 
-.discover-dock-toggle {
-  flex: none;
-  width: 0.72rem;
-  height: 0.72rem;
-  border-right: 1px solid var(--ink-faint);
-  border-bottom: 1px solid var(--ink-faint);
-  transform: translateY(-0.08rem) rotate(45deg);
-  transition:
-    transform 220ms var(--ease-out-expo),
-    border-color 180ms var(--ease-out-quart);
-}
-
-.discover-dock.is-open .discover-dock-toggle {
-  border-color: var(--accent);
-  transform: translateY(0.05rem) rotate(225deg);
-}
-
-.filter-form {
-  gap: 0.45rem;
-  padding-top: 0.45rem;
-}
-
-.discover-filter-grid {
-  gap: 0.55rem;
-}
-
-.discover-filter-grid > * {
-  min-width: 0;
-}
-
-.discover-filter-grid-base {
-  grid-template-columns:
-    var(--dock-control-h)
-    minmax(0, 1.5fr)
-    minmax(7.5rem, 0.62fr)
-    minmax(8.75rem, 0.72fr)
-    minmax(7rem, 0.58fr)
-    auto;
-  align-items: center;
-}
-
-.discover-filter-grid-extra {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-}
-
-.search-field {
-  min-width: 0;
-}
-
-.base-filter-field {
-  min-width: 0;
-}
-
-.country-field {
-  min-width: 0;
-}
-
-.recency-field {
-  min-width: 0;
-}
-
-.deadline-field {
-  min-width: 0;
-}
-
-.dock-actions {
-  align-items: center;
-  justify-content: flex-end;
-  gap: 0.14rem;
-  flex-wrap: nowrap;
-  min-width: max-content;
-}
-
-.field-stack,
-.toggle-field {
-  gap: 0;
-}
-
-.filter-collection {
-  min-width: 0;
-  margin: 0;
-  padding: 0.55rem 0.68rem 0.72rem;
-  border: 1px solid var(--line-strong);
-  background: color-mix(in oklch, var(--surface) 96%, var(--surface-alt) 4%);
-  grid-column: span 2;
-  transition:
-    border-color 180ms var(--ease-out-quart),
-    background-color 180ms var(--ease-out-quart),
-    transform 220ms var(--ease-out-quart);
-}
-
-.filter-collection-label {
+.dock-label {
   margin: 0;
   padding: 0;
   color: var(--ink-faint);
-  font-size: 0.72rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-size: var(--fs-sm);
 }
 
-.filter-chip-grid {
+/* Multi-select facets, side by side as wide as they fit. */
+.dock-facets {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr));
-  gap: 0.38rem;
-  margin-top: 0.55rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr));
+  gap: var(--space-lg) var(--space-xl);
 }
 
-.filter-chip-option {
+.dock-facets:empty {
+  display: none;
+}
+
+.dock-facet {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.dock-chips {
   display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.dock-facet .dock-chips {
+  margin-top: var(--space-sm);
+}
+
+/* A checkbox drawn as a pill. The real input stays focusable and covers the label, so the
+   whole pill is the hit area; the check mark keeps "selected" from relying on colour alone. */
+.dock-chip {
+  position: relative;
+  display: inline-flex;
   align-items: center;
-  gap: 0.52rem;
-  min-height: var(--dock-control-h);
-  padding: 0.45rem 0.58rem;
+  min-height: 2rem;
+  padding: 0 var(--space-md);
   border: 1px solid var(--line);
-  background: var(--surface);
+  background: transparent;
   color: var(--ink-soft);
+  font-size: var(--fs-sm);
+  line-height: 1.2;
   cursor: pointer;
   transition:
     border-color 180ms var(--ease-out-quart),
     background-color 180ms var(--ease-out-quart),
-    color 180ms var(--ease-out-quart),
-    transform 180ms var(--ease-out-quart);
+    color 180ms var(--ease-out-quart);
 }
 
-.filter-chip-option input {
-  width: 0.95rem;
-  height: 0.95rem;
+.dock-chip input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   margin: 0;
-  accent-color: var(--accent);
+  opacity: 0;
+  cursor: pointer;
 }
 
-.filter-chip-option span {
-  min-width: 0;
-  font-size: 0.88rem;
-  line-height: 1.4;
-}
-
-.filter-chip-option:hover,
-.filter-chip-option:focus-within {
-  border-color: color-mix(in oklch, var(--accent) 44%, var(--line) 56%);
-  background: color-mix(in oklch, var(--accent-soft) 35%, var(--surface) 65%);
+.dock-chip:hover {
+  border-color: var(--line-strong);
   color: var(--ink);
-  transform: translateY(-1px);
 }
 
-@media (max-width: 1200px) {
-  .discover-filter-grid-base {
-    grid-template-columns:
-      var(--dock-control-h)
-      minmax(0, 1fr)
-      minmax(7rem, 0.6fr)
-      minmax(8rem, 0.68fr)
-      minmax(6.5rem, 0.54fr)
-      auto;
-  }
+.dock-chip:has(input:checked) {
+  border-color: var(--ink);
+  background: var(--surface-strong);
+  color: var(--ink);
+}
 
-  .discover-filter-grid-extra {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
+.dock-chip:has(input:checked)::before {
+  content: "✓";
+  margin-right: var(--space-sm);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
 
-  .filter-collection {
-    grid-column: span 3;
-  }
+.dock-chip:has(input:focus-visible) {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
 
-  .search-field {
-    grid-column: auto;
+/* Labelled criteria fields (dates, value range, score, procedure, route). */
+.dock-criteria {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
+  align-items: end;
+  gap: var(--space-md);
+}
+
+.dock-field {
+  gap: var(--space-xs);
+  min-width: 0;
+}
+
+@media (pointer: coarse) {
+  .dock-chip {
+    min-height: var(--control-h);
   }
 }
 
@@ -269,81 +285,43 @@
     position: static;
   }
 
-  .discover-filter-grid-base {
-    grid-template-columns:
-      var(--dock-control-h)
-      minmax(0, 1fr)
-      minmax(7rem, 0.78fr)
-      minmax(7rem, 0.78fr);
+  /* Narrow bar: search on its own line, the rest wraps; the actions stay at the end. */
+  .dock-bar {
+    display: flex;
+    flex-wrap: wrap;
   }
 
-  .country-field,
-  .recency-field {
-    min-width: 0;
+  .dock-search {
+    flex: 1 1 100%;
   }
 
-  .deadline-field {
-    grid-column: 2 / 4;
+  .dock-country,
+  .dock-sort {
+    flex: 1 1 9rem;
   }
 
   .dock-actions {
-    grid-column: 1 / -1;
-    width: auto;
-    justify-content: flex-end;
+    margin-left: auto;
   }
 
-  .discover-filter-grid-extra {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .filter-collection {
-    grid-column: span 2;
-  }
-
-  .search-field {
-    grid-column: 2 / -1;
-  }
-
-  .discover-filter-grid-base,
-  .discover-filter-grid-extra {
-    align-items: stretch;
+  .discover-dock.is-open .discover-dock-panel {
+    max-height: none;
+    overflow-y: visible;
   }
 }
 
-@media (max-width: 640px) {
-  .discover-filter-grid-base,
-  .discover-filter-grid-extra {
-    grid-template-columns: 1fr;
-  }
-
-  .base-filter-field,
-  .search-field,
-  .dock-actions {
-    width: 100%;
-  }
-
-  .discover-filter-grid-base {
-    grid-template-columns: 1fr;
+@media (max-width: 560px) {
+  .dock-toggle {
+    flex: 1 1 auto;
+    justify-content: space-between;
   }
 
   .dock-actions {
-    justify-content: flex-start;
-    width: 100%;
+    flex: 1 1 100%;
+    margin-left: 0;
   }
 
   .dock-actions .button {
     flex: 1 1 0;
-  }
-
-  .filter-collection {
-    grid-column: auto;
-  }
-
-  .filter-chip-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .search-field {
-    grid-column: auto;
   }
 }

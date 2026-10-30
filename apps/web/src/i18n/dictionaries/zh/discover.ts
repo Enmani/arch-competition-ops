@@ -40,7 +40,7 @@ export const discover = {
     qualificationScore: "例如 60",
   },
   buttons: {
-    applyScreen: "筛选",
+    applyScreen: "应用",
     resetFilters: "重置筛选",
     clearFilters: "清空筛选",
     loadMore: "加载更多项目",

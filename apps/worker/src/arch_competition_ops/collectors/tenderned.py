@@ -102,6 +102,7 @@ def collect_tenderned_documents(
     limit: int = 20,
     publication_date_from: str | None = None,
     fetch_json: callable | None = None,
+    include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
     page_size = max(limit * 8, 50)
     documents: list[CollectedSourceDocument] = []
@@ -150,7 +151,9 @@ def collect_tenderned_documents(
             ]
             title = str(detail_payload.get("aanbestedingNaam") or title).strip()
             description = str(detail_payload.get("opdrachtBeschrijving") or description).strip()
-            if not _is_relevant_tenderned_notice(title, description, cpv_codes):
+            if not include_unclassified and (
+                not _is_relevant_tenderned_notice(title, description, cpv_codes)
+            ):
                 continue
 
             link_payload = row.get("link") if isinstance(row.get("link"), dict) else {}

@@ -14,9 +14,14 @@ from arch_competition_ops.normalizers.text import normalize_text
 TED_SEARCH_URL = "https://api.ted.europa.eu/v3/notices/search"
 TED_FIELDS = [
     "notice-title",
+    "notice-type",
+    "description-proc",
+    "place-of-performance",
     "notice-identifier",
     "publication-date",
     "deadline-receipt-expressions-date-lot",
+    "deadline-receipt-request-date-lot",
+    "deadline-receipt-tender-date-lot",
     "classification-cpv",
     "organisation-name-buyer",
     "procedure-type",
@@ -201,6 +206,13 @@ def _build_notice_payload(notice: dict[str, Any]) -> tuple[str, str]:
         {
             "noticeId": notice_id,
             "title": title,
+            # Put decision-bearing source facts before the repeated multilingual metadata.
+            # Both list previews and detailed inputs have finite text budgets.
+            "noticeType": _pick_first_string(notice.get("notice-type")),
+            "tenderDeadline": notice.get("deadline-receipt-tender-date-lot"),
+            "participationDeadline": notice.get("deadline-receipt-request-date-lot"),
+            "description": _pick_localized_value(notice.get("description-proc")),
+            "placeOfPerformance": notice.get("place-of-performance"),
             "buyer": _pick_localized_value(notice.get("organisation-name-buyer")),
             "procedureType": _pick_first_string(notice.get("procedure-type")),
             "deadline": _pick_first_string(notice.get("deadline-receipt-expressions-date-lot")),
@@ -209,6 +221,7 @@ def _build_notice_payload(notice: dict[str, Any]) -> tuple[str, str]:
             "cpv": _extract_cpv_codes(notice),
             "publicationDate": _pick_first_string(notice.get("publication-date")),
             "officialUrl": notice_page_url,
+            "rawNotice": notice,
         },
         ensure_ascii=False,
     )
@@ -221,14 +234,16 @@ def collect_ted_documents(
     limit: int = 20,
     publication_date_from: str | None = None,
     fetch_json: Callable[[str, dict[str, Any]], dict[str, Any]] | None = None,
+    include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
     query_date = _normalize_publication_date(publication_date_from)
+    scope = source.search_query or (
+        "classification-cpv = 71*" if include_unclassified else "classification-cpv = 712*"
+    )
+    if source.search_query:
+        scope = f"({scope})"
     body = {
-        "query": (
-            "classification-cpv = 712* "
-            f"AND publication-date >= {query_date} "
-            "SORT BY publication-date DESC"
-        ),
+        "query": (f"{scope} AND publication-date >= {query_date} SORT BY publication-date DESC"),
         "fields": TED_FIELDS,
         "limit": limit,
         "page": 1,
@@ -243,7 +258,9 @@ def collect_ted_documents(
             continue
         title = _pick_localized_value(notice.get("notice-title")) or ""
         cpv_codes = _extract_cpv_codes(notice)
-        if not title or not _is_relevant_design_notice(title, cpv_codes):
+        if not include_unclassified and (
+            not title or not _is_relevant_design_notice(title, cpv_codes)
+        ):
             continue
         source_url, payload = _build_notice_payload(notice)
         documents.append(CollectedSourceDocument(source_url=source_url, payload=payload))

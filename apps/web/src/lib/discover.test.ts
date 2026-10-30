@@ -6,6 +6,7 @@ import {
   buildDiscoverPageSearchParams,
   collectDiscoverSearchParams,
   countActiveDiscoverFilters,
+  countAdvancedDiscoverFilters,
   DISCOVER_MAX_LOADED,
   DISCOVER_PAGE_SIZE,
   readDiscoverFilters,
@@ -54,6 +55,19 @@ test("countActiveDiscoverFilters counts multi-select values individually", () =>
   });
 
   assert.equal(total, 10);
+});
+
+test("countAdvancedDiscoverFilters leaves out what the bar already shows (search, country, sort)", () => {
+  const total = countAdvancedDiscoverFilters({
+    search: "school",
+    jurisdiction: "italy",
+    sort: "latest",
+    projectTypes: ["urban_planning"],
+    minQualificationScore: 60,
+    includeExpired: true,
+  });
+
+  assert.equal(total, 3);
 });
 
 const roundTrip = (query: string) => {

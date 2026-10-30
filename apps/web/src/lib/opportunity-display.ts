@@ -128,11 +128,12 @@ export const getOpportunityDisplayMeta = (
     formatLocalizedDate(locale, opportunity.deadlineAt) ?? dictionary.common.deadlinePending;
   // '' means the buyer is not published; never fall back to the platform name or invent one.
   const authorityLabel = opportunity.authorityName.trim() || dictionary.common.organizerNotPublished;
+  // null when the notice states no value, so a card can leave the slot out instead of announcing "pending".
   const cardValueLabel =
     formatCompactCurrency(locale, opportunity.estimatedContractValueEur) ??
     opportunity.estimatedContractValueText ??
     opportunity.prizeSummary ??
-    dictionary.common.valuePending;
+    null;
   const valueLabel =
     formatCurrency(locale, opportunity.estimatedContractValueEur) ??
     opportunity.estimatedContractValueText ??

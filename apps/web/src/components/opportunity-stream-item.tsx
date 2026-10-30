@@ -39,39 +39,36 @@ export const OpportunityStreamItem = ({
   return (
     <article className="opportunity-tile" style={{ ["--tile-index" as string]: index }}>
       <Link className="opportunity-tile-link" href={localizedRecordLink}>
-        <div className="opportunity-media-frame">
-          <div className="opportunity-media">
-            <Image
-              alt=""
-              fill
-              sizes="(max-width: 640px) 100vw, (max-width: 1200px) 50vw, 22rem"
-              src={imageSrc}
-              unoptimized
-            />
-          </div>
+        <div className="opportunity-media">
+          <Image
+            alt=""
+            fill
+            sizes="(max-width: 640px) 100vw, (max-width: 1200px) 50vw, 22rem"
+            src={imageSrc}
+            unoptimized
+          />
           {/* A name on a non-interactive element is not announced reliably, so field names are
               spelled out as screen-reader-only text instead of aria-label. */}
-          <span className="opportunity-value-chip">
-            <span className="sr-only">{copy.discover.card.value}: </span>
-            {cardValueLabel}
-          </span>
+          {cardValueLabel ? (
+            <span className="opportunity-value-chip">
+              <span className="sr-only">{copy.discover.card.value}: </span>
+              {cardValueLabel}
+            </span>
+          ) : null}
         </div>
 
         <div className="opportunity-tile-copy">
-          <div className="opportunity-title-box">
-            <h2 className="opportunity-tile-title">{opportunity.title}</h2>
-            <p className="opportunity-meta-value">{cardCategoryLabel}</p>
-          </div>
-
+          <h2 className="opportunity-tile-title">{opportunity.title}</h2>
+          <p className="opportunity-tile-category">{cardCategoryLabel}</p>
           <div className="opportunity-meta-strip">
-            <div className="opportunity-meta-box">
+            <span className="opportunity-meta-value">
               <span className="sr-only">{copy.discover.card.location}: </span>
-              <span className="opportunity-meta-value">{locationLabel}</span>
-            </div>
-            <div className="opportunity-meta-box opportunity-meta-box-deadline">
+              {locationLabel}
+            </span>
+            <span className="opportunity-meta-value opportunity-meta-deadline">
               <span className="sr-only">{copy.discover.card.deadline}: </span>
-              <span className="opportunity-meta-value">{deadlineValueLabel}</span>
-            </div>
+              {deadlineValueLabel}
+            </span>
           </div>
         </div>
       </Link>

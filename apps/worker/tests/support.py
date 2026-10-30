@@ -10,6 +10,7 @@ from pathlib import Path
 from arch_competition_ops import clock
 from arch_competition_ops.http import HttpTransportError
 from arch_competition_ops.models import SourceDefinition
+from arch_competition_ops.settings import DEFAULT_AI_SKILL
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -173,3 +174,6 @@ def write_minimal_config(root: Path, sources_yaml: str) -> None:
     (root / "config" / "sources.yml").write_text(sources_yaml, encoding="utf-8")
     (root / "config" / "filters.yml").write_text("targeting: {}\n", encoding="utf-8")
     (root / "config" / "taxonomy.yml").write_text(MINIMAL_TAXONOMY + "\n", encoding="utf-8")
+    skill = root / DEFAULT_AI_SKILL
+    skill.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy(REPO_ROOT / DEFAULT_AI_SKILL, skill)

@@ -39,6 +39,8 @@ from arch_competition_ops.maintenance import (
 )
 from arch_competition_ops.normalizers.competition import configure_procedure_registry
 from arch_competition_ops.postprocess.registry import POSTPROCESS_TASKS
+from arch_competition_ops.screening import commands as screening_commands
+from arch_competition_ops.screening.client import ScreeningError
 from arch_competition_ops.settings import Settings
 from arch_competition_ops.storage import list_competitions
 
@@ -70,6 +72,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-v", "--verbose", action="store_true", help="log progress to stderr")
 
     subparsers = parser.add_subparsers(dest="command", required=True)
+    screening_commands.add_parsers(subparsers)
     subparsers.add_parser("doctor", help="validate repository prerequisites")
     subparsers.add_parser("init-db", help="create the SQLite schema")
     subparsers.add_parser("verify", help="run repository integrity checks")
@@ -353,6 +356,13 @@ def _handle_prewarm(settings: Settings, args: argparse.Namespace) -> int:
 
 
 def _handler_for(args: argparse.Namespace) -> Callable[[Settings, argparse.Namespace], int]:
+    if args.command in {
+        "show-ai-models",
+        "screen-competitions",
+        "list-ai-screenings",
+        "analyze-source-file",
+    }:
+        return lambda settings, args: screening_commands.handle(settings, args, _safe_print)
     simple: dict[str, Callable[[Settings, argparse.Namespace], int]] = {
         "doctor": lambda settings, _args: _print_results(run_doctor(settings)),
         "verify": lambda settings, _args: _print_results(run_verify(settings)),
@@ -412,7 +422,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (SourceNotFoundError, SourceDisabledError, DemoSeedRefusedError) as exc:
         _safe_print(f"error: {exc}")
         return EXIT_USAGE
-    except IngestError as exc:
+    except (IngestError, ScreeningError) as exc:
         # The cause is a network/API/database problem the operator can act on; no traceback.
         _safe_print(f"error: {exc}")
         return EXIT_FAILURE

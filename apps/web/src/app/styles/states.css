@@ -54,7 +54,7 @@
   gap: var(--space-md);
   width: min(100%, 36rem);
   padding: var(--space-xl);
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--line);
   background: var(--surface);
 }
 
@@ -76,7 +76,7 @@
 
 .status-reference {
   color: var(--ink-faint);
-  font-size: 0.72rem;
+  font-size: var(--fs-sm);
   word-break: break-all;
 }
 
@@ -118,7 +118,7 @@
 .save-search-message.is-error {
   margin: 0;
   color: var(--danger);
-  font-size: 0.78rem;
+  font-size: var(--fs-sm);
 }
 
 .save-search-form {
@@ -130,15 +130,15 @@
 }
 
 .save-search-form input {
-  min-height: var(--dock-control-h);
-  padding: 0 var(--dock-control-px);
+  min-height: var(--control-h);
+  padding: 0 var(--control-px);
   border: 1px solid var(--line-strong);
   background: var(--surface);
 }
 
 .save-search-message {
   color: var(--ink-soft);
-  font-size: 0.78rem;
+  font-size: var(--fs-sm);
 }
 
 .saved-searches {

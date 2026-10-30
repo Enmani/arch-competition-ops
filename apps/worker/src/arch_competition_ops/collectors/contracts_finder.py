@@ -146,6 +146,7 @@ def collect_contracts_finder_documents(
     limit: int = 20,
     publication_date_from: str | None = None,
     fetch_json: callable | None = None,
+    include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
     published_from, published_to = _resolve_search_window(publication_date_from)
     search_url = build_url(
@@ -173,7 +174,9 @@ def collect_contracts_finder_documents(
         classification = tender.get("classification", {})
         cpv_code = classification.get("id", "").strip() if isinstance(classification, dict) else ""
 
-        if not title or not _is_relevant_contracts_finder_notice(title, description, cpv_code):
+        if not include_unclassified and (
+            not title or not _is_relevant_contracts_finder_notice(title, description, cpv_code)
+        ):
             continue
 
         official_url = _pick_notice_url(tender, source.base_url)

@@ -7,15 +7,15 @@
 .workspace-empty-panel h2 {
   margin: 0;
   font-family: var(--font-display), var(--font-cjk-fallback), sans-serif;
-  font-size: clamp(1.05rem, 1.2vw, 1.35rem);
-  line-height: 0.95;
-  text-transform: uppercase;
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  line-height: 1.25;
 }
 
 .workspace-empty-panel p {
   margin: 0;
   color: var(--ink-soft);
-  font-size: 0.82rem;
+  font-size: var(--fs-sm);
   line-height: 1.5;
 }
 

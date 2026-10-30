@@ -117,6 +117,30 @@ test("an existing remote upsert is updated in place (no duplicate rows, columns 
   remote.close();
 });
 
+test("AI advice is synced after opportunities; prompts and spend ledger stay local", (t) => {
+  const workspace = createWorkspace(t);
+  createLocalDatabase(workspace.dbPath, (db) => {
+    insertCompetition(db, "ai-1", { title: "AI review" });
+    db.prepare(`INSERT INTO ai_screening_results
+      (competition_id, source_updated_at, model, decision, relevance_score, result_json, updated_at)
+      VALUES ('ai-1', '2026-10-30', 'gpt-6-luna', 'exclude', 10, '{}', '2026-10-30')`).run();
+    db.prepare(`INSERT INTO ai_screening_runs
+      (id, competition_id, source_url, model, input_json, status, cost_usd, started_at)
+      VALUES ('run-1', 'ai-1', 'https://example.org/notice', 'gpt-6-luna',
+        '{"private_prompt":"local only"}', 'reserved', 0.01, '2026-10-30')`).run();
+  });
+  const result = runInto(workspace);
+  const sql = result.files.map((file) => file.content).join("");
+  assert.match(sql, /INSERT INTO "ai_screening_results"/);
+  assert.doesNotMatch(sql, /ai_screening_runs|private_prompt|local only/);
+  const remote = applyMigrations(new Database(":memory:"));
+  executeFiles(remote, result);
+  executeFiles(remote, result);
+  assert.equal(dumpTable(remote, "ai_screening_results", "competition_id").length, 1);
+  assert.equal(dumpTable(remote, "ai_screening_runs", "id").length, 0);
+  remote.close();
+});
+
 test("manual review status survives a re-sync; only diagnostic fields are refreshed", (t) => {
   const workspace = createWorkspace(t);
   createLocalDatabase(workspace.dbPath, (db) => {

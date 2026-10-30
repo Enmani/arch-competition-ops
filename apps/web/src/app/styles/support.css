@@ -1,8 +1,6 @@
 /* Support page. */
 
 .sheet-index {
-  color: var(--accent);
-  font-size: 0.78rem;
   font-variant-numeric: tabular-nums;
 }
 
@@ -33,8 +31,11 @@
   border-top: 1px solid var(--line-strong);
   padding-top: var(--space-lg);
   opacity: 0;
-  transform: translateY(1rem);
-  animation: support-enter 680ms var(--ease-out-expo) forwards;
+  animation: support-enter 420ms var(--ease-out-quart) forwards;
+}
+
+.support-stage:first-child {
+  border-top: 0;
 }
 
 .support-stage:nth-child(2) {
@@ -54,11 +55,10 @@
 }
 
 .support-hero {
-  grid-template-columns: minmax(0, 1.95fr) minmax(34rem, 0.8fr);
-  gap: var(--space-2xl);
-  align-items: stretch;
-  min-height: calc(100svh - var(--shell-topbar-height) - 2.2rem);
-  padding-top: clamp(3.4rem, 5.2svh, 5rem);
+  grid-template-columns: minmax(0, 1.6fr) minmax(18rem, 0.9fr);
+  gap: var(--space-3xl);
+  align-items: start;
+  padding-top: clamp(2rem, 6svh, 4rem);
 }
 
 .support-hero-copy {
@@ -71,15 +71,14 @@
 .support-track h3 {
   margin: 0;
   font-family: var(--font-display), var(--font-cjk-fallback), sans-serif;
-  text-transform: uppercase;
-  line-height: 0.92;
+  font-weight: 600;
+  line-height: 1.25;
 }
 
 .support-hero-copy h1 {
-  font-size: clamp(3rem, 5.8vw, 5.8rem);
-  max-width: none;
+  font-size: var(--fs-xl);
+  max-width: 40rem;
   white-space: pre-line;
-  line-height: 1.02;
 }
 
 .support-section-head {
@@ -89,7 +88,7 @@
 }
 
 .support-section-head h2 {
-  font-size: clamp(1.8rem, 3vw, 3rem);
+  font-size: var(--fs-xl);
 }
 
 .support-intro,
@@ -105,7 +104,6 @@
 .support-lead {
   max-width: 60ch;
   margin-top: var(--space-lg);
-  font-size: 1.04rem;
 }
 
 .support-contact-band {
@@ -124,9 +122,9 @@
 .support-contact-title {
   margin: 0;
   font-family: var(--font-display), var(--font-cjk-fallback), sans-serif;
-  font-size: clamp(1.05rem, 1.55vw, 1.3rem);
-  line-height: 1.04;
-  text-transform: uppercase;
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  line-height: 1.25;
 }
 
 .support-contact-grid {
@@ -140,17 +138,11 @@
   border-top: 1px solid var(--line);
   color: var(--ink);
   text-decoration: none;
-  transition:
-    border-color 180ms var(--ease-out-quart),
-    background-color 180ms var(--ease-out-quart),
-    transform 180ms var(--ease-out-quart);
 }
 
 .support-contact-label {
-  color: var(--ink-soft);
-  font-size: 0.76rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  color: var(--ink-faint);
+  font-size: var(--fs-sm);
 }
 
 .support-contact-value {
@@ -160,14 +152,9 @@
 .support-principles {
   display: grid;
   gap: var(--space-md);
-  padding: var(--space-lg);
-  border: 1px solid var(--line-strong);
-  background: color-mix(in oklch, var(--surface) 95%, var(--surface-alt) 5%);
+  padding-top: var(--space-lg);
+  border-top: 1px solid var(--line);
   width: 100%;
-  max-width: 34rem;
-  justify-self: end;
-  align-self: end;
-  margin-top: auto;
 }
 
 .support-principle-list,
@@ -188,15 +175,12 @@
 }
 
 .support-principle-item dt {
-  color: var(--ink);
-  font-size: 0.76rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  white-space: nowrap;
+  color: var(--ink-faint);
+  font-size: var(--fs-sm);
 }
 
 .support-principle-item dd {
-  white-space: nowrap;
+  margin: 0;
 }
 
 .support-rationale-grid {
@@ -226,11 +210,7 @@
 .support-track {
   gap: var(--space-md);
   padding-top: var(--space-md);
-  border-top: 2px solid var(--ink);
-  transition:
-    border-color 180ms var(--ease-out-quart),
-    transform 180ms var(--ease-out-quart),
-    background-color 180ms var(--ease-out-quart);
+  border-top: 1px solid var(--ink);
 }
 
 .support-track-topline {
@@ -240,7 +220,7 @@
 }
 
 .support-track h3 {
-  font-size: clamp(1.35rem, 2vw, 2rem);
+  font-size: var(--fs-lg);
 }
 
 .support-track-list {
@@ -270,7 +250,7 @@
 .support-track-note {
   padding-top: var(--space-md);
   border-top: 1px solid var(--line);
-  font-size: 0.9rem;
+  font-size: var(--fs-sm);
 }
 
 .support-roadmap-grid {
@@ -298,31 +278,16 @@
   padding-top: var(--space-md);
   border-top: 1px solid var(--line);
   color: var(--ink-faint);
-  font-size: 0.92rem;
+  font-size: var(--fs-sm);
 }
 
 @keyframes support-enter {
   from {
     opacity: 0;
-    transform: translateY(1rem);
   }
 
   to {
     opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@media (hover: hover) {
-  .support-track:hover,
-  .support-contact-item:hover {
-    border-color: color-mix(in oklch, var(--accent) 40%, var(--line-strong) 60%);
-    background: color-mix(in oklch, var(--surface-alt) 88%, var(--accent-soft) 12%);
-  }
-
-  .support-track:hover,
-  .support-contact-item:hover {
-    transform: translateY(-2px);
   }
 }
 
@@ -351,10 +316,6 @@
 
   .support-stage {
     padding-top: var(--space-md);
-  }
-
-  .support-hero {
-    min-height: auto;
   }
 
   .support-hero-copy h1 {

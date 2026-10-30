@@ -51,6 +51,7 @@ def collect_feed_documents(
     limit: int,
     publication_date_from: str | None,
     fetch_text: callable,
+    include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
     root = ET.fromstring(feed_payload)
     channel = root.find("channel")
@@ -69,7 +70,9 @@ def collect_feed_documents(
             continue
         if publication_date_from and published_at and published_at < publication_date_from:
             continue
-        if not is_relevant_municipal_notice(title, parsed_description["summary"]):
+        if not include_unclassified and (
+            not is_relevant_municipal_notice(title, parsed_description["summary"])
+        ):
             continue
 
         payload: dict[str, object] = {

@@ -16,18 +16,17 @@
 .auth-panel {
   width: min(100%, 32rem);
   gap: var(--space-lg);
-  padding: var(--space-xl);
-  border: 1px solid var(--line-strong);
-  background: color-mix(in oklch, var(--surface) 94%, var(--surface-alt) 6%);
-  box-shadow: var(--shadow);
+  padding: var(--space-2xl);
+  border: 1px solid var(--line);
+  background: var(--surface);
 }
 
 .auth-panel h1 {
   margin: 0;
   font-family: var(--font-display), var(--font-cjk-fallback), sans-serif;
-  font-size: clamp(2rem, 4vw, 3.6rem);
-  line-height: 0.92;
-  text-transform: uppercase;
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  line-height: 1.25;
 }
 
 .auth-panel p {
@@ -45,18 +44,17 @@
 
 .auth-field label {
   color: var(--ink-faint);
-  font-size: 0.72rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font-size: var(--fs-sm);
 }
 
 .auth-field input {
   width: 100%;
-  height: var(--dock-control-h);
-  min-height: var(--dock-control-h);
-  padding: 0.5rem var(--dock-control-px);
+  height: var(--control-h);
+  min-height: var(--control-h);
+  padding: 0.5rem var(--control-px);
   border: 1px solid var(--line-strong);
-  background: color-mix(in oklch, var(--surface) 96%, var(--surface-alt) 4%);
+  border-radius: 0;
+  background: transparent;
   color: var(--ink);
 }
 
@@ -74,7 +72,7 @@
 .auth-secondary {
   padding-top: var(--space-md);
   border-top: 1px solid var(--line);
-  font-size: 0.92rem;
+  font-size: var(--fs-sm);
 }
 
 .auth-link {

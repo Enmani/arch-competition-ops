@@ -34,6 +34,7 @@ def collect_hamburg_listing_documents(
     limit: int,
     publication_date_from: str | None,
     fetch_text: callable,
+    include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
     del source, publication_date_from
     documents: list[CollectedSourceDocument] = []
@@ -66,7 +67,7 @@ def collect_hamburg_listing_documents(
         combined_context = " ".join(
             value for value in (listing_context, strip_html(detail_html) or "") if value
         )
-        if not is_relevant_municipal_notice(title, combined_context):
+        if not include_unclassified and (not is_relevant_municipal_notice(title, combined_context)):
             continue
 
         payload: dict[str, object] = {

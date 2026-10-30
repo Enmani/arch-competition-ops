@@ -28,6 +28,7 @@ def collect_competitions_archi_documents(
     limit: int = 20,
     publication_date_from: str | None = None,
     fetch_text: callable | None = None,
+    include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
     raw_feed = (fetch_text or _default_fetch_text)(COMPETITIONS_ARCHI_FEED_URL)
     root = ET.fromstring(raw_feed)
@@ -47,11 +48,14 @@ def collect_competitions_archi_documents(
 
         if publication_date_from and pub_date and pub_date < publication_date_from:
             continue
-        if not title or not is_design_relevant(
-            title,
-            description,
-            categories=categories,
-            require_professional_category=True,
+        if not include_unclassified and (
+            not title
+            or not is_design_relevant(
+                title,
+                description,
+                categories=categories,
+                require_professional_category=True,
+            )
         ):
             continue
 

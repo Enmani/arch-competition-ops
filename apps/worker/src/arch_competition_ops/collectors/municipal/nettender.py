@@ -92,6 +92,7 @@ def collect_nettender_listing_documents(
     publication_date_from: str | None,
     fetch_text: callable,
     post_text: callable,
+    include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
     documents: list[CollectedSourceDocument] = []
     for oid, category, row_html in NETTENDER_ROW_PATTERN.findall(listing_html):
@@ -128,7 +129,7 @@ def collect_nettender_listing_documents(
         combined_context = " ".join(
             value for value in (listing_context, strip_html(detail_html) or "") if value
         )
-        if not is_relevant_municipal_notice(title, combined_context):
+        if not include_unclassified and (not is_relevant_municipal_notice(title, combined_context)):
             continue
 
         payload: dict[str, object] = {

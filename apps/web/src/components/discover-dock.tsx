@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useState, useTransition, type ReactNode } from "react";
 
 import type { StoredFilterOptions, StoredOpportunityQuery } from "@arch-competition/storage";
 
@@ -12,6 +12,7 @@ import type { DiscoverDockCopy } from "@/i18n/slices";
 import {
   buildDiscoverPageSearchParams,
   collectDiscoverSearchParams,
+  countAdvancedDiscoverFilters,
   formatTokenLabel,
   readDiscoverPageState,
 } from "@/lib/discover";
@@ -36,42 +37,90 @@ type ChipGroupProps = {
   values: readonly string[];
 };
 
-/** A multi-select facet: native checkboxes in a fieldset, submitted as repeated query params. */
-const ChipGroup = ({ checked, label, labels, name, values }: ChipGroupProps) => (
-  <fieldset className="filter-collection">
-    <legend className="filter-collection-label">{label}</legend>
-    <div className="filter-chip-grid">
-      {values.map((value) => (
-        <label className="filter-chip-option" key={value}>
-          <input defaultChecked={isChecked(checked, value)} name={name} type="checkbox" value={value} />
-          <span>{translateMappedValue(value, labels, formatTokenLabel(value))}</span>
-        </label>
-      ))}
-    </div>
-  </fieldset>
+/** A multi-select facet: native checkboxes drawn as pills, submitted as repeated query params. */
+const ChipGroup = ({ checked, label, labels, name, values }: ChipGroupProps) => {
+  // A facet with no known values would render an empty box; leave it out.
+  if (values.length === 0) {
+    return null;
+  }
+
+  return (
+    <fieldset className="dock-facet">
+      <legend className="dock-label">{label}</legend>
+      <div className="dock-chips">
+        {values.map((value) => (
+          <label className="dock-chip" key={value}>
+            <input defaultChecked={isChecked(checked, value)} name={name} type="checkbox" value={value} />
+            <span>{translateMappedValue(value, labels, formatTokenLabel(value))}</span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+};
+
+/** A control with a visible label, so two similar inputs (deadline after / before) stay distinguishable. */
+const Field = ({ children, label }: { children: ReactNode; label: string }) => (
+  <label className="field-stack dock-field">
+    <span className="dock-label">{label}</span>
+    {children}
+  </label>
 );
 
-type SelectFieldProps = {
+type SelectOptionsProps = {
   allLabel: string;
-  className?: string;
-  defaultValue: string;
-  label: string;
   labels: Record<string, string>;
-  name: string;
   values: readonly string[];
 };
 
-const SelectField = ({ allLabel, className, defaultValue, label, labels, name, values }: SelectFieldProps) => (
-  <label className={`field-stack${className ? ` ${className}` : ""}`}>
-    <span className="sr-only">{label}</span>
-    <select defaultValue={defaultValue} name={name}>
-      <option value="">{allLabel}</option>
-      {values.map((value) => (
-        <option key={value} value={value}>
-          {translateMappedValue(value, labels, formatTokenLabel(value))}
-        </option>
-      ))}
-    </select>
+const SelectOptions = ({ allLabel, labels, values }: SelectOptionsProps) => (
+  <>
+    <option value="">{allLabel}</option>
+    {values.map((value) => (
+      <option key={value} value={value}>
+        {translateMappedValue(value, labels, formatTokenLabel(value))}
+      </option>
+    ))}
+  </>
+);
+
+type NumberFieldProps = {
+  defaultValue: number | undefined;
+  label: string;
+  max?: number;
+  name: string;
+  step: number;
+};
+
+const NumberField = ({ defaultValue, label, max, name, step }: NumberFieldProps) => (
+  <Field label={label}>
+    <input
+      defaultValue={defaultValue?.toString() ?? ""}
+      inputMode="numeric"
+      max={max}
+      min="0"
+      name={name}
+      step={step}
+      type="number"
+    />
+  </Field>
+);
+
+type DateFieldProps = { defaultValue: string | undefined; label: string; name: string };
+
+/** ISO `YYYY-MM-DD` is what the server parses; a native date input produces exactly that. */
+const DateField = ({ defaultValue, label, name }: DateFieldProps) => (
+  <Field label={label}>
+    <input defaultValue={defaultValue ?? ""} name={name} type="date" />
+  </Field>
+);
+
+type OptionChipProps = { defaultChecked: boolean; label: string; name: string };
+
+const OptionChip = ({ defaultChecked, label, name }: OptionChipProps) => (
+  <label className="dock-chip">
+    <input defaultChecked={defaultChecked} name={name} type="checkbox" value="true" />
+    <span>{label}</span>
   </label>
 );
 
@@ -85,9 +134,10 @@ export const DiscoverDock = ({
 }: DiscoverDockProps) => {
   const router = useRouter();
   const { discover: text, taxonomy } = copy;
-  // Open by default while filters are active; once the visitor toggles it their choice wins.
+  const advancedCount = countAdvancedDiscoverFilters(filters);
+  // Open by default while panel filters are active; once the visitor toggles it their choice wins.
   const [toggledOpen, setToggledOpen] = useState<boolean | null>(null);
-  const isOpen = toggledOpen ?? activeFilterCount > 0;
+  const isOpen = toggledOpen ?? advancedCount > 0;
   const [isPending, startTransition] = useTransition();
   const formStateKey = serializeSearchParams(buildDiscoverPageSearchParams(filters)) || "none";
 
@@ -137,20 +187,8 @@ export const DiscoverDock = ({
           handleSubmit(new FormData(event.currentTarget));
         }}
       >
-        <div className="discover-filter-grid discover-filter-grid-base">
-          <button
-            aria-controls="discover-dock-panel"
-            aria-expanded={isOpen}
-            aria-label={text.searchEyebrow}
-            className="discover-dock-summary discover-dock-summary-icon"
-            onClick={() => setToggledOpen(!isOpen)}
-            title={text.searchEyebrow}
-            type="button"
-          >
-            <span aria-hidden="true" className="discover-dock-toggle" />
-          </button>
-
-          <label className="field-stack search-field">
+        <div className="dock-bar">
+          <label className="field-stack dock-search">
             <span className="sr-only">{text.filterLabels.search}</span>
             <span className="search-shell">
               <span aria-hidden="true" className="search-icon">
@@ -169,20 +207,29 @@ export const DiscoverDock = ({
             </span>
           </label>
 
-          <SelectField
-            allLabel={text.filterOptions.allCountries}
-            className="base-filter-field country-field"
-            defaultValue={filters.jurisdiction ?? ""}
-            label={text.filterLabels.country}
-            labels={taxonomy.jurisdictions}
-            name="jurisdiction"
-            values={filterOptions.jurisdictions}
-          />
+          <label className="field-stack dock-country">
+            <span className="sr-only">{text.filterLabels.country}</span>
+            <select
+              defaultValue={filters.jurisdiction ?? ""}
+              name="jurisdiction"
+              onChange={(event) => event.currentTarget.form?.requestSubmit()}
+            >
+              <SelectOptions
+                allLabel={text.filterOptions.allCountries}
+                labels={taxonomy.jurisdictions}
+                values={filterOptions.jurisdictions}
+              />
+            </select>
+          </label>
 
-          <label className="field-stack base-filter-field recency-field">
-            <span className="sr-only">{text.filterLabels.capturedWithin}</span>
-            <select defaultValue={filters.publishedWithinDays?.toString() ?? ""} name="publishedWithinDays">
-              {recencyOptions.map((option) => (
+          <label className="field-stack dock-sort">
+            <span className="sr-only">{text.filterLabels.sort}</span>
+            <select
+              defaultValue={filters.sort ?? "deadline"}
+              name="sort"
+              onChange={(event) => event.currentTarget.form?.requestSubmit()}
+            >
+              {sortOptions.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
@@ -190,31 +237,31 @@ export const DiscoverDock = ({
             </select>
           </label>
 
-          <label className="field-stack base-filter-field deadline-field">
-            <span className="sr-only">{text.filterLabels.deadlineBefore}</span>
-            <input
-              defaultValue={filters.deadlineBefore ?? ""}
-              inputMode="numeric"
-              maxLength={10}
-              name="deadlineBefore"
-              pattern="\d{4}-\d{2}-\d{2}"
-              placeholder={text.placeholders.dateIso}
-              title={text.placeholders.dateIso}
-              type="text"
-            />
-          </label>
+          <button
+            aria-controls="discover-dock-panel"
+            aria-expanded={isOpen}
+            className="dock-toggle"
+            onClick={() => setToggledOpen(!isOpen)}
+            type="button"
+          >
+            <span>{text.searchEyebrow}</span>
+            {advancedCount > 0 ? <span className="dock-count">{advancedCount}</span> : null}
+            <span aria-hidden="true" className="discover-dock-toggle" />
+          </button>
 
           <div className="dock-actions">
-            {isPending ? (
-              <span aria-disabled="true" className="button secondary" role="link">
-                {text.buttons.resetFilters}
-              </span>
-            ) : (
-              <Link className="button secondary" href={routeBase}>
-                {text.buttons.resetFilters}
-              </Link>
-            )}
-            <button className="button primary" disabled={isPending} type="submit">
+            {activeFilterCount > 0 ? (
+              isPending ? (
+                <span aria-disabled="true" className="dock-reset" role="link">
+                  {text.buttons.resetFilters}
+                </span>
+              ) : (
+                <Link className="dock-reset" href={routeBase}>
+                  {text.buttons.resetFilters}
+                </Link>
+              )
+            ) : null}
+            <button className="button secondary" disabled={isPending} type="submit">
               {text.buttons.applyScreen}
             </button>
           </div>
@@ -222,18 +269,7 @@ export const DiscoverDock = ({
 
         <div className="discover-dock-body" id="discover-dock-panel" inert={!isOpen}>
           <div className="discover-dock-panel">
-            <div className="discover-filter-grid discover-filter-grid-extra">
-              <label className="field-stack">
-                <span className="sr-only">{text.filterLabels.sort}</span>
-                <select defaultValue={filters.sort ?? "deadline"} name="sort">
-                  {sortOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
+            <div className="dock-facets">
               <ChipGroup
                 checked={filters.projectTypes}
                 label={text.filterLabels.projectType}
@@ -262,101 +298,78 @@ export const DiscoverDock = ({
                 name="projectMode"
                 values={filterOptions.projectModes}
               />
+            </div>
 
-              <SelectField
-                allLabel={text.filterOptions.allProcedureTypes}
-                defaultValue={filters.procedureType ?? ""}
-                label={text.filterLabels.procedureType}
-                labels={taxonomy.procedures}
-                name="procedureType"
-                values={filterOptions.procedureTypes}
+            <div className="dock-criteria">
+              <Field label={text.filterLabels.capturedWithin}>
+                <select defaultValue={filters.publishedWithinDays?.toString() ?? ""} name="publishedWithinDays">
+                  {recencyOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <DateField
+                defaultValue={filters.deadlineAfter}
+                label={text.filterLabels.deadlineAfter}
+                name="deadlineAfter"
               />
-              <SelectField
-                allLabel={text.filterOptions.allImplementationPaths}
-                defaultValue={filters.implementationPath ?? ""}
-                label={text.filterLabels.implementationPath}
-                labels={taxonomy.implementationPaths}
-                name="implementationPath"
-                values={filterOptions.implementationPaths}
+              <DateField
+                defaultValue={filters.deadlineBefore}
+                label={text.filterLabels.deadlineBefore}
+                name="deadlineBefore"
               />
-
-              <label className="field-stack">
-                <span className="sr-only">{text.filterLabels.deadlineAfter}</span>
-                <input
-                  defaultValue={filters.deadlineAfter ?? ""}
-                  inputMode="numeric"
-                  maxLength={10}
-                  name="deadlineAfter"
-                  pattern="\d{4}-\d{2}-\d{2}"
-                  placeholder={text.placeholders.dateIso}
-                  title={text.placeholders.dateIso}
-                  type="text"
-                />
-              </label>
-
-              <label className="field-stack">
-                <span className="sr-only">{text.filterLabels.minValue}</span>
-                <input
-                  defaultValue={filters.minEstimatedValueEur?.toString() ?? ""}
-                  inputMode="numeric"
-                  min="0"
-                  name="minEstimatedValueEur"
-                  placeholder={text.filterLabels.minValue}
-                  step="10000"
-                  type="number"
-                />
-              </label>
-
-              <label className="field-stack">
-                <span className="sr-only">{text.filterLabels.maxValue}</span>
-                <input
-                  defaultValue={filters.maxEstimatedValueEur?.toString() ?? ""}
-                  inputMode="numeric"
-                  min="0"
-                  name="maxEstimatedValueEur"
-                  placeholder={text.filterLabels.maxValue}
-                  step="10000"
-                  type="number"
-                />
-              </label>
-
-              <label className="field-stack">
-                <span className="sr-only">{text.filterLabels.minQualificationScore}</span>
-                <input
-                  defaultValue={filters.minQualificationScore?.toString() ?? ""}
-                  inputMode="numeric"
-                  max="100"
-                  min="0"
-                  name="minQualificationScore"
-                  placeholder={text.filterLabels.minQualificationScore}
-                  step="1"
-                  type="number"
-                />
-              </label>
-
-              <label className="toggle-field">
-                <span className="toggle-copy">
-                  <input
-                    defaultChecked={filters.licensedArchitectRequired === true}
-                    name="licensedArchitectRequired"
-                    type="checkbox"
-                    value="true"
+              <Field label={text.filterLabels.procedureType}>
+                <select defaultValue={filters.procedureType ?? ""} name="procedureType">
+                  <SelectOptions
+                    allLabel={text.filterOptions.allProcedureTypes}
+                    labels={taxonomy.procedures}
+                    values={filterOptions.procedureTypes}
                   />
-                  <span className="toggle-text">{text.filterOptions.requireLicensedArchitect}</span>
-                </span>
-              </label>
-
-              <label className="toggle-field">
-                <span className="toggle-copy">
-                  <input
-                    defaultChecked={filters.includeExpired === true}
-                    name="includeExpired"
-                    type="checkbox"
-                    value="true"
+                </select>
+              </Field>
+              <Field label={text.filterLabels.implementationPath}>
+                <select defaultValue={filters.implementationPath ?? ""} name="implementationPath">
+                  <SelectOptions
+                    allLabel={text.filterOptions.allImplementationPaths}
+                    labels={taxonomy.implementationPaths}
+                    values={filterOptions.implementationPaths}
                   />
-                  <span className="toggle-text">{text.filterOptions.includeExpired}</span>
-                </span>
-              </label>
+                </select>
+              </Field>
+              <NumberField
+                defaultValue={filters.minEstimatedValueEur}
+                label={text.filterLabels.minValue}
+                name="minEstimatedValueEur"
+                step={10000}
+              />
+              <NumberField
+                defaultValue={filters.maxEstimatedValueEur}
+                label={text.filterLabels.maxValue}
+                name="maxEstimatedValueEur"
+                step={10000}
+              />
+              <NumberField
+                defaultValue={filters.minQualificationScore}
+                label={text.filterLabels.minQualificationScore}
+                max={100}
+                name="minQualificationScore"
+                step={1}
+              />
+            </div>
+
+            <div className="dock-chips">
+              <OptionChip
+                defaultChecked={filters.licensedArchitectRequired === true}
+                label={text.filterOptions.requireLicensedArchitect}
+                name="licensedArchitectRequired"
+              />
+              <OptionChip
+                defaultChecked={filters.includeExpired === true}
+                label={text.filterOptions.includeExpired}
+                name="includeExpired"
+              />
             </div>
           </div>
         </div>

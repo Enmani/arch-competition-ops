@@ -101,10 +101,19 @@ def _find_existing(
         legacy_id = build_competition_key(
             record.title, record.source_name, record.canonical_deadline()
         )
-        return connection.execute(
+        legacy = connection.execute(
             "SELECT * FROM competitions WHERE id = ? AND (source_id IS NULL OR source_id = ?)",
             (legacy_id, record.source_id),
         ).fetchone()
+        if legacy is not None:
+            return legacy
+    if record.source_url_is_notice:
+        matches = connection.execute(
+            "SELECT * FROM competitions WHERE source_id = ? AND source_url = ? LIMIT 2",
+            (record.source_id, record.source_url),
+        ).fetchall()
+        if len(matches) == 1:
+            return matches[0]
     return None
 
 

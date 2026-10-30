@@ -127,6 +127,7 @@ def collect_doffin_documents(
     publication_date_from: str | None = None,
     fetch_search_json: callable | None = None,
     fetch_detail_json: callable | None = None,
+    include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
     page_size = max(limit * 3, 20)
     documents: list[CollectedSourceDocument] = []
@@ -169,7 +170,9 @@ def collect_doffin_documents(
                 and publication_date < publication_date_from
             ):
                 continue
-            if not title or not _is_relevant_doffin_notice(title, description, cpv_codes):
+            if not include_unclassified and (
+                not title or not _is_relevant_doffin_notice(title, description, cpv_codes)
+            ):
                 continue
 
             page_url = f"https://www.doffin.no/notices/{notice_id}"

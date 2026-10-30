@@ -1,4 +1,6 @@
-/* Design tokens, resets and base typography. */
+/* Design tokens, resets and base typography.
+   Type scale is four steps (0.875 / 1 / 1.25 / 2rem); hierarchy comes from weight and space,
+   not from extra sizes. Surfaces are flat: no shadows, no gradients, only hairline rules. */
 
 :root {
   --bg: oklch(96.8% 0.008 103);
@@ -8,24 +10,27 @@
   --surface-strong: oklch(93.8% 0.01 103);
   --ink: oklch(20% 0.018 103);
   --ink-soft: oklch(42% 0.018 103);
-  --ink-faint: oklch(56% 0.014 103);
+  --ink-faint: oklch(50% 0.014 103);
   --line: oklch(86% 0.009 103);
   --line-strong: oklch(72% 0.015 103);
+  /* The one accent: primary action, keyboard focus and status. Not a decoration colour. */
   --accent: oklch(36% 0.074 151);
   --accent-soft: oklch(93% 0.028 151);
   --danger: oklch(49% 0.125 28);
-  --shadow: 0 12px 40px oklch(20% 0.018 103 / 0.06);
-  --shadow-soft: 0 10px 28px oklch(20% 0.018 103 / 0.08);
   --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in-out-quiet: cubic-bezier(0.65, 0, 0.35, 1);
   --route-fade-duration: 320ms;
-  --topbar-control-h: 1.75rem;
-  --topbar-pad-y: max(0.3rem, env(safe-area-inset-top));
-  --topbar-pad-x: 0.45rem;
-  --dock-summary-h: 2.3rem;
-  --dock-control-h: 2.65rem;
-  --dock-control-px: 0.72rem;
+  --fs-sm: 0.875rem;
+  --fs-md: 1rem;
+  --fs-lg: 1.25rem;
+  --fs-xl: 2rem;
+  --page-gutter: clamp(1.25rem, 4vw, 4rem);
+  --page-max: 112rem;
+  /* One control height everywhere (topbar, dock, forms, buttons); touch devices get 44px. */
+  --control-h: 2.5rem;
+  --control-px: 0.75rem;
+  --topbar-pad-y: max(0.5rem, env(safe-area-inset-top));
   --space-xs: 0.25rem;
   --space-sm: 0.5rem;
   --space-md: 0.75rem;
@@ -38,6 +43,12 @@
   /* Appended after the next/font families so Chinese glyphs do not fall to the OS default. */
   --font-cjk-fallback: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC",
     "Source Han Sans SC";
+}
+
+@media (pointer: coarse) {
+  :root {
+    --control-h: 2.75rem;
+  }
 }
 
 *,
@@ -53,30 +64,12 @@ html {
 body {
   margin: 0;
   min-height: 100vh;
-  background:
-    linear-gradient(180deg, var(--surface) 0%, var(--bg) 46%, var(--bg-alt) 100%);
+  background: var(--bg);
   color: var(--ink);
   font-family: var(--font-sans), var(--font-cjk-fallback), sans-serif;
-  font-size: 1rem;
+  font-size: var(--fs-md);
   line-height: 1.6;
   text-rendering: optimizeLegibility;
-}
-
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  background:
-    repeating-linear-gradient(
-      90deg,
-      transparent 0,
-      transparent calc(100% / 12 - 1px),
-      color-mix(in oklch, var(--line) 62%, transparent) calc(100% / 12 - 1px),
-      color-mix(in oklch, var(--line) 62%, transparent) calc(100% / 12)
-    );
-  opacity: 0.42;
-  pointer-events: none;
 }
 
 a {

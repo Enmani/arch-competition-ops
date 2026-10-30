@@ -44,6 +44,7 @@ def collect_scp_documents(
     limit: int = 20,
     publication_date_from: str | None = None,
     fetch_text: callable | None = None,
+    include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
     csv_text = (fetch_text or _default_fetch_text)(SCP_AVVISI_CSV_URL)
     reader = csv.DictReader(io.StringIO(csv_text))
@@ -59,18 +60,24 @@ def collect_scp_documents(
     for row in reader:
         title = (row.get("descrizione_avviso") or "").strip()
         buyer = (row.get("denominazione_stazione_appaltante") or "").strip()
-        if not title or not is_design_relevant(
-            title,
-            row.get("tipo_avviso"),
-            buyer,
+        if not include_unclassified and (
+            not title
+            or not is_design_relevant(
+                title,
+                row.get("tipo_avviso"),
+                buyer,
+            )
         ):
             continue
         if not _matches_buyer_allowlist(buyer, buyer_allowlist):
             continue
         normalized_title = normalize_text(title)
-        if not has_built_environment_context(title) and not any(
-            marker in normalized_title
-            for marker in ("architett", "progettazione", "maitrise d oeuvre")
+        if not include_unclassified and (
+            not has_built_environment_context(title)
+            and not any(
+                marker in normalized_title
+                for marker in ("architett", "progettazione", "maitrise d oeuvre")
+            )
         ):
             continue
 

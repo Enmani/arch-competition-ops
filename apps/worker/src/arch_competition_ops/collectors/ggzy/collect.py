@@ -142,6 +142,7 @@ def _collect_scored_document(
     record: dict[str, Any],
     *,
     fetch_page: PageFetcher,
+    include_unclassified: bool = False,
 ) -> tuple[int, str, CollectedSourceDocument] | None:
     detail_url = detail_url_from_listing(source, normalize_space(str(record.get("url") or "")))
     detail_html = fetch_page_or_none(detail_url, fetch_page=fetch_page)
@@ -163,7 +164,7 @@ def _collect_scored_document(
         detail_available=detail_html is not None,
         original_category_text=original_category_text,
     )
-    if not is_relevant:
+    if not include_unclassified and not is_relevant:
         return None
 
     payload = _build_listing_payload(
@@ -176,6 +177,8 @@ def _collect_scored_document(
         relevance_score=relevance_score,
         features=features,
     )
+    if include_unclassified:
+        payload["rawNoticeHtml"] = detail_html or ""
     return (
         relevance_score,
         normalize_space(str(record.get("publishTime") or "")) or "",
@@ -195,6 +198,7 @@ def collect_ggzy_documents(
     fetch_detail: PageFetcher | None = None,
     today: date | None = None,
     archive_dir: Path | None = None,
+    include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
     """Collect up to ``limit`` building-design notices.
 
@@ -212,7 +216,13 @@ def collect_ggzy_documents(
     scored_documents: list[tuple[int, str, CollectedSourceDocument]] = []
     with ThreadPoolExecutor(max_workers=DETAIL_FETCH_WORKERS) as executor:
         futures = [
-            executor.submit(_collect_scored_document, source, record, fetch_page=fetch_page)
+            executor.submit(
+                _collect_scored_document,
+                source,
+                record,
+                fetch_page=fetch_page,
+                include_unclassified=include_unclassified,
+            )
             for record in candidates
         ]
         for future in futures:

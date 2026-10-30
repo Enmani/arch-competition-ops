@@ -111,6 +111,7 @@ def collect_anac_documents(
     limit: int = 20,
     publication_date_from: str | None = None,
     fetch_json: callable | None = None,
+    include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
     get_json = fetch_json or _default_fetch_json
     min_publication_date = (
@@ -154,12 +155,15 @@ def collect_anac_documents(
                 title = flattened_items[0].get("descrizione")
             title = str(title or "").strip()
             summary = str(metadata.get("descrizione") or "").strip() or title
-            if not title or not is_design_relevant(title, summary):
+            if not include_unclassified and (not title or not is_design_relevant(title, summary)):
                 continue
             normalized_title = normalize_text(title)
-            if not has_built_environment_context(title, summary) and not any(
-                marker in normalized_title
-                for marker in ("architett", "archeolog", "restauro", "paesagg")
+            if not include_unclassified and (
+                not has_built_environment_context(title, summary)
+                and not any(
+                    marker in normalized_title
+                    for marker in ("architett", "archeolog", "restauro", "paesagg")
+                )
             ):
                 continue
 

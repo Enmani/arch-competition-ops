@@ -64,6 +64,14 @@ export const buildWhere = (query: NormalizedQuery, clock: Clock) => {
   const conditions: string[] = [];
   const parameters: SqlParameter[] = [];
   const today = todayIso(clock);
+  // Only current AI exclusions affect discovery; canonical facts and human decisions survive.
+  conditions.push(`NOT EXISTS (
+    SELECT 1 FROM ai_screening_results ai
+    WHERE ai.competition_id = competitions.id
+      AND ai.source_updated_at = competitions.updated_at
+      AND ai.decision = 'exclude'
+      AND competitions.status NOT IN ('shortlisted', 'verified')
+  )`);
 
   if (query.search) {
     const clauses: string[] = [];

@@ -4,79 +4,68 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: var(--dock-control-h);
-  min-height: var(--dock-control-h);
-  padding: 0 0.85rem;
+  height: var(--control-h);
+  min-height: var(--control-h);
+  padding: 0 var(--space-lg);
   border: 1px solid var(--line-strong);
-  background: var(--surface);
+  background: transparent;
   color: var(--ink);
-  font-size: 0.69rem;
+  font-size: var(--fs-sm);
   line-height: 1;
   text-align: center;
   vertical-align: middle;
+  white-space: nowrap;
   transition:
     background-color 180ms var(--ease-out-quart),
     color 180ms var(--ease-out-quart),
-    border-color 180ms var(--ease-out-quart),
-    transform 180ms var(--ease-out-quart),
-    box-shadow 180ms var(--ease-out-quart);
+    border-color 180ms var(--ease-out-quart);
 }
 
 .button.primary {
   border-color: var(--accent);
   background: var(--accent);
   color: var(--surface);
+  font-weight: 600;
 }
 
-.button:disabled {
-  cursor: not-allowed;
-  opacity: 0.52;
-  transform: none;
-}
-
+.button:disabled,
 .button[aria-disabled="true"] {
   cursor: not-allowed;
   opacity: 0.52;
-  pointer-events: none;
-  transform: none;
 }
 
-.button.secondary:hover,
-.inline-link:hover {
-  color: var(--accent);
-  border-color: var(--accent);
-  background: color-mix(in oklch, var(--accent-soft) 55%, var(--surface) 45%);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-soft);
+.button[aria-disabled="true"] {
+  pointer-events: none;
+}
+
+.button.secondary:hover {
+  border-color: var(--ink);
 }
 
 .button.primary:hover {
   border-color: color-mix(in oklch, var(--accent) 84%, var(--ink) 16%);
-  background: color-mix(in oklch, var(--accent) 90%, var(--ink) 10%);
-  color: var(--surface);
-  transform: translateY(-1px);
-  box-shadow: 0 12px 26px oklch(36% 0.074 151 / 0.16);
+  background: color-mix(in oklch, var(--accent) 84%, var(--ink) 16%);
 }
 
 .button:focus-visible,
-.discover-dock-summary:focus-visible,
 .field-stack input:focus-visible:not(.search-input),
 .field-stack select:focus-visible,
 .search-shell:focus-within,
 .nav-link:focus-visible,
 .locale-trigger:focus-visible,
-.toggle-copy:focus-within,
 .auth-field input:focus-visible {
   outline: var(--focus-ring);
   outline-offset: var(--focus-ring-offset);
-  border-color: color-mix(in oklch, var(--accent) 65%, var(--line-strong) 35%);
 }
 
+/* A text link inside running copy or a message. */
 .inline-link {
-  display: inline-flex;
-  align-items: center;
-  min-height: 2.35rem;
-  padding: 0 0.68rem;
-  border: 1px solid var(--line-strong);
-  font-size: 0.72rem;
+  color: var(--ink);
+  font-size: var(--fs-sm);
+  text-decoration: underline;
+  text-underline-offset: 0.25em;
+}
+
+.inline-link:hover {
+  color: var(--accent);
 }

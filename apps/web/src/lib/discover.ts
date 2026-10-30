@@ -162,3 +162,12 @@ export const countActiveDiscoverFilters = (filters: StoredOpportunityQuery) => {
 
   return total;
 };
+
+/** Filters that live inside the collapsible panel (the bar's search, country and sort are visible anyway). */
+export const countAdvancedDiscoverFilters = (filters: StoredOpportunityQuery) =>
+  countActiveDiscoverFilters({
+    ...filters,
+    jurisdiction: undefined,
+    search: undefined,
+    sort: undefined,
+  });

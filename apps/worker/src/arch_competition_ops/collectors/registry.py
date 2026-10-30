@@ -11,6 +11,7 @@ from arch_competition_ops.collectors.canadabuys import collect_canadabuys_docume
 from arch_competition_ops.collectors.competitions_archi import collect_competitions_archi_documents
 from arch_competition_ops.collectors.contracts_finder import collect_contracts_finder_documents
 from arch_competition_ops.collectors.doffin import collect_doffin_documents
+from arch_competition_ops.collectors.generic_pages import collect_generic_notice_pages
 from arch_competition_ops.collectors.generic_rss import collect_generic_rss_documents
 from arch_competition_ops.collectors.ggzy import collect_ggzy_documents
 from arch_competition_ops.collectors.municipal import collect_municipal_buyer_profile_documents
@@ -37,6 +38,7 @@ COLLECTORS: dict[str, Collector] = {
     "municipal_buyer_profiles": collect_municipal_buyer_profile_documents,
     "competitions_archi_feed": collect_competitions_archi_documents,
     "generic_rss_feed": collect_generic_rss_documents,
+    "generic_notice_pages": collect_generic_notice_pages,
     "canadabuys_csv": collect_canadabuys_documents,
     "contracts_finder_ocds": collect_contracts_finder_documents,
     "doffin_search_api": collect_doffin_documents,
@@ -57,6 +59,7 @@ def collect_source_documents(
     limit: int = 20,
     publication_date_from: str | None = None,
     archive_dir: Path | None = None,
+    include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
     """Run the collector family declared by ``source.collector``.
 
@@ -76,4 +79,6 @@ def collect_source_documents(
     }
     if archive_dir is not None and "archive_dir" in inspect.signature(collector).parameters:
         options["archive_dir"] = archive_dir
+    if "include_unclassified" in inspect.signature(collector).parameters:
+        options["include_unclassified"] = include_unclassified
     return collector(source, **options)

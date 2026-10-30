@@ -52,6 +52,13 @@ export const SYNC_TABLES = Object.freeze([
     conflictGuard: null,
   }),
   Object.freeze({
+    name: "ai_screening_results",
+    primaryKey: "competition_id",
+    rowFilter: null,
+    updateColumns: null,
+    conflictGuard: null,
+  }),
+  Object.freeze({
     name: "source_health",
     primaryKey: "source_id",
     rowFilter: null,

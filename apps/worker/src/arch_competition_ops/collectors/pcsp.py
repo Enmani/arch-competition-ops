@@ -198,6 +198,7 @@ def collect_pcsp_documents(
     limit: int = 20,
     publication_date_from: str | None = None,
     fetch_text: callable | None = None,
+    include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
     fetcher = fetch_text or _default_fetch_text
     feed_xml = fetcher(source.base_url)
@@ -233,7 +234,9 @@ def collect_pcsp_documents(
         detail_fields = _extract_detail_fields(detail_html)
         detail_text = " ".join(detail_fields.values())
         cpv_codes = extract_cpv_codes(_pick_value(detail_fields, "CPV", "cpv_code"))
-        if not _is_relevant_pcsp_notice(title, summary, detail_text, cpv_codes):
+        if not include_unclassified and (
+            not _is_relevant_pcsp_notice(title, summary, detail_text, cpv_codes)
+        ):
             if inspected >= max_candidates:
                 break
             continue

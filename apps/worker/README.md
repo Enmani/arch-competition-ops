@@ -2,6 +2,10 @@
 
 Python worker for source ingestion, normalization, verification, and storage.
 
+Optional OpenAI extraction and screening use Luna/high, a permissive Decisions API shortlist,
+and source-grounded field extraction. Setup, model selection and budget configuration are in
+[Setup](../../docs/SETUP.md#openai-extraction-and-screening).
+
 Run from the repository root (every command is a subcommand of `arch-competition-ops`; there are no
 separate scripts):
 

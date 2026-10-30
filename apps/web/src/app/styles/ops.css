@@ -66,10 +66,10 @@
 }
 
 .ops-review-actions .button {
-  height: var(--topbar-control-h);
-  min-height: var(--topbar-control-h);
+  height: var(--control-h);
+  min-height: var(--control-h);
   padding: 0 0.72rem;
-  font-size: 0.64rem;
+  font-size: var(--fs-sm);
 }
 
 .ops-review-actions .button:disabled {

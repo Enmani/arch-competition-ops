@@ -91,6 +91,7 @@ def collect_canadabuys_documents(
     limit: int = 20,
     publication_date_from: str | None = None,
     fetch_text: callable | None = None,
+    include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
     csv_text = (fetch_text or _default_fetch_text)(source.base_url)
     reader = csv.DictReader(io.StringIO(csv_text))
@@ -120,11 +121,14 @@ def collect_canadabuys_documents(
 
         if publication_date_from and publication_date and publication_date < publication_date_from:
             continue
-        if not title or not _is_relevant_canadabuys_notice(
-            title,
-            summary,
-            procurement_category,
-            unspsc_description,
+        if not include_unclassified and (
+            not title
+            or not _is_relevant_canadabuys_notice(
+                title,
+                summary,
+                procurement_category,
+                unspsc_description,
+            )
         ):
             continue
 

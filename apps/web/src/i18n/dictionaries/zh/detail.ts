@@ -1,9 +1,7 @@
 export const detail = {
-  eyebrow: "详情",
   keyFacts: "事实",
   evidenceActions: "证据和链接",
   sourceNote: "备注",
-  links: "链接",
   fields: {
     authority: "发布机构",
     opportunityType: "机会类型",

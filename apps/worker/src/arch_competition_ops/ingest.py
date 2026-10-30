@@ -34,6 +34,8 @@ from arch_competition_ops.normalizers.competition import (
     compute_qualification_score,
 )
 from arch_competition_ops.review_queue import refresh_review_queue
+from arch_competition_ops.screening.service import DocumentAssessment, assess_document
+from arch_competition_ops.screening.triage import triage_documents
 from arch_competition_ops.settings import Settings
 from arch_competition_ops.storage import (
     competition_is_stale_expired,
@@ -42,6 +44,7 @@ from arch_competition_ops.storage import (
     record_source_run,
     upsert_competitions,
 )
+from arch_competition_ops.storage.screening import upsert_screened_competitions
 from arch_competition_ops.targeting import load_targeting_filter
 from arch_competition_ops.verifiers import verify_record
 
@@ -169,24 +172,67 @@ def ingest_source(
     try:
         documents = collect_source_documents(
             source,
-            limit=limit,
+            limit=(
+                min(limit * settings.ai_candidate_multiplier, 100)
+                if settings.ai_enabled and settings.ai_triage_enabled
+                else limit
+            ),
             publication_date_from=publication_date_from,
             archive_dir=settings.resolve_path(settings.html_archive_dir),
+            include_unclassified=settings.ai_enabled,
         )
     except Exception as exc:
         record_run("failed", last_error=str(exc))
         raise IngestError(source.source_id, "collection", exc) from exc
     result.document_count = len(documents)
+    if settings.ai_enabled and settings.ai_triage_enabled:
+        try:
+            triage = triage_documents(settings, documents, limit=limit)
+            documents = triage.documents
+            result.filtered_out += triage.excluded
+            result.notes.append(
+                f"AI candidate triage: excluded={triage.excluded}, deferred={triage.deferred}, "
+                f"cached={triage.cached}, estimated_cost_usd={triage.cost_usd:.6f}"
+            )
+        except (ValueError, OSError, RuntimeError) as exc:
+            # A failed preliminary decision cannot justify discarding a candidate.
+            documents = documents[:limit]
+            result.notes.append(f"AI candidate triage unavailable; candidates retained: {exc}")
 
     records: list[CompetitionRecord] = []
+    assessments: list[DocumentAssessment | None] = []
     last_error: str | None = None
     try:
         for document in documents:
             stage = "parse"
             try:
-                record = parse_source_payload(
-                    source, document.payload, source_url=document.source_url
-                )
+                assessment = None
+                if settings.ai_enabled:
+                    stage = "ai_extract_and_screen"
+                    assessment = assess_document(
+                        settings,
+                        source=source,
+                        source_url=document.source_url,
+                        payload=document.payload,
+                    )
+                    record = assessment.record
+                    # Retain stable upstream identity when the source adapter provides it.
+                    try:
+                        parsed = parse_source_payload(
+                            source,
+                            document.payload,
+                            source_url=document.source_url,
+                        )
+                        record.official_notice_id = parsed.official_notice_id
+                        record.cpv_codes = parsed.cpv_codes
+                    except (ValueError, KeyError, TypeError):
+                        pass  # AI has already produced a validated record from raw source text.
+                else:
+                    record = parse_source_payload(
+                        source,
+                        document.payload,
+                        source_url=document.source_url,
+                    )
                 if competition_is_stale_expired(record, retention_days=retention_days):
                     result.skipped_expired += 1
                     continue
@@ -201,7 +247,10 @@ def ingest_source(
                 if competition_is_stale_expired(record, retention_days=retention_days):
                     result.skipped_expired += 1
                     continue
-                if (keyword := targeting.excluded_by(record)) is not None:
+                if (
+                    not settings.ai_enabled
+                    and (keyword := targeting.excluded_by(record)) is not None
+                ):
                     logger.info("Skipping %r: negative keyword %r", record.title, keyword)
                     result.filtered_out += 1
                     continue
@@ -222,11 +271,26 @@ def ingest_source(
                 last_error = str(exc)
                 continue
             records.append(record)
+            assessments.append(assessment)
     finally:
         geocoder.flush()
 
     try:
-        result.ingested_ids = upsert_competitions(db_path, records)
+        if settings.ai_enabled:
+            publications = [
+                {
+                    "request_id": a.request_id,
+                    "model": a.model,
+                    "decision": a.decision.decision,
+                    "relevance_score": a.decision.relevance_score,
+                    "result_json": a.decision.model_dump_json(),
+                }
+                for a in assessments
+                if a is not None
+            ]
+            result.ingested_ids = upsert_screened_competitions(db_path, records, publications)
+        else:
+            result.ingested_ids = upsert_competitions(db_path, records)
     except Exception as exc:
         record_run("failed", last_error=str(exc))
         raise IngestError(source.source_id, "database write", exc) from exc
@@ -243,6 +307,13 @@ def ingest_source(
     )
 
     if result.ingested_ids:
+        if settings.ai_enabled:
+            result.notes.append(
+                f"AI {settings.ai_model}/{settings.ai_reasoning_effort}: "
+                f"assessed={len(assessments)}, "
+                f"cached={sum(bool(a and a.cached) for a in assessments)}, "
+                f"estimated_cost_usd={sum(a.cost_usd for a in assessments if a):.6f}"
+            )
         result.preview = prewarm_opportunity_card_previews(
             settings, competition_ids=result.ingested_ids
         )

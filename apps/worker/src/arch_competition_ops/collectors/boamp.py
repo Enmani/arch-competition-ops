@@ -83,6 +83,7 @@ def collect_boamp_documents(
     limit: int = 20,
     publication_date_from: str | None = None,
     fetch_json: callable | None = None,
+    include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
     query_limit = 100
     url = build_url(
@@ -121,13 +122,17 @@ def collect_boamp_documents(
         nature_label = str(item.get("nature_libelle") or "").lower()
 
         normalized_title = title.lower()
-        if "résultat" in nature_label or "resultat" in nature_label:
+        if not include_unclassified and ("résultat" in nature_label or "resultat" in nature_label):
             continue
-        if not title or not is_design_relevant(title, descriptors):
+        if not include_unclassified and (not title or not is_design_relevant(title, descriptors)):
             continue
-        if not has_built_environment_context(title, descriptors) and not any(
-            marker in normalized_title
-            for marker in ("architect", "architett", "maitrise d'oeuvre", "maîtrise d'oeuvre")
+        if (
+            not include_unclassified
+            and not has_built_environment_context(title, descriptors)
+            and not any(
+                marker in normalized_title
+                for marker in ("architect", "architett", "maitrise d'oeuvre", "maîtrise d'oeuvre")
+            )
         ):
             continue
 
@@ -144,6 +149,7 @@ def collect_boamp_documents(
                 "cpv": cpv_codes,
                 "summary": descriptors or None,
                 "officialUrl": item.get("url"),
+                "rawNotice": item,
             },
             ensure_ascii=False,
         )

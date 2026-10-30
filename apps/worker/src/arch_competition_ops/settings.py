@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
-from pydantic import Field
+from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+DEFAULT_AI_SKILL = Path("config/skills/screen-architecture-opportunities/SKILL.md")
 
 
 class Settings(BaseSettings):
@@ -33,6 +36,25 @@ class Settings(BaseSettings):
         Path("artifacts") / "automation" / "expired-competition-cleanup-state.json"
     )
     ingest_lock: Path = Path("artifacts") / "automation" / "ingest.lock"
+
+    openai_api_key: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias=AliasChoices("OPENAI_API_KEY", "ARCH_COMPETITION_OPS_OPENAI_API_KEY"),
+        exclude=True,
+    )
+    ai_enabled: bool = False
+    ai_model: str = "gpt-6-luna"
+    ai_reasoning_effort: Literal["low", "medium", "high", "xhigh", "max"] = "high"
+    ai_fetch_details: bool = True
+    ai_triage_enabled: bool = True
+    ai_candidate_multiplier: int = Field(default=5, ge=1, le=10)
+    ai_triage_exclude_threshold: float = Field(default=0.98, ge=0.8, le=1)
+    ai_daily_budget_usd: float = Field(default=1, ge=0, allow_inf_nan=False)
+    ai_preferences: Path = DEFAULT_AI_SKILL
+    ai_monthly_budget_usd: float = Field(default=31, ge=0, allow_inf_nan=False)
+    ai_max_output_tokens: int = Field(default=8192, ge=512, le=16384)
+    ai_max_input_chars: int = Field(default=30000, ge=1000, le=100000)
+    ai_timeout_seconds: float = Field(default=120, gt=0, le=300, allow_inf_nan=False)
 
     # Opportunity card previews are generated offline by packages/previews (a Node CLI). When
     # ARCH_PREVIEW_PREWARM=1 the worker runs that CLI, with fixed arguments and no shell, after

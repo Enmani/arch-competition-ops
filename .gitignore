@@ -35,6 +35,7 @@ data/competitions.sqlite
 *.sqlite-wal
 *.sqlite-shm
 *.sqlite-journal
+*.ai.lock
 
 # Runtime outputs (see AGENTS.md rule 6). Directories keep a .gitkeep.
 # `dir/*` plus `!.gitkeep` is used because git cannot re-include a file

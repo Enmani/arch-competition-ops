@@ -52,6 +52,9 @@ class CompetitionRecord(BaseModel):
     # Project prose from the source. Transient: used for classification and keyword
     # filtering, never written to the database.
     description: str | None = Field(default=None, exclude=True)
+    # Only adapters whose contract guarantees one notice per URL may enable URL identity.
+    # Listing/API-root URLs can name many opportunities and must never be merged on URL alone.
+    source_url_is_notice: bool = Field(default=False, exclude=True)
     brief_pdf_url: str | None = None
     documents_portal_url: str | None = None
     extraction_confidence: float = Field(default=0.5, ge=0.0, le=1.0)

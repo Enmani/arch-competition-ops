@@ -1,7 +1,7 @@
 ---
 title: Arch Competition Ops for Codex
 status: done
-updated_at: 2026-10-21
+updated_at: 2026-10-30
 related_docs:
   - docs/AI_CONSTRAINTS.md
   - docs/AGENTS.md
@@ -24,6 +24,7 @@ This repository is a competition-intelligence monorepo. Agents should favor evid
 - `vision.md`: product vision and top-level direction
 - `config/sources.yml`: canonical source registry
 - `config/filters.yml`: user targeting preferences
+- `config/skills/screen-architecture-opportunities/SKILL.md`: shared AI screening judgment
 - `config/taxonomy.yml`: allowed labels and controlled vocabulary
 - `data/competitions.sqlite`: canonical structured opportunity records
 - `docs/AI_CONSTRAINTS.md`: frontend, i18n, routing and data-access detail

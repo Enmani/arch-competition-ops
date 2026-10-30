@@ -9,6 +9,7 @@ description = "Local-first architecture competition discovery and verification w
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+  "openai>=2,<3",
   "pydantic>=2.11.0,<3",
   "pydantic-settings>=2.6.0,<3",
   "PyYAML>=6.0.2,<7",
@@ -37,6 +38,8 @@ packages = ["apps/worker/src/arch_competition_ops"]
 # The wheel gets a copy that normalizers.competition falls back to outside a checkout.
 [tool.hatch.build.targets.wheel.force-include]
 "config/procedure-type-registry.json" = "arch_competition_ops/_bundled/procedure-type-registry.json"
+# The deployed screening skill is generated from its single maintained repository source.
+"config/skills/screen-architecture-opportunities/SKILL.md" = "arch_competition_ops/_bundled/screen-architecture-opportunities/SKILL.md"
 
 [tool.pytest.ini_options]
 pythonpath = ["apps/worker/src"]

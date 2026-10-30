@@ -1,7 +1,7 @@
 ---
 title: Architecture
 status: done
-updated_at: 2026-10-21
+updated_at: 2026-10-30
 related_docs:
   - vision.md
   - AGENTS.md
@@ -65,6 +65,7 @@ Storage, authentication and the API contract are specified in `docs/structures/2
 - `http/` the single HTTP client: retries for GET, per-host rate limit, size cap, charset detection, SSRF guards, optional raw-response archive under `artifacts/html`.
 - `storage/` SQLite connection, schema mirror, field-level merge upsert (`merge.py`), run history, review queue.
 - `postprocess/` source-specific maintenance tasks registered by `source_id` (ANAC, GETS), so core modules stay source-agnostic.
+- `screening/` calls the OpenAI Responses API for source-grounded field extraction and targeting decisions. With AI enabled, collection bypasses client-side relevance gates and the worker uses shared AI extraction. A source-specific parser retains upstream notice ids and CPV identifiers. Portal search queries, pagination, authentication and transport remain with collectors.
 - `locking.py` OS-level lock that serializes scheduled batches; `clock.py` the single clock, overridable with `ARCH_COMPETITION_TODAY`.
 - `ingest.py`, `automation.py`, `maintenance.py`, `diagnostics.py`, `cli.py` the pipeline, batches, clean-up, health checks and command line.
 
@@ -79,6 +80,20 @@ Fee, currency, eligibility, identity and merge rules are in `docs/DATA_CONTRACT.
 ## Qualification
 
 `qualification_score` is a professional viability score, not a popularity score. Positive signals: an official notice, an explicit authority and procedure type, a downstream implementation route, architect qualification required, a visible budget and an available brief. Negative signals: participation fees with no implementation path, student-only or open-to-all calls, no identifiable authority or notice id, and rights-heavy publicity contests. The score is computed in the worker (`normalizers/competition.py`) and only displayed by the web app.
+
+## AI Extraction And Screening
+
+AI mode is enabled by `ARCH_COMPETITION_OPS_AI_ENABLED=1`. The default is `gpt-6-luna` with `high` reasoning. The existing source registry and `config/filters.yml` remain in use. `config/skills/screen-architecture-opportunities/SKILL.md` is the shared judgment skill for both AI stages: assess the advertised deliverable, current participation and meaningful uncertainty. Its repository copy is bundled into the Python wheel at build time so backend deployments need no local user-profile files. A missing custom skill is an error. `generic_notice_pages` accepts configured notice URLs without site-specific parsing. API listing records are supplemented with the linked notice page where accessible.
+
+An assessment returns source-language fields with exact quotations, plus a bilingual recommendation: `recommend`, `exclude` or `needs_review`. The extraction boundary checks quotations, supplied URLs, monetary values/currency, date consistency and allowed taxonomy labels. Unknown fields remain empty. Quotes and unresolved claims are retained in `evidence_note`; AI extraction still passes through verification and geocoding. Linked PDFs are not read by this path.
+
+Candidate retrieval is permissive. The worker collects up to five times the per-source extraction limit (capped at 100), then asks Luna's Decisions API to choose `keep`, `exclude` or `uncertain`. Only `exclude` with confidence at or above the configurable 0.98 threshold removes a candidate; missing/refused answers keep it. Confidence is an uncalibrated model estimate, not a measured error probability. `keep` candidates rank ahead of uncertain ones. Survivors beyond the extraction limit are counted as deferred. TED's AI query defaults to CPV `71*`; a source's `search_query` can override it. Other portal search scopes, allowlists and transport limits still apply.
+
+Success means a source-grounded title and usable candidate record, not complete bid eligibility. Missing price/address/qualification fields do not invalidate a record. Unsupported individual fields are omitted, unsupported decision quotes downgrade the recommendation to `needs_review`, and source casing is restored in quotations. Malformed/incomplete responses, API failures and a missing supported title remain failures. `recommend` means worth further review. Source facts and their published assessment are written atomically to preserve the source-revision check.
+
+`ai_screening_runs` is a local ledger and exact-input cache. The worker reserves a conservative cost estimate before a request under the shared database's AI lock; ambiguous network outcomes retain their reservation. Automatic paid retries are disabled. The default estimated limits are USD 1 per UTC day and USD 31 per UTC calendar month, including other models using the same database. These estimates ignore cache discounts and are not the organization's invoice or credit balance.
+
+`ai_screening_results` is the latest published assessment per opportunity and is exported to D1. Discovery hides `exclude` only while its source revision matches the record; `shortlisted` and `verified` human statuses remain visible. Detail and watchlist lookups keep access to the record. The ledger, full prompts and API key are not exported. A failed assessment is reported as a document failure rather than silently substituting rule-based extraction.
 
 ## Web Surface
 

@@ -13,6 +13,8 @@ regions:
   - new_zealand
   - netherlands
   - norway
+  - poland
+  - sweden
   - portugal
   - belgium
   - spain
@@ -29,6 +31,8 @@ languages:
   - fr
   - de
   - nl
+  - pl
+  - sv
   - "no"
   - pt
   - ca

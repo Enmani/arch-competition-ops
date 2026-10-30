@@ -88,6 +88,7 @@ def collect_municipal_buyer_profile_documents(
     profile_urls: list[str] | None = None,
     fetch_text: callable | None = None,
     post_text: callable | None = None,
+    include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
     resolved_urls = resolve_profile_urls(source, profile_urls)
     if not resolved_urls:
@@ -115,6 +116,7 @@ def collect_municipal_buyer_profile_documents(
                     limit=remaining,
                     publication_date_from=publication_date_from,
                     fetch_text=get_text,
+                    include_unclassified=include_unclassified,
                 )
             )
             continue
@@ -132,6 +134,7 @@ def collect_municipal_buyer_profile_documents(
                     publication_date_from=publication_date_from,
                     fetch_text=get_text,
                     post_text=post_listing,
+                    include_unclassified=include_unclassified,
                 )
             )
             continue
@@ -146,6 +149,7 @@ def collect_municipal_buyer_profile_documents(
                     limit=remaining,
                     publication_date_from=publication_date_from,
                     fetch_text=get_text,
+                    include_unclassified=include_unclassified,
                 )
             )
             continue
