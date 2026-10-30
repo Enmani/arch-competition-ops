@@ -7,6 +7,7 @@ from support import build_source
 
 from arch_competition_ops.collectors.anac import collect_anac_documents
 from arch_competition_ops.collectors.ggzy import collect_ggzy_documents
+from arch_competition_ops.collectors.simap import collect_simap_documents
 from arch_competition_ops.collectors.tenderned import collect_tenderned_documents
 
 
@@ -67,6 +68,41 @@ def test_italy_plural_templates_and_raw_record_reach_the_model():
     payload = json.loads(documents[0].payload)
     assert payload["title"] == "Progettazione di una scuola"
     assert payload["rawNotice"] == row
+
+
+def test_swiss_ai_search_keeps_required_protocol_filters_but_includes_services():
+    from urllib.parse import parse_qs, urlsplit
+
+    source = build_source(
+        "ch",
+        name="Swiss",
+        jurisdiction="switzerland",
+        base_url="https://www.simap.ch/",
+        scan_method="api",
+        extractor="generic_listing_html",
+        collector="simap_project_api",
+    )
+
+    def fetcher(url):
+        if "project-search" in url:
+            assert "service" in parse_qs(urlsplit(url).query)["projectSubTypes"]
+            return {
+                "projects": [
+                    {
+                        "id": "p",
+                        "pubType": "tender",
+                        "title": {"en": "School design"},
+                        "publicationId": "n",
+                    }
+                ]
+            }
+        if "project-header" in url:
+            return {"latestPublication": {"id": "n"}}
+        return {"project-info": {"title": {"en": "School design"}}}
+
+    docs = collect_simap_documents(source, limit=1, include_unclassified=True, fetch_json=fetcher)
+    assert len(docs) == 1
+    assert json.loads(docs[0].payload)["rawNotice"]["listing"]["pubType"] == "tender"
 
 
 def test_netherlands_ai_mode_retains_unknown_scope_and_missing_deadline():

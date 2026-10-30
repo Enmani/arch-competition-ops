@@ -26,6 +26,18 @@ ALLOWED_PROJECT_SUBTYPES = (
     "project_competition",
     "overall_performance_competition",
 )
+# The public search API rejects a query containing only lang. Use every subtype exposed
+# by its public search UI in AI mode; these are protocol values, not relevance judgments.
+ALL_PROJECT_SUBTYPES = (
+    "construction",
+    "service",
+    "supply",
+    *ALLOWED_PROJECT_SUBTYPES,
+    "idea_competition",
+    "project_study",
+    "idea_study",
+    "overall_performance_study",
+)
 
 
 def _default_fetch_json(url: str) -> Any:
@@ -147,9 +159,12 @@ def collect_simap_documents(
     documents: list[CollectedSourceDocument] = []
 
     while len(documents) < limit:
-        params: dict[str, Any] = {"lang": ["en"]}
-        if not include_unclassified:
-            params["projectSubTypes"] = list(ALLOWED_PROJECT_SUBTYPES)
+        params: dict[str, Any] = {
+            "lang": ["en"],
+            "projectSubTypes": list(
+                ALL_PROJECT_SUBTYPES if include_unclassified else ALLOWED_PROJECT_SUBTYPES
+            ),
+        }
         if last_item:
             params["lastItem"] = last_item
 

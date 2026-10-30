@@ -27,10 +27,13 @@ def notice_evidence(payload: str) -> str:
         return payload
     if not isinstance(value, dict):
         return payload
+    originals = []
     if value.get("rawNoticeHtml"):
-        return str(value["rawNoticeHtml"]) + stripped[end:]
+        originals.append(str(value["rawNoticeHtml"]))
     if value.get("rawNotice"):
-        return json.dumps(value["rawNotice"], ensure_ascii=False) + stripped[end:]
+        originals.append(json.dumps(value["rawNotice"], ensure_ascii=False))
+    if originals:
+        return "\n\n".join(originals) + stripped[end:]
     return (
         json.dumps(
             {key: item for key, item in value.items() if key not in _DERIVED_KEYS},

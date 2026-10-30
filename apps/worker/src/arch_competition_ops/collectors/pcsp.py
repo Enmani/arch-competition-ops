@@ -265,6 +265,11 @@ def collect_pcsp_documents(
                 "noticeId": notice_id,
                 "deadline": deadline,
                 **({"rawNoticeHtml": detail_html} if include_unclassified else {}),
+                **(
+                    {"rawNotice": ET.tostring(entry, encoding="unicode")}
+                    if include_unclassified
+                    else {}
+                ),
                 "summary": strip_html(summary) or detail_text or title,
                 "officialUrl": detail_url,
                 "cpv": cpv_codes,
