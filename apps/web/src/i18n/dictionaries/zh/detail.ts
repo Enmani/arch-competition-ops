@@ -1,5 +1,10 @@
 export const detail = {
   noticeDetails: "参与条款摘录",
+  openMap: "查看地图",
+  locationAccuracy: "定位范围",
+  countryLocation: "国家范围",
+  areaLocation: "城市或地区范围",
+  mappedLocation: "公告地点的地图查询结果",
   noticeDetailsNote: "AI 从公告中提取的原文，请通过来源链接核对。",
   noticeDetailCategories: {
     timeline: "时间安排",

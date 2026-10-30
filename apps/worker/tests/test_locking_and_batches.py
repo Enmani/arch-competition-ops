@@ -146,6 +146,31 @@ def test_threads_cannot_hold_the_lock_at_once(tmp_path) -> None:
 # -- batches --------------------------------------------------------------------------------------
 
 
+def test_ai_sources_overlap_but_share_the_batch_lock(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from arch_competition_ops.automation import AutomationBatchDefinition
+
+    barrier = threading.Barrier(2)
+    settings = Settings(root=tmp_path, ai_enabled=True, _env_file=None)
+    sources = [SimpleNamespace(source_id=name) for name in ["first", "second"]]
+    monkeypatch.setattr(
+        "arch_competition_ops.automation.resolve_batch_sources",
+        lambda *a, **k: (AutomationBatchDefinition(batch_id="all", max_workers=2), sources),
+    )
+
+    def ingest(s, *, source_id, **kwargs):
+        assert is_locked(s.resolve_path(s.ingest_lock))
+        barrier.wait(timeout=3)
+        return IngestResult(source_id=source_id, status="success", document_count=5, deferred=2)
+
+    monkeypatch.setattr("arch_competition_ops.automation.ingest_source", ingest)
+    result = run_automation_batch(settings, batch_id="all")
+    assert not result.has_failures
+    assert [r.source_id for r in result.succeeded] == ["first", "second"]
+    assert all(r.document_count == 5 and r.deferred == 2 for r in result.succeeded)
+
+
 def _write_batch_config(root: Path) -> None:
     write_source_catalog(root, "ted_design_notices")
     (root / "config" / "automation.yml").write_text(

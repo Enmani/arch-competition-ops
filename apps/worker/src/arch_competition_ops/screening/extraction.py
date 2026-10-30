@@ -8,6 +8,7 @@ from datetime import date
 from urllib.parse import urlsplit
 
 from arch_competition_ops.config_loader import load_taxonomy
+from arch_competition_ops.location import get_country_label_for_jurisdiction
 from arch_competition_ops.models import CompetitionRecord, SourceDefinition
 from arch_competition_ops.normalizers.dates import parse_date, slash_order_for_jurisdiction
 from arch_competition_ops.normalizers.money import MONEY_NUMBER_PATTERN, parse_money_number
@@ -123,6 +124,7 @@ def extract_record(
         updates[field] = converted
         evidence_notes.append(f"AI {field} [{source_url}]: {quote}")
     title = updates.pop("title", "")
+    place_components = [updates.pop("location_city", None), updates.pop("location_region", None)]
     if not title:
         raise ValueError("AI could not extract a source-grounded project title")
     record = CompetitionRecord(
@@ -136,6 +138,17 @@ def extract_record(
         evidence_level="official_notice" if source.source_tier == "primary" else "secondary",
     )
     record = CompetitionRecord.model_validate({**record.model_dump(), **updates})
+    record.geocode_queries = list(
+        dict.fromkeys(
+            filter(
+                None,
+                [
+                    *place_components,
+                    get_country_label_for_jurisdiction(record.jurisdiction),
+                ],
+            )
+        )
+    )
     record.evidence_note = (
         "\n".join(
             filter(

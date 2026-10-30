@@ -2,6 +2,11 @@ import type { AppDictionary } from "../types";
 
 export const detail = {
   noticeDetails: "Participation excerpts",
+  openMap: "View map",
+  locationAccuracy: "Location precision",
+  countryLocation: "Country level",
+  areaLocation: "City or region level",
+  mappedLocation: "Map lookup for the stated project location",
   noticeDetailsNote: "Source excerpts extracted by AI. Check them against the linked notice.",
   noticeDetailCategories: {
     timeline: "Schedule",

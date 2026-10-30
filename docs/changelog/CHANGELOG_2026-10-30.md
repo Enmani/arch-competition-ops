@@ -108,6 +108,8 @@ Ship the current interface and screening behavior together on main, using the la
 - Added the registry-driven `all_enabled` batch and explicit collected, excluded and deferred counts; budget deferrals do not masquerade as content rejection.
 - Extracted original participation clauses in the same request and exposed validated, current-revision excerpts on localized detail pages. Added source-backed country, notice id and language extraction.
 - Raised output headroom to 12,288 tokens; normal limits remain USD 1 per UTC day and USD 31 per month.
+- Initialized the procedure registry at the ingestion boundary and bounded concurrent AI source work to three, retaining transactional shared-budget checks.
+- Preserved Chinese place names and long addresses; added source-backed place components, coarser geocoding fallbacks and a map link with precision labels.
 
 ### Why
 
@@ -117,6 +119,7 @@ Let the model read unfamiliar notices before making a topical judgment, while pr
 
 - Focused worker tests cover broad China/Dutch intake, source-backed clauses and existing screening/batch behavior.
 - Storage tests verify excerpt validation and stale-revision suppression.
+- Worker tests verify concurrent reservations cannot exceed the daily ceiling, sources overlap under one batch lock, and Chinese/city fallback geocoding preserves the source address.
 - Live all-source execution and complete repository checks are recorded at closeout.
 
 ### Modified Files

@@ -66,6 +66,13 @@ export const OpportunityDetailSurface = ({
     valueLabel,
   } = getOpportunityDisplayMeta(dictionary, locale, opportunity);
   const { unscored, unstated } = dictionary.common;
+  const { geoLat, geoLng, geoSource } = opportunity;
+  const hasCoordinates = geoLat !== null && geoLng !== null && Number.isFinite(geoLat) && Number.isFinite(geoLng)
+    && Math.abs(geoLat) <= 90 && Math.abs(geoLng) <= 180;
+  const mapZoom = geoSource?.endsWith(":country") ? 5 : geoSource?.endsWith(":area") ? 10 : 12;
+  const mapUrl = hasCoordinates
+    ? `https://www.openstreetmap.org/?mlat=${geoLat}&mlon=${geoLng}#map=${mapZoom}/${geoLat}/${geoLng}`
+    : null;
   const qualificationLabel =
     opportunity.licensedArchitectRequired === true
       ? dictionary.common.explicitRequired
@@ -105,6 +112,11 @@ export const OpportunityDetailSurface = ({
     },
   ];
   const traceRows: DetailRow[] = [
+    {
+      label: dictionary.detail.locationAccuracy,
+      value: !hasCoordinates ? unstated : geoSource?.endsWith(":country") ? dictionary.detail.countryLocation
+        : geoSource?.endsWith(":area") ? dictionary.detail.areaLocation : dictionary.detail.mappedLocation,
+    },
     { label: dictionary.feed.fields.noticeId, value: opportunity.officialNoticeId ?? unstated },
     {
       label: dictionary.feed.fields.evidenceStack,
@@ -177,6 +189,11 @@ export const OpportunityDetailSurface = ({
           ))}
         </dl>
         <div className="detail-hero-actions">
+          {mapUrl ? (
+            <a className="button secondary" href={mapUrl} rel="noreferrer" target="_blank">
+              {dictionary.detail.openMap}
+            </a>
+          ) : null}
           {officialPageLink ? (
             <a className="button primary" href={officialPageLink} rel="noreferrer" target="_blank">
               {dictionary.common.officialPage}

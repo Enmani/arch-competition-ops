@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from datetime import timedelta
 from pathlib import Path
@@ -29,6 +30,7 @@ class AutomationBatchDefinition(BaseModel):
     enabled_only: bool = True
     limit_per_source: int = Field(default=20, ge=1)
     publication_window_days: int | None = Field(default=None, ge=1)
+    max_workers: int = Field(default=3, ge=1, le=4)
 
 
 class AutomationConfig(BaseModel):
@@ -197,36 +199,44 @@ def run_automation_batch(
     )
 
     def run_sources() -> None:
-        for index, source in enumerate(sources, start=1):
+        def run_one(index: int, source: SourceDefinition):
             logger.info("Source %d/%d: %s", index, len(sources), source.source_id)
-            try:
-                ingest = ingest_source(
-                    settings,
-                    source_id=source.source_id,
-                    limit=effective_limit,
-                    publication_date_from=effective_publication_date_from,
-                )
-            except Exception as exc:
-                result.failed.append(
-                    AutomationSourceFailure(source_id=source.source_id, error=str(exc))
-                )
-                if not continue_on_error:
-                    raise
-                continue
-
-            result.succeeded.append(
-                AutomationSourceRun(
-                    source_id=source.source_id,
-                    ingested_count=len(ingest.ingested_ids),
-                    ingested_ids=ingest.ingested_ids,
-                    publication_date_from=effective_publication_date_from,
-                    failure_count=ingest.parse_failure_count,
-                    notes=ingest.notes,
-                    document_count=ingest.document_count,
-                    filtered_out=ingest.filtered_out,
-                    deferred=ingest.deferred,
-                )
+            return ingest_source(
+                settings,
+                source_id=source.source_id,
+                limit=effective_limit,
+                publication_date_from=effective_publication_date_from,
             )
+
+        workers = batch.max_workers if settings.ai_enabled and continue_on_error else 1
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = []
+            if workers > 1:
+                futures = [executor.submit(run_one, i, s) for i, s in enumerate(sources, 1)]
+            for index, source in enumerate(sources, start=1):
+                try:
+                    ingest = futures[index - 1].result() if futures else run_one(index, source)
+                except Exception as exc:
+                    result.failed.append(
+                        AutomationSourceFailure(source_id=source.source_id, error=str(exc))
+                    )
+                    if not continue_on_error:
+                        raise
+                    continue
+
+                result.succeeded.append(
+                    AutomationSourceRun(
+                        source_id=source.source_id,
+                        ingested_count=len(ingest.ingested_ids),
+                        ingested_ids=ingest.ingested_ids,
+                        publication_date_from=effective_publication_date_from,
+                        failure_count=ingest.parse_failure_count,
+                        notes=ingest.notes,
+                        document_count=ingest.document_count,
+                        filtered_out=ingest.filtered_out,
+                        deferred=ingest.deferred,
+                    )
+                )
 
     if use_lock:
         with exclusive_lock(settings.resolve_path(settings.ingest_lock), label=f"batch:{batch_id}"):

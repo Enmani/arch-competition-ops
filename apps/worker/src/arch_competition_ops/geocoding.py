@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import tempfile
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -35,6 +36,7 @@ NOMINATIM_SEARCH_URL = "https://nominatim.openstreetmap.org/search"
 NOMINATIM_USER_AGENT = "arch-competition-ops/0.1 geocoding-cache"
 GEOCODE_CACHE_VERSION = 1
 GEOCODE_TIMEOUT_SECONDS = 15.0
+_CACHE_WRITE_LOCK = threading.Lock()
 
 
 @dataclass(frozen=True)
@@ -60,37 +62,41 @@ def enrich_record_geocode(
             )
         return record
 
-    location_label = record.location_label or infer_location_label(
-        authority_name=record.authority_name,
-        title=record.title,
+    location_label = record.location_label or (
+        None
+        if record.geocode_queries
+        else infer_location_label(
+            authority_name=record.authority_name,
+            title=record.title,
+        )
     )
     location_label = clean_location_label(location_label)
-    if not location_label:
-        return record
 
     country_label = get_country_label_for_jurisdiction(record.jurisdiction)
     if not country_label:
         return record
 
     resolver = geocoder or NominatimGeocoder(cache_path=cache_path)
-    try:
-        result = resolver.geocode(
-            location_label=location_label,
-            jurisdiction=record.jurisdiction,
+    queries = list(dict.fromkeys(filter(None, [location_label, *record.geocode_queries])))
+    for query in queries:
+        try:
+            result = resolver.geocode(location_label=query, jurisdiction=record.jurisdiction)
+        except (OSError, HttpError) as exc:
+            logger.warning("Geocoding %r failed: %s", query, exc)
+            break  # A transport/rate-limit failure is not evidence to broaden the location.
+        if not result:
+            continue
+        record.location_label = location_label or result.label
+        record.geo_lat, record.geo_lng = result.lat, result.lng
+        country_only = normalize_location_key(query) == normalize_location_key(country_label)
+        fallback = location_label is None or query != location_label
+        record.geo_source = result.provider + (
+            ":country" if country_only else ":area" if fallback else ""
         )
-    except (OSError, HttpError) as exc:
-        logger.warning("Geocoding %r failed: %s", location_label, exc)
-        record.location_label = location_label
-        return record
-    if not result:
-        record.location_label = location_label
-        return record
-
-    record.location_label = result.label
-    record.geo_lat = result.lat
-    record.geo_lng = result.lng
-    record.geo_source = result.provider
-    record.geo_confidence = result.confidence
+        record.geo_confidence = min(
+            result.confidence, 0.25 if country_only else 0.6 if fallback else 1
+        )
+        break
     return record
 
 
@@ -154,7 +160,9 @@ class NominatimGeocoder:
             "addressdetails": "1",
             "format": "jsonv2",
             "limit": "1",
-            "q": f"{location_label}, {country_label}",
+            "q": location_label
+            if normalize_location_key(location_label) == normalize_location_key(country_label)
+            else f"{location_label}, {country_label}",
         }
         if country_code:
             params["countrycodes"] = country_code
@@ -223,11 +231,18 @@ class NominatimGeocoder:
 
     def flush(self) -> None:
         """Persist the cache atomically if anything changed since the last write."""
+        with _CACHE_WRITE_LOCK:
+            self._flush()
+
+    def _flush(self) -> None:
         if self._unsaved == 0:
             return
         self.cache_path.parent.mkdir(parents=True, exist_ok=True)
+        # Independent source workers may have loaded the same earlier cache snapshot.
+        merged = self._load_cache()
+        merged.update(self._cache)
         document = json.dumps(
-            {"entries": self._cache, "version": GEOCODE_CACHE_VERSION},
+            {"entries": merged, "version": GEOCODE_CACHE_VERSION},
             ensure_ascii=False,
             indent=2,
             sort_keys=True,

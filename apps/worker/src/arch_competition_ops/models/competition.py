@@ -43,6 +43,8 @@ class CompetitionRecord(BaseModel):
     estimated_contract_value_text: str | None = None
     prize_summary: str | None = None
     location_label: str | None = None
+    # Source-backed place components used only for progressively coarser geocoding.
+    geocode_queries: list[str] = Field(default_factory=list, exclude=True)
     geo_lat: float | None = None
     geo_lng: float | None = None
     geo_source: str | None = None

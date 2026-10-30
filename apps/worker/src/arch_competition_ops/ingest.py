@@ -32,6 +32,7 @@ from arch_competition_ops.models import CompetitionRecord, SourceDefinition
 from arch_competition_ops.normalizers.competition import (
     compute_extraction_confidence,
     compute_qualification_score,
+    configure_procedure_registry,
 )
 from arch_competition_ops.review_queue import refresh_review_queue
 from arch_competition_ops.screening.service import DocumentAssessment, assess_document
@@ -146,6 +147,7 @@ def ingest_source(
     limit: int = 20,
     publication_date_from: str | None = None,
 ) -> IngestResult:
+    configure_procedure_registry(settings.root)
     source = _find_enabled_source(settings, source_id)
     db_path = initialize_database(settings)
     retention_days = settings.expired_competition_retention_days

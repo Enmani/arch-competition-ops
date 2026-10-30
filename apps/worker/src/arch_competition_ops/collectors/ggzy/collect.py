@@ -149,7 +149,11 @@ def _collect_scored_document(
 
     title, body_text = _extract_notice_context(record, detail_html)
     original_category_text = None
-    if detail_html and should_probe_original_category(title, body_text):
+    if (
+        detail_html
+        and not include_unclassified
+        and should_probe_original_category(title, body_text)
+    ):
         original_category_text = fetch_original_category_text(
             extract_original_link(detail_html), fetch_page=fetch_page
         )

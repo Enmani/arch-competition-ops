@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from contextlib import nullcontext
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -184,9 +185,13 @@ def assess_document(
         "source_name": source.name,
         "jurisdiction": source.jurisdiction,
         "source_tier": source.source_tier,
+        "source_id": source.source_id,
     }
     payload = enrich_notice_payload(payload, source_url, settings)
-    with exclusive_lock(db_path.with_suffix(".ai.lock"), label="AI extraction and screening"):
+    source_key = re.sub(r"[^a-zA-Z0-9_-]", "_", source.source_id)[:100]
+    with exclusive_lock(
+        db_path.with_suffix(f".ai-{source_key}.lock"), label="AI extraction and screening"
+    ):
         input_json, fields, limitations = prepare_input(
             row,
             settings,
@@ -261,24 +266,32 @@ def screen_competitions(
                         source_payload=(source_payloads or {}).get(row["id"]),
                         fetch_source=fetch_source,
                     )
-                    cached = find_cached_screening(db_path, row["source_url"], model.id, input_json)
-                    if cached and not force:
-                        decision = ScreeningDecision.model_validate_json(cached["result_json"])
-                        request_id = cached["id"]
-                        result.cached += 1
-                    else:
-                        decision, cost, request_id = _request_one(
-                            api,
-                            settings,
-                            db_path,
-                            model,
-                            row,
-                            input_json,
-                            fields,
-                            limitations,
+                    source_key = re.sub(r"[^a-zA-Z0-9_-]", "_", row.get("source_id") or "unknown")[
+                        :100
+                    ]
+                    with exclusive_lock(
+                        db_path.with_suffix(f".ai-{source_key}.lock"), label="AI screening source"
+                    ):
+                        cached = find_cached_screening(
+                            db_path, row["source_url"], model.id, input_json
                         )
-                        result.cost_usd += cost
-                        result.completed += 1
+                        if cached and not force:
+                            decision = ScreeningDecision.model_validate_json(cached["result_json"])
+                            request_id = cached["id"]
+                            result.cached += 1
+                        else:
+                            decision, cost, request_id = _request_one(
+                                api,
+                                settings,
+                                db_path,
+                                model,
+                                row,
+                                input_json,
+                                fields,
+                                limitations,
+                            )
+                            result.cost_usd += cost
+                            result.completed += 1
                     publish_screening(
                         db_path,
                         competition_id=row["id"],

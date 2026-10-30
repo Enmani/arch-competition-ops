@@ -23,6 +23,8 @@ class ExtractedField(BaseModel):
         "authority_name",
         "official_url",
         "location_label",
+        "location_city",
+        "location_region",
         "deadline_at",
         "registration_fee_eur",
         "submission_fee_eur",
@@ -91,6 +93,8 @@ Extract fields from the NOTICE text and links, not guesses or previous normalize
 Each extracted field needs evidence_field and an EXACT quote from it that supports the value.
 Omit unknown fields from extracted_fields. Keep source-language text: textual values must be
 substrings of their quotes. For location_label extract the PROJECT SITE, not buyer/contact address.
+Also extract location_city and location_region from explicit project-site clauses for geocoding
+fallbacks. Keep them separate from the full address; omit any component not actually stated.
 For prize_summary copy the prize wording and currency, not a contract value or participation fee.
 For monetary _eur fields use a nonnegative numeric string only when EUR or euro is explicit in
 the quote, and quote just the relevant amount/clause (not several unrelated amounts). Preserve

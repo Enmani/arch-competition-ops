@@ -102,8 +102,8 @@ def normalize_location_key(value: str | None) -> str:
     if not value:
         return ""
     normalized = unicodedata.normalize("NFKD", value)
-    ascii_only = normalized.encode("ascii", "ignore").decode("ascii")
-    return re.sub(r"[^a-z0-9]+", " ", ascii_only.lower()).strip()
+    unaccented = "".join(char for char in normalized if not unicodedata.combining(char))
+    return re.sub(r"[\W_]+", " ", unaccented.casefold()).strip()
 
 
 def clean_location_label(value: str | None) -> str | None:
@@ -115,8 +115,7 @@ def clean_location_label(value: str | None) -> str | None:
     if not cleaned:
         return None
 
-    words = cleaned.split()
-    if len(words) > 5:
+    if len(cleaned) > 300:
         return None
 
     normalized = normalize_location_key(cleaned)
@@ -124,7 +123,7 @@ def clean_location_label(value: str | None) -> str | None:
         return None
     if any(marker in normalized.split() for marker in PLACEHOLDER_LOCATION_MARKERS):
         return None
-    if any(stopword in normalized.split() for stopword in LOCATION_STOPWORDS):
+    if normalized in LOCATION_STOPWORDS:
         return None
 
     return cleaned

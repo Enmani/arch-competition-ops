@@ -6,7 +6,11 @@ import logging
 from http_fakes import Reply, make_client
 
 from arch_competition_ops.geocoding import NominatimGeocoder, enrich_record_geocode
-from arch_competition_ops.location import infer_location_label
+from arch_competition_ops.location import (
+    clean_location_label,
+    infer_location_label,
+    normalize_location_key,
+)
 from arch_competition_ops.models import CompetitionRecord
 
 MAUR_RESULT = [
@@ -25,6 +29,50 @@ def _maur_reply() -> Reply:
     return Reply(
         body=json.dumps(MAUR_RESULT).encode(), headers={"Content-Type": "application/json"}
     )
+
+
+def test_chinese_locations_and_long_source_addresses_are_not_erased():
+    assert normalize_location_key("广东省深圳市") == "广东省深圳市"
+    assert normalize_location_key("北京市") != normalize_location_key("上海市")
+    assert clean_location_label("广东省深圳市南山区科技园") == "广东省深圳市南山区科技园"
+    assert clean_location_label("10 Rue de la Ville Nouvelle, Paris") is not None
+
+
+def test_source_backed_city_fallback_preserves_address_and_marks_coarse_location(tmp_path):
+    client, adapter, _clock = make_client(
+        [
+            Reply(body=b"[]", headers={"Content-Type": "application/json"}),
+            _maur_reply(),
+        ]
+    )
+    cache = tmp_path / "geo.json"
+    record = _record(
+        location_label="Looren Campus, Building A", geocode_queries=["Maur", "Switzerland"]
+    )
+    enriched = enrich_record_geocode(
+        record, cache_path=cache, geocoder=NominatimGeocoder(cache_path=cache, client=client)
+    )
+    assert len(adapter.requests) == 2
+    assert enriched.location_label == "Looren Campus, Building A"
+    assert enriched.geo_lat == 47.3407
+    assert enriched.geo_source == "nominatim:area"
+    assert enriched.geo_confidence == 0.6
+
+
+def test_independent_source_geocoders_merge_cache_entries(tmp_path):
+    path = tmp_path / "geo.json"
+    client1, _, _ = make_client([_maur_reply()])
+    client2, _, _ = make_client([_maur_reply()])
+    first = NominatimGeocoder(cache_path=path, client=client1)
+    second = NominatimGeocoder(cache_path=path, client=client2)
+    first.geocode(location_label="Maur", jurisdiction="switzerland")
+    second.geocode(location_label="Zurich", jurisdiction="switzerland")
+    first.flush()
+    second.flush()
+    assert set(json.loads(path.read_text())["entries"]) == {
+        "switzerland:maur",
+        "switzerland:zurich",
+    }
 
 
 def _record(**overrides) -> CompetitionRecord:
