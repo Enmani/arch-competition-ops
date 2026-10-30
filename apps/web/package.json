@@ -30,7 +30,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260429.1",
     "eslint": "^9.25.0",
-    "eslint-config-next": "^15.5.15",
+    "eslint-config-next": "^16.4.3",
     "wrangler": "^4.86.0"
   }
 }
