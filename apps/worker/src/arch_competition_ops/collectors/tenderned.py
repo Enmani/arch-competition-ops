@@ -104,7 +104,7 @@ def collect_tenderned_documents(
     fetch_json: callable | None = None,
     include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
-    page_size = max(limit * 8, 50)
+    page_size = min(max(limit * 8, 50), 100)
     documents: list[CollectedSourceDocument] = []
     fetcher = fetch_json or _default_fetch_json
 
@@ -170,6 +170,11 @@ def collect_tenderned_documents(
             payload = json.dumps(
                 {
                     "title": title,
+                    **(
+                        {"rawNotice": {"listing": row, "detail": detail_payload}}
+                        if include_unclassified
+                        else {}
+                    ),
                     "buyer": str(
                         detail_payload.get("opdrachtgeverNaam")
                         or row.get("opdrachtgeverNaam")

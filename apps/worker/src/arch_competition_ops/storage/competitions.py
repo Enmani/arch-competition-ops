@@ -328,6 +328,10 @@ def update_competition_geocode_fields(
 ) -> None:
     ensure_schema(db_path)
     with write_transaction(db_path) as connection:
+        previous = connection.execute(
+            "SELECT updated_at FROM competitions WHERE id = ?", (competition_id,)
+        ).fetchone()
+        now_iso = clock.now_utc().isoformat()
         connection.execute(
             """
             UPDATE competitions
@@ -345,10 +349,18 @@ def update_competition_geocode_fields(
                 geo_lng,
                 geo_source,
                 geo_confidence,
-                clock.now_utc().isoformat(),
+                now_iso,
                 competition_id,
             ),
         )
+        if previous:
+            # Coordinates are derived metadata, not a newer notice. Preserve current advice
+            # atomically; an already stale assessment must never become current again.
+            connection.execute(
+                "UPDATE ai_screening_results SET source_updated_at = ? "
+                "WHERE competition_id = ? AND source_updated_at = ?",
+                (now_iso, competition_id, previous["updated_at"]),
+            )
 
 
 def update_competition_source_url(db_path: Path, *, competition_id: str, source_url: str) -> None:

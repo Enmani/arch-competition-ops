@@ -45,7 +45,7 @@ def _build_notice_public_url(notice_id: str | None, procedure_type: str | None) 
 
 
 def _extract_template(item: dict[str, Any]) -> dict[str, Any]:
-    templates = item.get("template")
+    templates = item.get("templates") or item.get("template")
     if isinstance(templates, list) and templates:
         candidate = templates[0]
         if isinstance(candidate, dict):
@@ -196,6 +196,7 @@ def collect_anac_documents(
                     "officialUrl": document_link,
                     "sourceApiUrl": detail_url,
                     "sourcePublicUrl": public_notice_url,
+                    **({"rawNotice": item} if include_unclassified else {}),
                 },
                 ensure_ascii=False,
             )

@@ -92,6 +92,7 @@ def collect_scp_documents(
             {
                 "officialNoticeId": row.get("id_avviso"),
                 "title": title,
+                **({"rawNotice": row} if include_unclassified else {}),
                 "buyer": buyer,
                 "procedureType": row.get("tipo_avviso"),
                 "deadline": parse_date_string(row.get("scadenza_avviso"), slash_order=slash_order),

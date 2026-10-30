@@ -139,6 +139,7 @@ def collect_canadabuys_documents(
         payload = json.dumps(
             {
                 "title": title,
+                **({"rawNotice": row} if include_unclassified else {}),
                 "buyer": _pick_row_value(row, "procuringEntity-entiteContractante"),
                 "noticeId": _pick_row_value(
                     row,

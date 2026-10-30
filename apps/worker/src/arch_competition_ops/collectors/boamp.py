@@ -140,6 +140,7 @@ def collect_boamp_documents(
             {
                 "officialNoticeId": item.get("id") or item.get("idweb"),
                 "title": title,
+                **({"rawNotice": item} if include_unclassified else {}),
                 "buyer": buyer,
                 "procedureType": item.get("procedure_libelle"),
                 "deadline": parse_date_string(str(item.get("datelimitereponse") or "")),

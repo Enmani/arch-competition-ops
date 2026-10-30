@@ -38,6 +38,58 @@ def test_chinese_locations_and_long_source_addresses_are_not_erased():
     assert clean_location_label("10 Rue de la Ville Nouvelle, Paris") is not None
 
 
+def test_map_lookup_rejects_partial_homonyms_and_keeps_city_context(tmp_path):
+    payload = [
+        {
+            "name": "大山坪",
+            "display_name": "大山坪, 深圳市, 中国",
+            "lat": "22.4",
+            "lon": "114.0",
+            "address": {"city": "深圳市", "country_code": "cn"},
+        },
+        {
+            "name": "大山坪院区",
+            "display_name": "大山坪院区, 泸州市, 中国",
+            "lat": "28.8",
+            "lon": "105.4",
+            "address": {"city": "泸州市", "country_code": "cn"},
+        },
+    ]
+    client, _, _ = make_client(
+        [Reply(body=json.dumps(payload).encode(), headers={"Content-Type": "application/json"})]
+    )
+    geocoder = NominatimGeocoder(cache_path=tmp_path / "geo.json", client=client)
+    result = geocoder.geocode(location_label="大山坪院区, 泸州市", jurisdiction="china")
+    assert result is not None and result.lat == 28.8 and result.lng == 105.4
+
+
+def test_country_fallback_is_not_written_as_a_project_address(tmp_path):
+    client, _, _ = make_client(
+        [
+            Reply(
+                body=json.dumps(
+                    [
+                        {
+                            "name": "中国",
+                            "lat": "34.5",
+                            "lon": "108.9",
+                            "address": {"country_code": "cn"},
+                        }
+                    ]
+                ).encode(),
+                headers={"Content-Type": "application/json"},
+            )
+        ]
+    )
+    path = tmp_path / "geo.json"
+    record = _record(jurisdiction="china", location_label=None, geocode_queries=["China"])
+    enrich_record_geocode(
+        record, cache_path=path, geocoder=NominatimGeocoder(cache_path=path, client=client)
+    )
+    assert record.geo_source == "nominatim:country" and record.geo_confidence == 0.25
+    assert record.location_label is None
+
+
 def test_source_backed_city_fallback_preserves_address_and_marks_coarse_location(tmp_path):
     client, adapter, _clock = make_client(
         [
@@ -70,8 +122,8 @@ def test_independent_source_geocoders_merge_cache_entries(tmp_path):
     first.flush()
     second.flush()
     assert set(json.loads(path.read_text())["entries"]) == {
-        "switzerland:maur",
-        "switzerland:zurich",
+        "v2:switzerland:maur",
+        "v2:switzerland:zurich",
     }
 
 
@@ -143,7 +195,7 @@ def test_enrich_record_geocode_uses_nominatim_cache(tmp_path) -> None:
 
     geocoder.flush()
     cache_payload = json.loads(cache_path.read_text(encoding="utf-8"))
-    assert cache_payload["entries"]["switzerland:maur"]["lat"] == 47.3407
+    assert cache_payload["entries"]["v2:switzerland:maur"]["lat"] == 47.3407
 
 
 def test_cache_is_written_in_batches_and_flushed_atomically(tmp_path) -> None:
@@ -162,10 +214,10 @@ def test_cache_is_written_in_batches_and_flushed_atomically(tmp_path) -> None:
     geocoder.flush()
     entries = json.loads(cache_path.read_text(encoding="utf-8"))["entries"]
     assert set(entries) == {
-        "switzerland:maur",
-        "switzerland:uster",
-        "switzerland:zurich",
-        "switzerland:winterthur",
+        "v2:switzerland:maur",
+        "v2:switzerland:uster",
+        "v2:switzerland:zurich",
+        "v2:switzerland:winterthur",
     }
     assert not list(tmp_path.glob("*.tmp"))  # temp files are replaced, never left behind
 

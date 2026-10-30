@@ -184,6 +184,7 @@ def collect_contracts_finder_documents(
         payload_row = json.dumps(
             {
                 "title": title,
+                **({"rawNotice": release} if include_unclassified else {}),
                 "buyer": _pick_buyer_name(release),
                 "noticeId": release.get("ocid"),
                 "deadline": tender.get("tenderPeriod", {}).get("endDate"),

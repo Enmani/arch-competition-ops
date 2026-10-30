@@ -66,6 +66,11 @@ def enrich_notice_payload(payload: str, source_url: str, settings: Settings) -> 
     ):
         return payload
     try:
+        if json.loads(payload).get("rawNoticeHtml"):
+            return payload  # The adapter already fetched the full notice page.
+    except (ValueError, AttributeError):
+        pass
+    try:
         response = get_default_client().get(
             source_url,
             archive=settings.resolve_path(settings.html_archive_dir),

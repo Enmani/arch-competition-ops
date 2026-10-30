@@ -180,6 +180,11 @@ def collect_doffin_documents(
             payload = json.dumps(
                 {
                     "title": title,
+                    **(
+                        {"rawNotice": {"listing": hit, "detail": detail_payload}}
+                        if include_unclassified
+                        else {}
+                    ),
                     "buyer": _pick_buyer_name(detail_payload, hit),
                     "noticeId": notice_id,
                     "deadline": parse_date_string(

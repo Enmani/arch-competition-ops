@@ -77,7 +77,9 @@ def enrich_record_geocode(
         return record
 
     resolver = geocoder or NominatimGeocoder(cache_path=cache_path)
-    queries = list(dict.fromkeys(filter(None, [location_label, *record.geocode_queries])))
+    components = [q for q in record.geocode_queries if q != country_label and q != location_label]
+    qualified_location = ", ".join([location_label, *components]) if location_label else None
+    queries = list(dict.fromkeys(filter(None, [qualified_location, *record.geocode_queries])))
     for query in queries:
         try:
             result = resolver.geocode(location_label=query, jurisdiction=record.jurisdiction)
@@ -86,10 +88,10 @@ def enrich_record_geocode(
             break  # A transport/rate-limit failure is not evidence to broaden the location.
         if not result:
             continue
-        record.location_label = location_label or result.label
-        record.geo_lat, record.geo_lng = result.lat, result.lng
         country_only = normalize_location_key(query) == normalize_location_key(country_label)
-        fallback = location_label is None or query != location_label
+        record.location_label = location_label or (None if country_only else query)
+        record.geo_lat, record.geo_lng = result.lat, result.lng
+        fallback = location_label is None or query != qualified_location
         record.geo_source = result.provider + (
             ":country" if country_only else ":area" if fallback else ""
         )
@@ -159,7 +161,7 @@ class NominatimGeocoder:
         params = {
             "addressdetails": "1",
             "format": "jsonv2",
-            "limit": "1",
+            "limit": "3",
             "q": location_label
             if normalize_location_key(location_label) == normalize_location_key(country_label)
             else f"{location_label}, {country_label}",
@@ -181,15 +183,33 @@ class NominatimGeocoder:
         if not isinstance(payload, list) or not payload:
             return None
 
-        first = payload[0]
-        if not isinstance(first, dict):
-            return None
-
-        return _parse_nominatim_result(
-            first,
-            fallback_label=location_label,
-            jurisdiction=jurisdiction,
-        )
+        for candidate in payload:
+            if not isinstance(candidate, dict):
+                continue
+            country_only = normalize_location_key(location_label) == normalize_location_key(
+                country_label
+            )
+            names = [candidate.get("name", ""), candidate.get("display_name", "")]
+            address = candidate.get("address")
+            if isinstance(address, dict):
+                if (
+                    country_code
+                    and address.get("country_code")
+                    and address["country_code"] != country_code
+                ):
+                    continue
+                names.extend(str(v) for v in address.values())
+            normalized_names = normalize_location_key(" ".join(str(v) for v in names))
+            # Do not accept a fuzzy match that drops the supplied place or city context.
+            parts = [normalize_location_key(p) for p in location_label.split(",") if p.strip()]
+            if not country_only and not all(part in normalized_names for part in parts):
+                continue
+            result = _parse_nominatim_result(
+                candidate, fallback_label=location_label, jurisdiction=jurisdiction
+            )
+            if result:
+                return result
+        return None
 
     def _load_cache(self) -> dict[str, dict[str, Any] | None]:
         if not self.cache_path.exists():
@@ -271,7 +291,7 @@ def _has_valid_coordinates(record: CompetitionRecord) -> bool:
 
 def _build_cache_key(location_label: str, jurisdiction: str | None) -> str:
     jurisdiction_key = normalize_jurisdiction_key(jurisdiction) or "unknown"
-    return f"{jurisdiction_key}:{normalize_location_key(location_label)}"
+    return f"v2:{jurisdiction_key}:{normalize_location_key(location_label)}"
 
 
 def _parse_nominatim_result(

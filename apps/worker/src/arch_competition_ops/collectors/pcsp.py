@@ -264,6 +264,7 @@ def collect_pcsp_documents(
                 or summary_fields.get("organo_de_contratacion"),
                 "noticeId": notice_id,
                 "deadline": deadline,
+                **({"rawNoticeHtml": detail_html} if include_unclassified else {}),
                 "summary": strip_html(summary) or detail_text or title,
                 "officialUrl": detail_url,
                 "cpv": cpv_codes,

@@ -231,6 +231,11 @@ def collect_simap_documents(
                     or project.get("publicationNumber")
                     or project.get("projectNumber"),
                     "title": title,
+                    **(
+                        {"rawNotice": {"listing": project, "detail": detail}}
+                        if include_unclassified
+                        else {}
+                    ),
                     "buyer": pick_localized_text(proc_office_address.get("name"))
                     or pick_localized_text(project.get("procOfficeName")),
                     "location": pick_localized_text(proc_office_address.get("city"))

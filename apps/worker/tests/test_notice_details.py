@@ -12,7 +12,6 @@ def test_program_labels_are_not_notice_evidence_but_original_categories_and_text
         "opportunityType": "public_design_services_procurement",
         "projectTypes": ["building_project"],
         "category": "Goods",
-        "rawNoticeHtml": "<p>Supply only.</p>",
     }
     raw = json.dumps(payload) + "\nSource notice detail:\n<p>Original detail</p>"
     cleaned = notice_evidence(raw)
@@ -21,6 +20,25 @@ def test_program_labels_are_not_notice_evidence_but_original_categories_and_text
     assert value["category"] == "Goods"
     assert value["summary"] == "Industrial refrigerators"
     assert cleaned.endswith("<p>Original detail</p>")
+
+
+def test_raw_upstream_record_takes_precedence_over_local_field_guesses():
+    import json
+
+    from arch_competition_ops.screening.source_evidence import notice_evidence
+
+    raw = {"templates": [{"template": {"metadata": {"descrizione": "School design"}}}]}
+    evidence = notice_evidence(
+        json.dumps({"title": "", "location": "Buyer office", "rawNotice": raw})
+    )
+    assert json.loads(evidence) == raw
+    assert "Buyer office" not in evidence
+    assert (
+        notice_evidence(
+            json.dumps({"title": "Local guess", "rawNoticeHtml": "<p>Supply only.</p>"})
+        )
+        == "<p>Supply only.</p>"
+    )
 
 
 def test_concurrent_source_reservations_share_one_budget(tmp_path):

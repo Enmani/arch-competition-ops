@@ -93,6 +93,8 @@ AI mode bypasses source-adapter title, topical classification, notice-type and m
 
 Adapter-generated classifications and evidence annotations are removed from model notice evidence. Normalized record classifications are also excluded from the evidence fields; they must not create a supposed conflict with an explicit supply/works notice. Collection/landing URLs are retained as discovery trails but cannot establish a project-specific official website.
 
+Where an adapter supplies `rawNoticeHtml` or `rawNotice`, the model receives that original content rather than locally guessed fields. API adapters preserve original records so an upstream field rename cannot silently erase the only usable title or qualification clause. Without original content, the remaining supplied listing fields are still usable, after removing local classifications.
+
 `ingest-batch --batch-id all_enabled` resolves every currently enabled source from the registry, with a 30-day publication window and a default 20 detail assessments per source. AI batches run at most three sources concurrently by default (`max_workers`, capped at four), while the ingest lock prevents overlapping batches. Batch results distinguish collected documents, model first-pass exclusions, processed records, document failures and deferred candidates. Budget exhaustion stops paid detail work for the source without treating the remaining candidates as irrelevant, and collection continues for later sources.
 
 The same detail response extracts source-backed participation excerpts under five categories: timeline, commercial, eligibility, scope and submission. These are short original-language clauses, not inferred qualification decisions. They live in `ai_screening_results.result_json.notice_details`; the detail read model validates their shape and displays only the current source revision. Country, source notice id and languages can also be normalized when the notice explicitly supports them.
@@ -104,6 +106,8 @@ Success means a source-grounded title and usable candidate record, not complete 
 `ai_screening_results` is the latest published assessment per opportunity and is exported to D1. Discovery hides `exclude` only while its source revision matches the record; `shortlisted` and `verified` human statuses remain visible. Detail and watchlist lookups keep access to the record. The ledger, full prompts and API key are not exported. A failed assessment is reported as a document failure rather than silently substituting rule-based extraction.
 
 AI supplies quoted project address, city, region and country components, never coordinates. The existing Nominatim geocoder tries the stated location and progressively coarser components, keeping the original address. Unicode location keys preserve Chinese place names. Fallbacks use `nominatim:area` or `nominatim:country` with capped confidence, so the detail page can label the approximate coverage and link to a map. Cache writes merge independent source workers' snapshots atomically.
+
+Queries include available city/region context and reject results that drop the supplied place components; cache keys use the v2 lookup algorithm. Country-only coordinates never fill the project address. Coordinate refreshes atomically rebase already-current advice to the new derived-data timestamp; stale advice remains stale, and the original assessment time is retained.
 
 ## Web Surface
 

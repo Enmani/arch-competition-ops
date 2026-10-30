@@ -111,6 +111,8 @@ Ship the current interface and screening behavior together on main, using the la
 - Initialized the procedure registry at the ingestion boundary and bounded concurrent AI source work to three, retaining transactional shared-budget checks.
 - Preserved Chinese place names and long addresses; added source-backed place components, coarser geocoding fallbacks and a map link with precision labels.
 - Removed adapter-generated design classifications from model evidence after a real supply notice was retained because its injected label contradicted the source scope; collection URLs no longer qualify as project websites.
+- Preserved raw API records/notice HTML, handled the current Italian `templates` envelope and capped Dutch page sizes at the API's observed maximum of 100.
+- Added context-matched map lookups and v2 cache keys after an actual homonym mapped to another city. Geocode refreshes preserve current advice without reviving stale advice.
 
 ### Why
 

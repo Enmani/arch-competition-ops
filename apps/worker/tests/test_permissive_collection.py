@@ -5,6 +5,7 @@ from datetime import date
 
 from support import build_source
 
+from arch_competition_ops.collectors.anac import collect_anac_documents
 from arch_competition_ops.collectors.ggzy import collect_ggzy_documents
 from arch_competition_ops.collectors.tenderned import collect_tenderned_documents
 
@@ -34,6 +35,40 @@ def test_china_ai_mode_reads_candidates_before_domain_and_listing_type_gates():
     assert all("rawNoticeHtml" in json.loads(d.payload) for d in documents)
 
 
+def test_italy_plural_templates_and_raw_record_reach_the_model():
+    source = build_source(
+        "it",
+        name="Italy",
+        jurisdiction="italy",
+        base_url="https://example.it/",
+        scan_method="api",
+        extractor="anac_official_notice",
+        collector="anac_legal_publicity_api",
+    )
+    row = {
+        "idAvviso": "abc",
+        "codiceScheda": "OPEN",
+        "templates": [
+            {
+                "template": {
+                    "metadata": {"descrizione": "Progettazione di una scuola"},
+                    "sections": [],
+                }
+            }
+        ],
+    }
+    documents = collect_anac_documents(
+        source,
+        limit=1,
+        include_unclassified=True,
+        fetch_json=lambda _: {"content": [row], "last": True},
+    )
+    assert len(documents) == 1
+    payload = json.loads(documents[0].payload)
+    assert payload["title"] == "Progettazione di una scuola"
+    assert payload["rawNotice"] == row
+
+
 def test_netherlands_ai_mode_retains_unknown_scope_and_missing_deadline():
     source = build_source(
         "nl",
@@ -57,3 +92,28 @@ def test_netherlands_ai_mode_retains_unknown_scope_and_missing_deadline():
     documents = collect_tenderned_documents(source, fetch_json=fetcher, include_unclassified=True)
     assert len(documents) == 1
     assert json.loads(documents[0].payload)["deadline"] is None
+
+
+def test_netherlands_candidate_expansion_respects_api_page_size_limit():
+    from urllib.parse import parse_qs, urlsplit
+
+    source = build_source(
+        "nl",
+        collector="tenderned_publications_api",
+        jurisdiction="netherlands",
+        name="NL",
+        base_url="https://www.tenderned.nl/publicaties",
+        scan_method="api",
+        extractor="generic_listing_html",
+    )
+
+    def fetcher(url):
+        assert int(parse_qs(urlsplit(url).query)["size"][0]) <= 100
+        return {"content": []}
+
+    assert (
+        collect_tenderned_documents(
+            source, limit=100, include_unclassified=True, fetch_json=fetcher
+        )
+        == []
+    )
