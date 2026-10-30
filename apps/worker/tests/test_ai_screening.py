@@ -247,6 +247,23 @@ def test_bad_decision_quote_does_not_discard_valid_source_fields_or_hide_the_rec
     assert row["cost_usd"] > 0
 
 
+def test_truncated_input_retains_grounded_judgment_and_reports_limitation(ai_workspace):
+    settings, source = ai_workspace
+    with mock_client(lambda _r: response(decision_payload(decision="recommend"))) as client:
+        assessment = assess_document(
+            settings,
+            source=source,
+            source_url="https://city.example/n/1",
+            payload=NOTICE + " Additional background." * settings.ai_max_input_chars,
+            client=client,
+        )
+    assert assessment.decision.decision == "recommend"
+    assert assessment.decision.evidence[0].quote == "Open to registered architects."
+    assert "Input was truncated to the configured character limit" in (
+        assessment.decision.missing_information
+    )
+
+
 @pytest.mark.parametrize(
     "field,value,quote",
     [
@@ -258,7 +275,7 @@ def test_bad_decision_quote_does_not_discard_valid_source_fields_or_hide_the_rec
 )
 def test_unsupported_amount_currency_url_and_date_stay_unknown(ai_workspace, field, value, quote):
     settings, source = ai_workspace
-    output = decision_payload()
+    output = decision_payload(decision="recommend")
     output["extracted_fields"] = [
         output["extracted_fields"][0],
         {
@@ -272,8 +289,9 @@ def test_unsupported_amount_currency_url_and_date_stay_unknown(ai_workspace, fie
         "notice_text": "Civic School Design Competition " + quote,
         "notice_links": "https://city.example/competition",
     }
+    decision = ScreeningDecision.model_validate(output)
     record, warnings = extract_record(
-        ScreeningDecision.model_validate(output),
+        decision,
         fields,
         source=source,
         source_url=source.base_url,
@@ -281,6 +299,8 @@ def test_unsupported_amount_currency_url_and_date_stay_unknown(ai_workspace, fie
     )
     assert getattr(record, field) is None
     assert warnings
+    assert decision.decision == "recommend"
+    assert all(warning in decision.missing_information for warning in warnings)
 
 
 def test_daily_budget_reservation_is_durable_and_retains_deleted_record_usage(ai_workspace):

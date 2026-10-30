@@ -25,6 +25,7 @@ from arch_competition_ops.card_previews import (
     prewarm_opportunity_card_previews,
 )
 from arch_competition_ops.collectors import collect_source_documents
+from arch_competition_ops.collectors.base import CollectedSourceDocument
 from arch_competition_ops.config_loader import load_source_catalog
 from arch_competition_ops.extractors import parse_source_payload
 from arch_competition_ops.geocoding import NominatimGeocoder, enrich_record_geocode
@@ -146,6 +147,7 @@ def ingest_source(
     source_id: str,
     limit: int = 20,
     publication_date_from: str | None = None,
+    collected_documents: list[CollectedSourceDocument] | None = None,
 ) -> IngestResult:
     configure_procedure_registry(settings.root)
     source = _find_enabled_source(settings, source_id)
@@ -176,16 +178,20 @@ def ingest_source(
         _refresh_queue(db_path, result)
 
     try:
-        documents = collect_source_documents(
-            source,
-            limit=(
-                min(limit * settings.ai_candidate_multiplier, 100)
-                if settings.ai_enabled and settings.ai_triage_enabled
-                else limit
-            ),
-            publication_date_from=publication_date_from,
-            archive_dir=settings.resolve_path(settings.html_archive_dir),
-            include_unclassified=settings.ai_enabled,
+        documents = (
+            collected_documents
+            if collected_documents is not None
+            else collect_source_documents(
+                source,
+                limit=(
+                    min(limit * settings.ai_candidate_multiplier, 100)
+                    if settings.ai_enabled and settings.ai_triage_enabled
+                    else limit
+                ),
+                publication_date_from=publication_date_from,
+                archive_dir=settings.resolve_path(settings.html_archive_dir),
+                include_unclassified=settings.ai_enabled,
+            )
         )
     except Exception as exc:
         record_run("failed", last_error=str(exc))

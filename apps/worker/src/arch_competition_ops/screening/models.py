@@ -125,6 +125,10 @@ def validate_evidence(decision: ScreeningDecision, evidence_fields: dict[str, st
             evidence.quote = original
             supported.append(evidence)
     decision.evidence = supported
+    if not supported:
+        warnings.append("No source-grounded decision evidence")
+    if warnings:
+        decision.decision = "needs_review"
     details: list[NoticeDetail] = []
     for detail in decision.notice_details:
         original = source_quote(detail.quote, evidence_fields.get(detail.evidence_field, ""))
@@ -138,10 +142,7 @@ def validate_evidence(decision: ScreeningDecision, evidence_fields: dict[str, st
         ):
             details.append(detail)
     decision.notice_details = details
-    if not supported:
-        warnings.append("No source-grounded decision evidence")
     if warnings:
-        decision.decision = "needs_review"
         decision.missing_information.extend(warnings)
     return warnings
 

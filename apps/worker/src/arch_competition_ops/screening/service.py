@@ -128,9 +128,7 @@ def _request_one(
             raise ValueError("incomplete_response")
         decision = ScreeningDecision.model_validate_json(response.output_text)
         validate_evidence(decision, evidence_fields)
-        if limitations and decision.decision == "recommend":
-            # Partial inputs cannot qualify an opportunity as a positive recommendation.
-            decision.decision = "needs_review"
+        if limitations:
             decision.missing_information.extend(limitations)
     except ValueError as exc:
         code = "invalid_schema" if isinstance(exc, ValidationError) else str(exc)

@@ -163,7 +163,7 @@ def prepare_input(
         }
     # Store the exact prompt/config, so any relevant change invalidates reuse without hashing.
     request = {
-        "version": 1,
+        "version": 2,
         "instructions": INSTRUCTIONS,
         "input": canonical_json(content),
         "max_output_tokens": settings.ai_max_output_tokens,

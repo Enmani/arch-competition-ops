@@ -162,7 +162,6 @@ def extract_record(
         )
         or None
     )
-    if warnings and decision.decision == "recommend":
-        decision.decision = "needs_review"
+    if warnings:
         decision.missing_information.extend(warnings)
     return record, warnings

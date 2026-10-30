@@ -112,4 +112,5 @@ def test_participation_excerpts_preserve_source_clauses_and_reject_invention():
     warnings = validate_evidence(decision, {"notice_text": source, "preferences": "Guess"})
     assert [d.text for d in decision.notice_details] == ["报名：11月3日。", "保证金人民币2万元。"]
     assert len(warnings) == 2
-    assert decision.decision == "needs_review"
+    assert decision.decision == "recommend"
+    assert all(warning in decision.missing_information for warning in warnings)
