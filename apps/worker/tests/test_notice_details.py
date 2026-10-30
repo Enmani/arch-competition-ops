@@ -1,6 +1,28 @@
 from arch_competition_ops.screening.models import ScreeningDecision, validate_evidence
 
 
+def test_program_labels_are_not_notice_evidence_but_original_categories_and_text_survive():
+    import json
+
+    from arch_competition_ops.screening.source_evidence import notice_evidence
+
+    payload = {
+        "title": "Refrigeration Training Equipment",
+        "summary": "Industrial refrigerators",
+        "opportunityType": "public_design_services_procurement",
+        "projectTypes": ["building_project"],
+        "category": "Goods",
+        "rawNoticeHtml": "<p>Supply only.</p>",
+    }
+    raw = json.dumps(payload) + "\nSource notice detail:\n<p>Original detail</p>"
+    cleaned = notice_evidence(raw)
+    value, _ = json.JSONDecoder().raw_decode(cleaned)
+    assert "opportunityType" not in value and "projectTypes" not in value
+    assert value["category"] == "Goods"
+    assert value["summary"] == "Industrial refrigerators"
+    assert cleaned.endswith("<p>Original detail</p>")
+
+
 def test_concurrent_source_reservations_share_one_budget(tmp_path):
     from concurrent.futures import ThreadPoolExecutor
 

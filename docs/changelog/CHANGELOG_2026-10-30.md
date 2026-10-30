@@ -110,6 +110,7 @@ Ship the current interface and screening behavior together on main, using the la
 - Raised output headroom to 12,288 tokens; normal limits remain USD 1 per UTC day and USD 31 per month.
 - Initialized the procedure registry at the ingestion boundary and bounded concurrent AI source work to three, retaining transactional shared-budget checks.
 - Preserved Chinese place names and long addresses; added source-backed place components, coarser geocoding fallbacks and a map link with precision labels.
+- Removed adapter-generated design classifications from model evidence after a real supply notice was retained because its injected label contradicted the source scope; collection URLs no longer qualify as project websites.
 
 ### Why
 

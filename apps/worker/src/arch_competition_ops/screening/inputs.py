@@ -15,6 +15,7 @@ from arch_competition_ops.http import HttpError, get_default_client
 from arch_competition_ops.normalizers.text import strip_html
 from arch_competition_ops.screening.models import INSTRUCTIONS, canonical_json
 from arch_competition_ops.screening.preferences import load_screening_instructions
+from arch_competition_ops.screening.source_evidence import notice_evidence
 from arch_competition_ops.settings import Settings
 
 _VOLATILE_FIELDS = {
@@ -29,6 +30,16 @@ _VOLATILE_FIELDS = {
     "geo_confidence",
     "qualification_score",
     "status",
+    "opportunity_type",
+    "competition_types",
+    "project_types",
+    "building_categories",
+    "official_sectors",
+    "built_asset_types",
+    "design_scopes",
+    "project_modes",
+    "evidence_level",
+    "evidence_note",
 }
 
 
@@ -97,6 +108,7 @@ def prepare_input(
             limitations.append("Source page could not be fetched; structured record only")
     if source_payload is None:
         limitations.append("No source notice text supplied")
+    source_payload = notice_evidence(source_payload or "")
     text = re.sub(r"<(script|style)\b[^>]*>.*?</\1>", " ", source_payload or "", flags=re.I | re.S)
     text = strip_html(text) or ""
     links = _PageLinks(source_url)

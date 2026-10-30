@@ -73,6 +73,10 @@ def extract_record(
                 and not parts.password
                 and value in evidence_fields.get("notice_links", "").splitlines()
             )
+            if source.collector != "generic_notice_pages" and value.rstrip(
+                "/"
+            ) == source.base_url.rstrip("/"):
+                valid = False  # The source's collection/landing URL is not a project website.
         elif field in _MONEY_FIELDS:
             amount = parse_money_number(value)
             cited = [parse_money_number(token) for token in MONEY_NUMBER_PATTERN.findall(quote)]

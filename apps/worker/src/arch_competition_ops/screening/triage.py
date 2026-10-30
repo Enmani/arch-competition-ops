@@ -19,6 +19,7 @@ from arch_competition_ops.screening.catalog import get_model
 from arch_competition_ops.screening.client import ScreeningError, create_client
 from arch_competition_ops.screening.models import canonical_json
 from arch_competition_ops.screening.preferences import load_screening_instructions
+from arch_competition_ops.screening.source_evidence import notice_evidence
 from arch_competition_ops.settings import Settings
 from arch_competition_ops.storage.screening import (
     find_cached_screening,
@@ -50,7 +51,7 @@ def triage_documents(
     prose = load_screening_instructions(settings)
     previews = []
     for index, document in enumerate(candidates):
-        text = strip_html(document.payload) or ""
+        text = strip_html(notice_evidence(document.payload)) or ""
         # Keep the list call bounded even for multilingual, long government notice payloads.
         preview = text.encode("utf-8")[:1200].decode("utf-8", errors="ignore")
         previews.append({"id": index, "source_url": document.source_url, "preview": preview})
