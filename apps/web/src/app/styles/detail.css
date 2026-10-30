@@ -1,6 +1,7 @@
 /* Opportunity detail page: a title, one summary strip, then hairline-ruled fact lists. */
 
 .detail-layout {
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-3xl);
   padding-top: var(--space-2xl);
 }
@@ -91,6 +92,7 @@
 .detail-note-text {
   margin: 0;
   color: var(--ink-soft);
+  overflow-wrap: anywhere;
 }
 
 .detail-links {
