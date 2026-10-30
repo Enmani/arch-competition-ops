@@ -113,6 +113,7 @@ Ship the current interface and screening behavior together on main, using the la
 - Removed adapter-generated design classifications from model evidence after a real supply notice was retained because its injected label contradicted the source scope; collection URLs no longer qualify as project websites.
 - Preserved raw API records/notice HTML, handled the current Italian `templates` envelope and capped Dutch page sizes at the API's observed maximum of 100.
 - Added context-matched map lookups and v2 cache keys after an actual homonym mapped to another city. Geocode refreshes preserve current advice without reviving stale advice.
+- Separated optional fact/excerpt validation from the content judgment; unsupported decision evidence and missing supported titles remain strict. Wrapped long evidence URLs within narrow detail pages.
 
 ### Why
 
@@ -123,7 +124,9 @@ Let the model read unfamiliar notices before making a topical judgment, while pr
 - Focused worker tests cover broad China/Dutch intake, source-backed clauses and existing screening/batch behavior.
 - Storage tests verify excerpt validation and stale-revision suppression.
 - Worker tests verify concurrent reservations cannot exceed the daily ceiling, sources overlap under one batch lock, and Chinese/city fallback geocoding preserves the source address.
-- Live all-source execution and complete repository checks are recorded at closeout.
+- All 14 enabled sources were attempted; repaired Italian, Dutch and Swiss adapters passed actual reruns. One local DNS failure and one unsupported Spanish notice title remain explicit in the [run report](../../reports/2026-10-30-all-source-ai-screening.md).
+- Current discovery exposes 48 records including six Chinese records; a real hospital design reassessment retains a supported recommendation despite missing optional details.
+- Skill format validation and `npm run check` passed. Frontend production build and Chinese/English browser checks cover participation excerpts, precision-labeled maps and narrow-page wrapping.
 
 ### Modified Files
 
