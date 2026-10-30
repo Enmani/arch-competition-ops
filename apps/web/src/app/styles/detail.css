@@ -21,6 +21,13 @@
 }
 
 /* Authority, location, deadline and value: the four things a screening decision needs first. */
+.detail-original-title {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
+}
+
 .detail-summary {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));

@@ -61,17 +61,37 @@ const escapeXml = (value: string) =>
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 
-const clampLabel = (value: string | null, maxLength: number) => {
-  if (!value) {
+// Width of the label area inside the locator frame (x 82..638).
+const LABEL_MAX_WIDTH = 556;
+
+/** Rough advance in em: CJK and fullwidth glyphs are square, Latin caps in a narrow face are not. */
+const estimateGlyphEm = (character: string) => {
+  const code = character.codePointAt(0) ?? 0;
+  if (code >= 0x2e80) {
+    return 1;
+  }
+  return character === " " ? 0.3 : 0.62;
+};
+
+/** Truncates a label with an ellipsis so that its estimated width fits the frame at the given type size. */
+const fitLabel = (value: string | null, fontSize: number, letterSpacingEm: number) => {
+  const trimmed = value?.trim();
+  if (!trimmed) {
     return null;
   }
 
-  const trimmed = value.trim();
-  if (trimmed.length <= maxLength) {
-    return trimmed;
+  const maxEm = LABEL_MAX_WIDTH / fontSize;
+  const characters = Array.from(trimmed);
+  let width = 0;
+  for (let index = 0; index < characters.length; index += 1) {
+    width += estimateGlyphEm(characters[index]) + letterSpacingEm;
+    if (width > maxEm) {
+      // Leave one glyph of room for the ellipsis.
+      return `${characters.slice(0, Math.max(index - 1, 1)).join("").trimEnd()}…`;
+    }
   }
 
-  return `${trimmed.slice(0, maxLength - 1).trimEnd()}…`;
+  return trimmed;
 };
 
 const normalizeKey = normalizeJurisdictionKey;
@@ -144,10 +164,11 @@ export const buildOpportunityLocatorPlaceholderSvg = (
     jurisdictionKey: placeholderOpportunity?.jurisdictionKey ?? null,
     jurisdictionLabel: placeholderOpportunity?.jurisdictionLabel ?? null,
   });
-  const countryLabel = clampLabel(placeholderOpportunity?.jurisdictionLabel ?? null, 20);
-  const cityLabel = clampLabel(
+  const countryLabel = fitLabel(placeholderOpportunity?.jurisdictionLabel ?? null, 18, 0.18);
+  const cityLabel = fitLabel(
     placeholderOpportunity ? pickOpportunityDisplayLocality(placeholderOpportunity) : null,
-    24,
+    34,
+    0.04,
   );
   const markerLabelY = cityLabel ? 610 : 628;
   const anchor = resolveLocationAnchor(outline, placeholderOpportunity);

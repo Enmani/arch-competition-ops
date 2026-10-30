@@ -9,6 +9,7 @@ import WatchToggleButton from "@/components/watch-toggle-button";
 import { buildLocalePath, type AppLocale } from "@/i18n/config";
 import { formatDeadlineLabel, formatLocalizedDate, translateMappedValue } from "@/i18n/format";
 import type { DashboardTableCopy } from "@/i18n/slices";
+import { pickDisplayTitle } from "@/lib/opportunity-display";
 
 export type WatchlistDashboardRow = {
   opportunity: StoredOpportunityFeedItem;
@@ -58,7 +59,7 @@ const WatchlistDashboardTable = ({ copy, initialRows, locale }: WatchlistDashboa
                   className="inline-link"
                   href={buildLocalePath(locale, `/opportunities/${row.opportunity.slug}`)}
                 >
-                  {row.opportunity.title}
+                  {pickDisplayTitle(locale, row.opportunity)}
                 </Link>
               </td>
               <td>

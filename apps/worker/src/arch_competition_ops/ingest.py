@@ -51,6 +51,7 @@ from arch_competition_ops.storage.screening import (
     upsert_screened_competitions,
 )
 from arch_competition_ops.targeting import load_targeting_filter
+from arch_competition_ops.titles.service import polish_titles
 from arch_competition_ops.verifiers import verify_record
 
 logger = logging.getLogger(__name__)
@@ -334,6 +335,16 @@ def ingest_source(
                 f"cached={sum(bool(a and a.cached) for a in assessments)}, "
                 f"estimated_cost_usd={sum(a.cost_usd for a in assessments if a):.6f}"
             )
+        try:
+            titles = polish_titles(
+                settings,
+                competition_ids=result.ingested_ids,
+                use_ai=settings.ai_enabled,
+                max_batches=2,
+            )
+            result.notes.extend(f"display titles: {error}" for error in titles.errors)
+        except Exception as exc:  # noqa: BLE001  derived metadata: never fail the ingest
+            result.notes.append(f"display titles failed: {exc}")
         result.preview = prewarm_opportunity_card_previews(
             settings, competition_ids=result.ingested_ids
         )

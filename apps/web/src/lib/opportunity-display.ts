@@ -88,6 +88,18 @@ const formatProjectCategoryLabel = (
   return projectTypeLabel ?? buildingCategoryLabel ?? fallback;
 };
 
+/** The title to show: the AI-condensed one in the reader's language, else the rule-cleaned source title. */
+export const pickDisplayTitle = (locale: AppLocale, opportunity: StoredOpportunityFeedItem) =>
+  (locale === "zh" ? opportunity.displayTitleZh : opportunity.displayTitleEn) ?? opportunity.displayTitle;
+
+/** A card has room for an amount, not a sentence; longer stated values stay on the detail page. */
+const CARD_VALUE_TEXT_MAX_LENGTH = 32;
+
+const pickShortValueText = (value: string | null) => {
+  const trimmed = value?.trim();
+  return trimmed && trimmed.length <= CARD_VALUE_TEXT_MAX_LENGTH ? trimmed : null;
+};
+
 export const getOpportunityDisplayMeta = (
   dictionary: DisplayCopy,
   locale: AppLocale,
@@ -131,9 +143,8 @@ export const getOpportunityDisplayMeta = (
   // null when the notice states no value, so a card can leave the slot out instead of announcing "pending".
   const cardValueLabel =
     formatCompactCurrency(locale, opportunity.estimatedContractValueEur) ??
-    opportunity.estimatedContractValueText ??
-    opportunity.prizeSummary ??
-    null;
+    pickShortValueText(opportunity.estimatedContractValueText) ??
+    pickShortValueText(opportunity.prizeSummary);
   const valueLabel =
     formatCurrency(locale, opportunity.estimatedContractValueEur) ??
     opportunity.estimatedContractValueText ??
@@ -183,6 +194,7 @@ export const getOpportunityDisplayMeta = (
 
   return {
     authorityLabel,
+    displayTitle: pickDisplayTitle(locale, opportunity),
     cardCategoryLabel,
     cardValueLabel,
     deadlineLabel,

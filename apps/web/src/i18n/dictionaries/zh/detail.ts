@@ -14,6 +14,7 @@ export const detail = {
     submission: "文件与提交",
   },
   keyFacts: "事实",
+  originalTitle: "公告原标题",
   evidenceActions: "证据和链接",
   sourceNote: "备注",
   fields: {

@@ -30,7 +30,7 @@ export const OpportunityStreamItem = ({
 }: OpportunityStreamItemProps) => {
   const localizedRecordLink = buildLocalePath(locale, `/opportunities/${opportunity.slug}`);
   const imageSrc = `/api/opportunities/${opportunity.slug}/image?rev=${opportunityImageRevision}`;
-  const { cardCategoryLabel, cardValueLabel, deadlineValueLabel, locationLabel } = getOpportunityDisplayMeta(
+  const { cardCategoryLabel, cardValueLabel, deadlineValueLabel, displayTitle, locationLabel } = getOpportunityDisplayMeta(
     copy,
     locale,
     opportunity,
@@ -47,19 +47,23 @@ export const OpportunityStreamItem = ({
             src={imageSrc}
             unoptimized
           />
-          {/* A name on a non-interactive element is not announced reliably, so field names are
-              spelled out as screen-reader-only text instead of aria-label. */}
-          {cardValueLabel ? (
-            <span className="opportunity-value-chip">
-              <span className="sr-only">{copy.discover.card.value}: </span>
-              {cardValueLabel}
-            </span>
-          ) : null}
         </div>
 
         <div className="opportunity-tile-copy">
-          <h2 className="opportunity-tile-title">{opportunity.title}</h2>
-          <p className="opportunity-tile-category">{cardCategoryLabel}</p>
+          <h2 className="opportunity-tile-title" title={displayTitle === opportunity.title ? undefined : opportunity.title}>
+            {displayTitle}
+          </h2>
+          {/* A name on a non-interactive element is not announced reliably, so field names are
+              spelled out as screen-reader-only text instead of aria-label. */}
+          <p className="opportunity-tile-category">
+            <span className="opportunity-category-text">{cardCategoryLabel}</span>
+            {cardValueLabel ? (
+              <span className="opportunity-value">
+                <span className="sr-only">{copy.discover.card.value}: </span>
+                {cardValueLabel}
+              </span>
+            ) : null}
+          </p>
           <div className="opportunity-meta-strip">
             <span className="opportunity-meta-value">
               <span className="sr-only">{copy.discover.card.location}: </span>
@@ -80,6 +84,7 @@ export const OpportunityStreamItem = ({
           onToggle={onWatchChange}
           opportunityId={opportunity.id}
           signedIn={signedIn}
+          variant="icon"
         />
       </div>
     </article>

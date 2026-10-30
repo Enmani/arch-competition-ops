@@ -2,16 +2,21 @@
    A tile is an image, a title and one hairline-separated meta row on bare paper: no frames,
    no boxes, no hover lift. The title underline is the only hover cue. */
 
+/* Each tile spans four shared rows (image, title, category, meta) and hands them down as
+   subgrids, so the hairlines and watch links of a whole feed row line up whatever the title length. */
 .waterfall-feed {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
-  gap: var(--space-3xl) var(--space-xl);
-  align-items: start;
+  gap: 0 var(--space-xl);
 }
 
 .opportunity-tile {
   display: grid;
-  gap: var(--space-md);
+  position: relative;
+  grid-row: span 4;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: subgrid;
+  gap: 0;
   min-width: 0;
   opacity: 0;
   animation: tile-enter 360ms var(--ease-out-quart) forwards;
@@ -20,7 +25,10 @@
 
 .opportunity-tile-link {
   display: grid;
-  gap: var(--space-lg);
+  grid-row: span 4;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: subgrid;
+  gap: 0;
   min-width: 0;
 }
 
@@ -28,6 +36,7 @@
   position: relative;
   overflow: hidden;
   aspect-ratio: 1 / 1;
+  margin-bottom: var(--space-lg);
   background: var(--surface-strong);
 }
 
@@ -38,25 +47,12 @@
   object-fit: cover;
 }
 
-/* Shown only when the notice states a value; a missing value is simply absent, not announced. */
-.opportunity-value-chip {
-  position: absolute;
-  right: var(--space-md);
-  bottom: var(--space-md);
-  max-width: calc(100% - var(--space-xl));
-  padding: var(--space-xs) var(--space-sm);
-  background: var(--surface);
-  color: var(--ink);
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  line-height: 1.4;
-  font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
-}
-
 .opportunity-tile-copy {
   display: grid;
-  gap: var(--space-sm);
+  grid-row: span 3;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: subgrid;
+  gap: 0;
   min-width: 0;
 }
 
@@ -67,24 +63,47 @@
   font-size: var(--fs-lg);
   font-weight: 600;
   line-height: 1.3;
+  overflow-wrap: anywhere;
   text-decoration: underline transparent;
   text-underline-offset: 0.2em;
   transition: text-decoration-color 180ms var(--ease-out-quart);
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
 }
 
+/* Category on the left; the stated value, when there is one, on the right. A missing value is absent, not announced. */
 .opportunity-tile-category {
-  margin: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-lg);
+  margin: var(--space-sm) 0 var(--space-md);
   color: var(--ink-faint);
   font-size: var(--fs-sm);
+}
+
+.opportunity-category-text {
+  min-width: 0;
+}
+
+.opportunity-value {
+  flex: none;
+  max-width: 55%;
+  overflow: hidden;
+  color: var(--ink);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .opportunity-meta-strip {
   display: flex;
   justify-content: space-between;
+  align-items: flex-start;
   gap: var(--space-lg);
-  padding-top: var(--space-md);
+  padding: var(--space-md) 0 var(--space-3xl);
   border-top: 1px solid var(--line);
   color: var(--ink-soft);
   font-size: var(--fs-sm);
@@ -101,7 +120,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-.opportunity-tile-actions,
 .detail-hero-actions {
   display: flex;
   flex-wrap: wrap;
@@ -109,19 +127,76 @@
   gap: var(--space-md);
 }
 
-/* The card's watch control is a text action, not a second boxed button under the tile. */
-.opportunity-tile-actions .button {
-  height: auto;
-  min-height: var(--space-3xl);
-  padding: 0;
-  border: 0;
-  color: var(--ink-soft);
-  text-decoration: underline;
-  text-underline-offset: 0.25em;
+/* The card's watch control is a square + in the image corner. It appears on hover or keyboard
+   focus, stays visible once the record is watched, and is always shown where there is no hover. */
+.opportunity-tile-actions {
+  position: absolute;
+  top: var(--space-md);
+  right: var(--space-md);
+  z-index: 1;
 }
 
-.opportunity-tile-actions .button:hover {
+.watch-toggle-icon {
+  display: inline-grid;
+  place-items: center;
+  width: var(--control-h);
+  height: var(--control-h);
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
   color: var(--ink);
+  cursor: pointer;
+  transition:
+    opacity 180ms var(--ease-out-quart),
+    background-color 180ms var(--ease-out-quart),
+    color 180ms var(--ease-out-quart);
+}
+
+.watch-toggle-icon:hover:not(:disabled) {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--surface);
+}
+
+.watch-toggle-icon.is-active {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--surface);
+}
+
+.watch-toggle-icon:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.watch-toggle-icon:disabled {
+  cursor: progress;
+  opacity: 0.6;
+}
+
+@media (hover: hover) {
+  .opportunity-tile-actions .watch-toggle-icon:not(.is-active) {
+    opacity: 0;
+  }
+
+  .opportunity-tile:hover .watch-toggle-icon,
+  .opportunity-tile-actions:focus-within .watch-toggle-icon {
+    opacity: 1;
+  }
+}
+
+/* A failed save is announced under the corner button, on paper, so it never hides in the image. */
+.opportunity-tile-actions .watch-toggle {
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-xs);
+}
+
+.opportunity-tile-actions .watch-toggle-error {
+  max-width: 14rem;
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--surface);
+  font-size: var(--fs-sm);
 }
 
 .watch-toggle {

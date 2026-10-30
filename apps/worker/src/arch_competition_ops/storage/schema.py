@@ -77,7 +77,11 @@ CREATE TABLE IF NOT EXISTS competitions (
     evidence_note TEXT,
     last_verified_at TEXT,
     discovered_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    display_title TEXT,
+    display_title_zh TEXT,
+    display_title_en TEXT,
+    display_title_source TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_competitions_dedup_key ON competitions (dedup_key);

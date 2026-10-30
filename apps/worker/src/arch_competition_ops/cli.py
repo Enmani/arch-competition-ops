@@ -43,6 +43,7 @@ from arch_competition_ops.screening import commands as screening_commands
 from arch_competition_ops.screening.client import ScreeningError
 from arch_competition_ops.settings import Settings
 from arch_competition_ops.storage import list_competitions
+from arch_competition_ops.titles import commands as title_commands
 
 EXIT_FAILURE = 1
 EXIT_USAGE = 2
@@ -73,6 +74,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers = parser.add_subparsers(dest="command", required=True)
     screening_commands.add_parsers(subparsers)
+    title_commands.add_parsers(subparsers)
     subparsers.add_parser("doctor", help="validate repository prerequisites")
     subparsers.add_parser("init-db", help="create the SQLite schema")
     subparsers.add_parser("verify", help="run repository integrity checks")
@@ -356,6 +358,8 @@ def _handle_prewarm(settings: Settings, args: argparse.Namespace) -> int:
 
 
 def _handler_for(args: argparse.Namespace) -> Callable[[Settings, argparse.Namespace], int]:
+    if args.command == "polish-titles":
+        return lambda settings, args: title_commands.handle(settings, args, _safe_print)
     if args.command in {
         "show-ai-models",
         "screen-competitions",

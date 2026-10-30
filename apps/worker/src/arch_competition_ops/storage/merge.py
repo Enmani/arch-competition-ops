@@ -42,8 +42,23 @@ _ALWAYS_INCOMING = frozenset(
     }
 )
 _GEO_COLUMNS = ("geo_lat", "geo_lng", "geo_source", "geo_confidence")
+# Derived from `title`: kept while the title is unchanged, dropped (re-derived) when it changes.
+DISPLAY_TITLE_COLUMNS = (
+    "display_title",
+    "display_title_zh",
+    "display_title_en",
+    "display_title_source",
+)
 _SPECIAL = frozenset(
-    {"status", "official_url", "evidence_note", "evidence_level", "discovered_at", *_GEO_COLUMNS}
+    {
+        "status",
+        "official_url",
+        "evidence_note",
+        "evidence_level",
+        "discovered_at",
+        *_GEO_COLUMNS,
+        *DISPLAY_TITLE_COLUMNS,
+    }
 )
 
 _EVIDENCE_RANK = {
@@ -131,6 +146,10 @@ def merge_rows(
         incoming["evidence_level"], -1
     ):
         merged["evidence_level"] = existing["evidence_level"]
+
+    title_unchanged = existing["title"] == incoming["title"]
+    for column in DISPLAY_TITLE_COLUMNS:
+        merged[column] = existing[column] if title_unchanged else None
 
     if incoming["geo_lat"] is None or incoming["geo_lng"] is None:
         for column in _GEO_COLUMNS:

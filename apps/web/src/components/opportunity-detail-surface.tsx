@@ -53,6 +53,7 @@ export const OpportunityDetailSurface = ({
     cardCategoryLabel,
     deadlineValueLabel,
     discoveryTrail,
+    displayTitle,
     documentsPortalLink,
     evidenceLevelLabel,
     implementationPathLabel,
@@ -179,7 +180,12 @@ export const OpportunityDetailSurface = ({
     <main className="detail-layout">
       <section className="detail-hero">
         <span className="pill accent">{statusLabel}</span>
-        <h1>{opportunity.title}</h1>
+        <h1>{displayTitle}</h1>
+        {displayTitle !== opportunity.title ? (
+          <p className="detail-original-title">
+            <span className="detail-label">{dictionary.detail.originalTitle}</span> {opportunity.title}
+          </p>
+        ) : null}
         <dl className="detail-summary">
           {summary.map((row) => (
             <div className="detail-summary-item" key={row.label}>

@@ -326,13 +326,10 @@ export const getOpportunityJurisdictionCode = (opportunity: {
     return "OPS";
   }
 
-  const initials = label
-    .split(/[\s-]+/)
-    .map((part) => part[0])
-    .filter(Boolean)
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
+  const parts = label.split(/[\s-]+/).filter(Boolean);
+  // A one-word label ("Europe") reads better as two letters than as a lone initial.
+  const initials =
+    parts.length > 1 ? parts.map((part) => part[0]).join("").slice(0, 2) : (parts[0] ?? "").slice(0, 2);
 
-  return initials || label.slice(0, 2).toUpperCase();
+  return (initials || label.slice(0, 2)).toUpperCase();
 };

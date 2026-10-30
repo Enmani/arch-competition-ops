@@ -179,3 +179,29 @@ test("a missing database file yields empty results, never demo records", async (
     assert.deepEqual(surface.opportunities, []);
   });
 });
+
+test("display titles fall back from the localized title to the cleaned one to the source title", async () => {
+  await withStorage(async ({ raw, storage }) => {
+    seedOpportunity(raw, { id: "plain", title: "Source title" });
+    seedOpportunity(raw, { id: "cleaned", title: "123 - Source title", display_title: "Source title" });
+    seedOpportunity(raw, {
+      id: "condensed",
+      title: "123 - Long source title",
+      display_title: "Long source title",
+      display_title_en: "Short title",
+      display_title_zh: "短标题",
+    });
+
+    const read = async (slug: string) => storage.opportunities.getBySlug(slug);
+    assert.deepEqual(
+      [(await read("plain"))?.displayTitle, (await read("plain"))?.displayTitleEn],
+      ["Source title", null],
+    );
+    assert.equal((await read("cleaned"))?.displayTitle, "Source title");
+    const condensed = await read("condensed");
+    assert.deepEqual(
+      [condensed?.title, condensed?.displayTitle, condensed?.displayTitleEn, condensed?.displayTitleZh],
+      ["123 - Long source title", "Long source title", "Short title", "短标题"],
+    );
+  });
+});

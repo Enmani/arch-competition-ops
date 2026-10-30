@@ -17,7 +17,15 @@ type WatchToggleButtonProps = {
   opportunityId: string;
   showStatus?: boolean;
   signedIn: boolean;
+  /** "icon" draws a square + / check mark (for a corner of an image); the text goes to the accessible name. */
+  variant?: "icon" | "text";
 };
+
+const WatchGlyph = ({ watched }: { watched: boolean }) => (
+  <svg aria-hidden="true" fill="none" height="16" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 16 16" width="16">
+    {watched ? <path d="M3 8.5l3.2 3.2L13 4.8" /> : <path d="M8 2v12M2 8h12" />}
+  </svg>
+);
 
 /**
  * Optimistic watch/unwatch control.
@@ -35,7 +43,9 @@ const WatchToggleButton = ({
   opportunityId,
   showStatus = false,
   signedIn,
+  variant = "text",
 }: WatchToggleButtonProps) => {
+  const isIcon = variant === "icon";
   const pathname = usePathname();
   const search = useSearchParams().toString();
   const [isWatched, setIsWatched] = useState(initialWatched);
@@ -48,9 +58,20 @@ const WatchToggleButton = ({
   if (!signedIn) {
     return (
       <div className="watch-toggle">
-        <Link className="button secondary watch-toggle-button" href={loginHref}>
-          {dictionary.signInToWatch}
-        </Link>
+        {isIcon ? (
+          <Link
+            aria-label={dictionary.signInToWatch}
+            className="watch-toggle-icon"
+            href={loginHref}
+            title={dictionary.signInToWatch}
+          >
+            <WatchGlyph watched={false} />
+          </Link>
+        ) : (
+          <Link className="button secondary watch-toggle-button" href={loginHref}>
+            {dictionary.signInToWatch}
+          </Link>
+        )}
       </div>
     );
   }
@@ -78,16 +99,32 @@ const WatchToggleButton = ({
     }
   };
 
+  const label = isSaving ? dictionary.saving : isWatched ? dictionary.unwatch : dictionary.watch;
+
   return (
     <div className={`watch-toggle${showStatus ? " has-status" : ""}`}>
-      <button
-        className={`button secondary watch-toggle-button${isWatched ? " is-active" : ""}`}
-        disabled={isSaving}
-        onClick={() => void handleClick()}
-        type="button"
-      >
-        {isSaving ? dictionary.saving : isWatched ? dictionary.unwatch : dictionary.watch}
-      </button>
+      {isIcon ? (
+        <button
+          aria-label={label}
+          aria-pressed={isWatched}
+          className={`watch-toggle-icon${isWatched ? " is-active" : ""}`}
+          disabled={isSaving}
+          onClick={() => void handleClick()}
+          title={label}
+          type="button"
+        >
+          <WatchGlyph watched={isWatched} />
+        </button>
+      ) : (
+        <button
+          className={`button secondary watch-toggle-button${isWatched ? " is-active" : ""}`}
+          disabled={isSaving}
+          onClick={() => void handleClick()}
+          type="button"
+        >
+          {label}
+        </button>
+      )}
       <span aria-live="polite" className="watch-toggle-state" role="status">
         {showStatus && isWatched && !failure ? dictionary.watched : null}
       </span>

@@ -4,7 +4,7 @@ import test from "node:test";
 import type { StoredOpportunityFeedItem } from "@arch-competition/storage";
 
 import { dictionaries } from "../i18n/dictionaries";
-import { formatTaxonomyList, getOpportunityDisplayMeta } from "./opportunity-display";
+import { formatTaxonomyList, getOpportunityDisplayMeta, pickDisplayTitle } from "./opportunity-display";
 
 // Only the fields the formatter reads; the rest of the read model is irrelevant here.
 const base = {
@@ -62,4 +62,19 @@ test("an explicit zero fee is the only way to read as free", () => {
 test("empty vocabulary lists read as unstated and unknown values are title-cased", () => {
   assert.equal(formatTaxonomyList(dictionaries.en, "regions", []), "Unstated");
   assert.equal(formatTaxonomyList(dictionaries.en, "audiences", ["some_new_value"]), "Some New Value");
+});
+
+test("pickDisplayTitle prefers the title in the reader's language, then the cleaned title", () => {
+  const titles: { displayTitle: string; displayTitleEn: string | null; displayTitleZh: string | null } = {
+    displayTitle: "Cleaned",
+    displayTitleEn: "English",
+    displayTitleZh: "中文",
+  };
+  const item = (overrides: Partial<typeof titles>) =>
+    ({ ...base, ...titles, title: "Source", ...overrides }) as unknown as StoredOpportunityFeedItem;
+
+  assert.equal(pickDisplayTitle("en", item({})), "English");
+  assert.equal(pickDisplayTitle("zh", item({})), "中文");
+  assert.equal(pickDisplayTitle("zh", item({ displayTitleZh: null })), "Cleaned");
+  assert.equal(pickDisplayTitle("en", item({ displayTitleEn: null })), "Cleaned");
 });

@@ -32,7 +32,7 @@ export const generateMetadata = async ({ params }: LocalizedOpportunityDetailPag
     return { robots: { follow: false, index: false }, title: dictionary.meta.detailFallbackTitle };
   }
 
-  const { authorityLabel, deadlineLabel, locationLabel } = getOpportunityDisplayMeta(dictionary, locale, opportunity);
+  const { authorityLabel, deadlineLabel, displayTitle, locationLabel } = getOpportunityDisplayMeta(dictionary, locale, opportunity);
   const facts = [opportunity.authorityName.trim() ? authorityLabel : null, locationLabel, deadlineLabel]
     .filter(Boolean)
     .join(" · ");
@@ -42,7 +42,7 @@ export const generateMetadata = async ({ params }: LocalizedOpportunityDetailPag
     images: [`/api/opportunities/${opportunity.slug}/image?rev=${opportunityImageRevision}`],
     locale,
     path: `/opportunities/${encodeURIComponent(opportunity.slug)}`,
-    title: opportunity.title,
+    title: displayTitle,
     type: "article",
   });
 };

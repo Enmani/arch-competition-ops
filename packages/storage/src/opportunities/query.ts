@@ -219,6 +219,9 @@ export const OPPORTUNITY_COLUMNS = [
   "last_verified_at",
   "discovered_at",
   "updated_at",
+  "display_title",
+  "display_title_en",
+  "display_title_zh",
 ].join(", ");
 
 export const buildCountStatement = (query: NormalizedQuery, clock: Clock): SqlStatement => {

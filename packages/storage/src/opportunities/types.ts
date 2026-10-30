@@ -62,6 +62,9 @@ export type OpportunityRow = {
   submission_fee_eur: number | null;
   title: string;
   updated_at: string;
+  display_title: string | null;
+  display_title_en: string | null;
+  display_title_zh: string | null;
 };
 
 export type StoredProjectType = ProjectType;
@@ -117,6 +120,9 @@ export type StoredOpportunityFeedItem = {
   evidenceLevelLabel: string;
   evidenceNote: string;
   extractionConfidence: number;
+  displayTitle: string;
+  displayTitleEn: string | null;
+  displayTitleZh: string | null;
   feeLabel: string;
   geoConfidence: number | null;
   geoLat: number | null;

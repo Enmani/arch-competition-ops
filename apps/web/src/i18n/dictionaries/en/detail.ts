@@ -16,6 +16,7 @@ export const detail = {
     submission: "Documents and submission",
   },
   keyFacts: "Facts",
+  originalTitle: "Title in the notice",
   evidenceActions: "Evidence and links",
   sourceNote: "Note",
   fields: {
