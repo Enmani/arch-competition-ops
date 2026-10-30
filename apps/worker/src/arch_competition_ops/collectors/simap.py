@@ -147,7 +147,9 @@ def collect_simap_documents(
     documents: list[CollectedSourceDocument] = []
 
     while len(documents) < limit:
-        params: dict[str, Any] = {"lang": ["en"], "projectSubTypes": list(ALLOWED_PROJECT_SUBTYPES)}
+        params: dict[str, Any] = {"lang": ["en"]}
+        if not include_unclassified:
+            params["projectSubTypes"] = list(ALLOWED_PROJECT_SUBTYPES)
         if last_item:
             params["lastItem"] = last_item
 
@@ -167,7 +169,10 @@ def collect_simap_documents(
             if min_publication_date and publication_date:
                 if date.fromisoformat(publication_date) < min_publication_date:
                     continue
-            if str(project.get("pubType") or "").lower() != "competition":
+            if (
+                not include_unclassified
+                and str(project.get("pubType") or "").lower() != "competition"
+            ):
                 continue
 
             project_id = str(project.get("id") or "").strip()

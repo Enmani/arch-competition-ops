@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import asdict, dataclass, field
 from datetime import timedelta
 from pathlib import Path
@@ -14,6 +15,7 @@ from arch_competition_ops.models import SourceDefinition
 from arch_competition_ops.settings import Settings
 
 DEFAULT_AUTOMATION_CONFIG_PATH = Path("config") / "automation.yml"
+logger = logging.getLogger(__name__)
 
 
 class AutomationBatchDefinition(BaseModel):
@@ -45,6 +47,9 @@ class AutomationSourceRun:
     # source was stored. A run with failures still makes the batch exit non-zero.
     failure_count: int = 0
     notes: list[str] = field(default_factory=list)
+    document_count: int = 0
+    filtered_out: int = 0
+    deferred: int = 0
 
 
 @dataclass
@@ -192,7 +197,8 @@ def run_automation_batch(
     )
 
     def run_sources() -> None:
-        for source in sources:
+        for index, source in enumerate(sources, start=1):
+            logger.info("Source %d/%d: %s", index, len(sources), source.source_id)
             try:
                 ingest = ingest_source(
                     settings,
@@ -216,6 +222,9 @@ def run_automation_batch(
                     publication_date_from=effective_publication_date_from,
                     failure_count=ingest.parse_failure_count,
                     notes=ingest.notes,
+                    document_count=ingest.document_count,
+                    filtered_out=ingest.filtered_out,
+                    deferred=ingest.deferred,
                 )
             )
 

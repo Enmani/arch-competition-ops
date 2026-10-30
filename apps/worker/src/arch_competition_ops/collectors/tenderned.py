@@ -117,13 +117,13 @@ def collect_tenderned_documents(
         for row in rows:
             if not isinstance(row, dict):
                 continue
-            if row.get("typePublicatie", {}).get("code") != "AAO":
+            if not include_unclassified and row.get("typePublicatie", {}).get("code") != "AAO":
                 continue
-            if row.get("typeOpdracht", {}).get("code") != "D":
+            if not include_unclassified and row.get("typeOpdracht", {}).get("code") != "D":
                 continue
             if row.get("publicatiestatus", {}).get("code") != "PUB":
                 continue
-            if not row.get("sluitingsDatum"):
+            if not include_unclassified and not row.get("sluitingsDatum"):
                 continue
 
             title = str(row.get("aanbestedingNaam") or "").strip()
@@ -135,7 +135,9 @@ def collect_tenderned_documents(
                 and publication_date < publication_date_from
             ):
                 continue
-            if not title or not _is_candidate_tenderned_notice(title, description):
+            if not title or (
+                not include_unclassified and not _is_candidate_tenderned_notice(title, description)
+            ):
                 continue
 
             publicatie_id = str(row.get("publicatieId") or "").strip()

@@ -56,6 +56,7 @@ Read by the system, never replaced without an explicit instruction.
 - AI-extracted facts require an exact quote from the supplied notice or its links. Euro monetary fields also require an explicit euro currency and matching amount; other currencies stay in source text. Unknown, rejected and conflicting claims remain empty or are flagged for review. Model recommendations never overwrite canonical opportunity status or human decisions.
 - `ai_screening_runs` retains local inputs, results, usage and budget reservations. `ai_screening_results` contains the published recommendation and source revision; only this projection is exported to D1. An outdated exclusion does not hide a newer source record.
 - Candidate success is distinct from verified eligibility: a supported title is required, but missing optional fields are allowed. Unsupported individual fields are omitted, and unsupported decision evidence changes the result to `needs_review` rather than discarding the entire candidate. Generated recommendations never establish eligibility as fact.
+- Participation excerpts are published as `notice_details` in the advisory result JSON, grouped into timeline, commercial, eligibility, scope and submission. Both excerpt and quotation must match the supplied notice; unknown clauses are omitted. They are not additional canonical columns or verified bid conditions. Storage exposes them on detail lookup only when the published source revision is current.
 
 ## Rule
 

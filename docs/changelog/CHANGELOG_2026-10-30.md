@@ -98,3 +98,30 @@ Ship the current interface and screening behavior together on main, using the la
 - Current web styles, discovery/detail components, display helpers, dictionaries and preview placeholders
 - `.impeccable.md`, `docs/AI_CONSTRAINTS.md`, `dev-port.ps1`, `CLOUDFLARE_DEPLOY_RUNBOOK.md`
 - `reports/2026-10-21-code-audit.md`, `reports/2026-10-30-ai-screening-comparison.md`, `reports/2026-10-30-multicountry-screening.md`
+
+## All-source AI entry and participation excerpts
+
+### Changed
+
+- Removed remaining source-specific semantic rejection gates in AI mode, including China listing types/keywords and Dutch, Spanish, Swiss and municipal candidate checks.
+- Consolidated matching criteria into the shared skill; legacy keyword bonuses now apply only in rule mode.
+- Added the registry-driven `all_enabled` batch and explicit collected, excluded and deferred counts; budget deferrals do not masquerade as content rejection.
+- Extracted original participation clauses in the same request and exposed validated, current-revision excerpts on localized detail pages. Added source-backed country, notice id and language extraction.
+- Raised output headroom to 12,288 tokens; normal limits remain USD 1 per UTC day and USD 31 per month.
+
+### Why
+
+Let the model read unfamiliar notices before making a topical judgment, while preserving source evidence and the user's current interface.
+
+### Validation
+
+- Focused worker tests cover broad China/Dutch intake, source-backed clauses and existing screening/batch behavior.
+- Storage tests verify excerpt validation and stale-revision suppression.
+- Live all-source execution and complete repository checks are recorded at closeout.
+
+### Modified Files
+
+- Worker collectors, ingestion, automation, screening and settings; focused worker tests
+- `config/automation.yml`, China source pack and the shared screening skill
+- Core excerpt schema, storage detail read model/tests and localized detail component/copy
+- `.env.example`, `docs/ARCHITECTURE.md`, `docs/DATA_CONTRACT.md`

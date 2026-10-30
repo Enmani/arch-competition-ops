@@ -55,7 +55,7 @@ def collect_hamburg_listing_documents(
             continue
 
         listing_context = " ".join(value for value in (authority, deadline_raw) if value)
-        if not is_candidate_municipal_notice(title, listing_context):
+        if not include_unclassified and not is_candidate_municipal_notice(title, listing_context):
             continue
 
         detail_url = urljoin(listing_url, unescape(href))

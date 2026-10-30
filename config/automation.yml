@@ -1,4 +1,9 @@
 batches:
+  - batch_id: all_enabled
+    description: All enabled sources, sharing the same daily AI budget.
+    limit_per_source: 20
+    publication_window_days: 30
+
   - batch_id: official_daytime
     description: Higher-frequency official procurement sources.
     include_kinds:

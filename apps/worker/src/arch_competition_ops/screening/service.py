@@ -72,6 +72,9 @@ def _request_one(
         budget_usd=settings.ai_monthly_budget_usd,
         daily_budget_usd=settings.ai_daily_budget_usd,
     )
+    schema = ScreeningDecision.model_json_schema()
+    # Strict Structured Outputs requires every property, including defaulted additions.
+    schema["required"] = list(schema["properties"])
     try:
         response = client.responses.create(
             model=model.id,
@@ -83,7 +86,7 @@ def _request_one(
                     "type": "json_schema",
                     "name": "competition_screening",
                     "strict": True,
-                    "schema": ScreeningDecision.model_json_schema(),
+                    "schema": schema,
                 }
             },
         )

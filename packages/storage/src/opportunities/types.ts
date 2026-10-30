@@ -4,6 +4,7 @@ import type {
   DiscoverFilters,
   ProjectMode,
   ProjectType,
+  NoticeDetail,
 } from "@arch-competition/core";
 
 /**
@@ -93,6 +94,7 @@ export type StoredFilterOptions = {
  * The `*Label` fields are English fallbacks, see ../presentation.ts.
  */
 export type StoredOpportunityFeedItem = {
+  noticeDetails?: NoticeDetail[];
   audience: string[];
   authorityName: string;
   briefPdfUrl: string | null;

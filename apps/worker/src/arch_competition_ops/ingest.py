@@ -44,7 +44,10 @@ from arch_competition_ops.storage import (
     record_source_run,
     upsert_competitions,
 )
-from arch_competition_ops.storage.screening import upsert_screened_competitions
+from arch_competition_ops.storage.screening import (
+    ScreeningBudgetExceeded,
+    upsert_screened_competitions,
+)
 from arch_competition_ops.targeting import load_targeting_filter
 from arch_competition_ops.verifiers import verify_record
 
@@ -86,6 +89,7 @@ class IngestResult:
     failures: list[DocumentFailure] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     preview: CardPreviewPrewarmResult | None = None
+    deferred: int = 0
 
     @property
     def parse_failure_count(self) -> int:
@@ -190,6 +194,7 @@ def ingest_source(
             triage = triage_documents(settings, documents, limit=limit)
             documents = triage.documents
             result.filtered_out += triage.excluded
+            result.deferred += triage.deferred
             result.notes.append(
                 f"AI candidate triage: excluded={triage.excluded}, deferred={triage.deferred}, "
                 f"cached={triage.cached}, estimated_cost_usd={triage.cost_usd:.6f}"
@@ -223,7 +228,8 @@ def ingest_source(
                             document.payload,
                             source_url=document.source_url,
                         )
-                        record.official_notice_id = parsed.official_notice_id
+                        if parsed.official_notice_id:
+                            record.official_notice_id = parsed.official_notice_id
                         record.cpv_codes = parsed.cpv_codes
                     except (ValueError, KeyError, TypeError):
                         pass  # AI has already produced a validated record from raw source text.
@@ -258,13 +264,19 @@ def ingest_source(
                 # scores are recomputed from the final record.
                 record.extraction_confidence = compute_extraction_confidence(record)
                 record.qualification_score = compute_qualification_score(record)
-                targeting.apply_bonus(record)
+                if not settings.ai_enabled:
+                    targeting.apply_bonus(record)
                 stage = "geocode"
                 record = enrich_record_geocode(
                     record,
                     cache_path=settings.resolve_path(settings.geocode_cache),
                     geocoder=geocoder,
                 )
+            except ScreeningBudgetExceeded as exc:
+                # Budget deferral is not a content rejection. Keep later sources collectable.
+                result.deferred += len(documents) - documents.index(document)
+                result.notes.append(str(exc))
+                break
             except Exception as exc:  # noqa: BLE001 - one bad document must not sink the run
                 logger.warning("Skipping document %s at %s: %s", document.source_url, stage, exc)
                 result.failures.append(DocumentFailure(document.source_url, stage, str(exc)))

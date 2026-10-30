@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     ai_daily_budget_usd: float = Field(default=1, ge=0, allow_inf_nan=False)
     ai_preferences: Path = DEFAULT_AI_SKILL
     ai_monthly_budget_usd: float = Field(default=31, ge=0, allow_inf_nan=False)
-    ai_max_output_tokens: int = Field(default=8192, ge=512, le=16384)
+    ai_max_output_tokens: int = Field(default=12288, ge=512, le=16384)
     ai_max_input_chars: int = Field(default=30000, ge=1000, le=100000)
     ai_timeout_seconds: float = Field(default=120, gt=0, le=300, allow_inf_nan=False)
 

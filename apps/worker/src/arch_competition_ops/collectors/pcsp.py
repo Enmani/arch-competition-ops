@@ -222,11 +222,11 @@ def collect_pcsp_documents(
 
         if publication_date_from and updated and updated < publication_date_from:
             continue
-        if not title or not detail_url or state not in LIVE_STATES:
+        if not title or not detail_url or (not include_unclassified and state not in LIVE_STATES):
             continue
         if detail_url in seen_urls:
             continue
-        if not _is_candidate_pcsp_notice(title, summary):
+        if not include_unclassified and not _is_candidate_pcsp_notice(title, summary):
             continue
 
         inspected += 1

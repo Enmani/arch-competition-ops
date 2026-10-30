@@ -24,11 +24,13 @@ _LIST_FIELDS = {
     "design_scopes",
     "project_modes",
     "audience",
+    "languages",
 }
 _TAXONOMY = {
     "opportunity_type": "opportunity_types",
     "procedure_type": "procedure_types",
     "implementation_path": "implementation_paths",
+    "jurisdiction": "regions",
 }
 
 

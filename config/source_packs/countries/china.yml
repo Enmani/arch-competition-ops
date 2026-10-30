@@ -1,7 +1,7 @@
 # AI maintenance note:
 # - Phase 1 China coverage starts with the nationwide public resources trading platform.
-# - The collector keeps architecture, building, and interior-design opportunities only.
-# - Roads, bridges, underground utilities, municipal civil works, and EPC-heavy infrastructure noise are filtered out upstream.
+# - AI mode retains unclassified listings for the shared screening skill to judge.
+# - Rule-based relevance checks remain available when AI screening is disabled.
 sources:
   - source_id: ggzy_public_notices
     name: National Public Resources Trading Platform
@@ -19,4 +19,4 @@ sources:
       - china
     languages:
       - zh
-    notes: Official nationwide China public resources trading platform. Collector keeps architecture, building, planning, and interior-design procurement notices and excludes roads, civil engineering, underground works, and other infrastructure-heavy tenders.
+    notes: Official nationwide China public resources trading platform. AI screening uses broad design searches and retains unclassified notices; the shared screening skill judges their scope and participation opportunity.

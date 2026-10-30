@@ -210,6 +210,7 @@ def collect_ggzy_documents(
         publication_date_from=publication_date_from,
         today=today or clock.today(),
         fetch_list=fetch_list or default_fetch_list,
+        include_unclassified=include_unclassified,
     )[: detail_budget(limit)]
 
     fetch_page = fetch_detail or make_page_fetcher(archive_dir)

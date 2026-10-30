@@ -1,6 +1,15 @@
 import type { AppDictionary } from "../types";
 
 export const detail = {
+  noticeDetails: "Participation excerpts",
+  noticeDetailsNote: "Source excerpts extracted by AI. Check them against the linked notice.",
+  noticeDetailCategories: {
+    timeline: "Schedule",
+    commercial: "Costs and remuneration",
+    eligibility: "Eligibility and team",
+    scope: "Scope and deliverables",
+    submission: "Documents and submission",
+  },
   keyFacts: "Facts",
   evidenceActions: "Evidence and links",
   sourceNote: "Note",

@@ -168,7 +168,11 @@ def collect_anac_documents(
                 continue
 
             first_item = flattened_items[0] if flattened_items else {}
-            if "aggiudicazione" in summary.lower() and not item.get("dataScadenza"):
+            if (
+                not include_unclassified
+                and "aggiudicazione" in summary.lower()
+                and not item.get("dataScadenza")
+            ):
                 continue
 
             notice_id = item.get("idAvviso")

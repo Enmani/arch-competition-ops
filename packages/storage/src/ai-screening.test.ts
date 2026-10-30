@@ -25,3 +25,25 @@ test("current AI exclusions hide from feed/count/facets; human decisions and sta
     cleanup();
   }
 });
+
+test("participation excerpts use current advice only and reject malformed or unsupported text", async () => {
+  const { raw, storage, cleanup } = createTestStorage();
+  try {
+    seedOpportunity(raw, { id: "details" });
+    const { updated_at } = raw.prepare("SELECT updated_at FROM competitions WHERE id = 'details'").get() as { updated_at: string };
+    const result = { notice_details: [
+      { category: "timeline", text: "Register by 3 Nov", quote: "Register by 3 Nov", evidence_field: "notice_text" },
+      { category: "commercial", text: "EUR 900", quote: "EUR 100", evidence_field: "notice_text" },
+      { category: "unknown", text: "Guess", quote: "Guess", evidence_field: "notice_text" },
+    ] };
+    raw.prepare(`INSERT INTO ai_screening_results
+      (competition_id, source_updated_at, model, decision, relevance_score, result_json, updated_at)
+      VALUES ('details', ?, 'gpt-6-luna', 'needs_review', 80, ?, ?)`)
+      .run(updated_at, JSON.stringify(result), updated_at);
+    assert.equal((await storage.opportunities.getBySlug("details"))?.noticeDetails?.length, 1);
+    raw.prepare("UPDATE competitions SET updated_at = 'new-revision' WHERE id = 'details'").run();
+    assert.equal((await storage.opportunities.getBySlug("details"))?.noticeDetails, undefined);
+  } finally {
+    cleanup();
+  }
+});

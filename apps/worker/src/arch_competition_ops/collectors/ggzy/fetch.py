@@ -101,6 +101,7 @@ def iter_candidate_rows(
     publication_date_from: str | None,
     today: date,
     fetch_list: ListFetcher,
+    include_unclassified: bool = False,
 ) -> list[dict[str, Any]]:
     """Listing rows from every search strategy, de-duplicated and best-title-first."""
     start_date = (
@@ -141,7 +142,9 @@ def iter_candidate_rows(
                     )
                     if published_at and published_at < publication_date_from:
                         continue
-                if not is_allowed_listing(record):
+                if not include_unclassified and not is_allowed_listing(record):
+                    continue
+                if not str(record.get("title") or "").strip() or not record.get("url"):
                     continue
                 seen_ids.add(notice_id)
                 candidates.append(record)

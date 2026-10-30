@@ -198,6 +198,20 @@ export const OpportunityDetailSurface = ({
           {facts}
           {commercial}
           {qualification}
+          {opportunity.noticeDetails?.length ? (
+            <section className="detail-section">
+              <h2>{dictionary.detail.noticeDetails}</h2>
+              <p>{dictionary.detail.noticeDetailsNote}</p>
+              <dl className="detail-list">
+                {opportunity.noticeDetails.map((detail, index) => (
+                  <div className="detail-item" key={`${detail.category}-${index}`}>
+                    <dt className="detail-label">{dictionary.detail.noticeDetailCategories[detail.category]}</dt>
+                    <dd>{detail.text}</dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+          ) : null}
         </div>
 
         <div className="detail-stack">

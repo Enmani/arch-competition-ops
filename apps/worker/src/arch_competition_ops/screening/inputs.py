@@ -140,6 +140,8 @@ def prepare_input(
                 "design_scopes",
                 "project_modes",
                 "audience",
+                "regions",
+                "languages",
             )
         }
     # Store the exact prompt/config, so any relevant change invalidates reuse without hashing.

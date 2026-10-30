@@ -1,4 +1,13 @@
 export const detail = {
+  noticeDetails: "参与条款摘录",
+  noticeDetailsNote: "AI 从公告中提取的原文，请通过来源链接核对。",
+  noticeDetailCategories: {
+    timeline: "时间安排",
+    commercial: "费用与报酬",
+    eligibility: "资格与团队",
+    scope: "工作范围与交付",
+    submission: "文件与提交",
+  },
   keyFacts: "事实",
   evidenceActions: "证据和链接",
   sourceNote: "备注",
