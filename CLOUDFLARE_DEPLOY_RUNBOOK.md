@@ -17,7 +17,6 @@ Production targets:
 Run from the repository root:
 
 ```powershell
-cd C:\Users\fangx\arch-competition-ops
 git status
 ```
 
@@ -79,6 +78,8 @@ Enter the addresses when prompted, for example `first@example.com,second@example
 
 Before the first deploy that contains migration `0005`, apply it with `npm run d1:migrate:remote` (Case 3). It signs every user out once (session token hashes changed encoding) and removes duplicate saved searches. Passwords are unaffected; old hashes are upgraded on each user's next login. Measure scrypt CPU time with `wrangler tail` after the first logins (see `docs/structures/2026-10-21-storage-auth-api-architecture.md`, decision 2).
 
+Before deploying code that contains migration `0006`, apply it through Case 3 as well. Discovery queries use its `ai_screening_results` table. The worker's API key, full prompts and local spend ledger stay on the ingestion backend; D1 receives only published screening advice.
+
 ## Case 1: Code Or UI Changed
 
 Use this when pages, API routes, components, styles, config, or package dependencies changed.
@@ -123,11 +124,11 @@ npm --workspace apps/web exec -- wrangler d1 execute arch-competition-ops --remo
 
 How the sync behaves:
 
-- The export is an incremental upsert (`INSERT ... ON CONFLICT DO UPDATE`). It syncs only the worker-owned tables: `competitions`, `source_runs`, `source_health`, and `ops_review_queue_items` rows with `origin = 'worker_diagnostic'`.
+- The export is an incremental upsert (`INSERT ... ON CONFLICT DO UPDATE`). It syncs only the worker-owned tables: `competitions`, `source_runs`, `source_health`, `ai_screening_results`, and `ops_review_queue_items` rows with `origin = 'worker_diagnostic'`.
 - It never touches user data: `workspace_*`, `ops_review_decisions` and `auth_*` are not read and not written. Review queue rows keep their human `status`, `first_detected_at` and `updated_at`; only the diagnostic fields are refreshed.
 - It emits no `DELETE` unless you pass `--prune` (below).
 - The local database is read from `ARCH_COMPETITION_OPS_DB` (relative paths resolve against the repository root; default `data/competitions.sqlite`).
-- Before writing anything the exporter checks that the local database has exactly the columns defined by `apps/web/migrations/*.sql` for the four synced tables. On any difference it prints the diff, exits with code 1 and writes no files. Fix the local database (run the Python worker migration or apply the missing migration) and retry.
+- Before writing anything the exporter checks that the local database has exactly the columns defined by `apps/web/migrations/*.sql` for the synced tables. On any difference it prints the diff, exits with code 1 and writes no files. Fix the local database (run the Python worker migration or apply the missing migration) and retry.
 - Each file is capped at about 500 statements and 1 MB, and each statement at 90 KB (D1 rejects statements over 100 KB).
 - Every file is idempotent. If one file fails, fix the cause and re-run that file (or the whole list) from the same directory; do not regenerate in between unless the local data changed.
 

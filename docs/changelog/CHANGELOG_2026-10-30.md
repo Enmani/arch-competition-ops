@@ -72,3 +72,28 @@ Improve filtering through general decision criteria while preserving possible ar
 - Worker skill/collector tests and test configuration support
 - Chinese/English taxonomy dictionaries
 - `docs/ARCHITECTURE.md`, `docs/DATA_CONTRACT.md`, `docs/SETUP.md`
+
+## Main integration and current frontend
+
+### Changed
+
+- Integrated the latest light, flat UI with AI screening, the collapsible discovery filters, compact opportunity cards and grouped detail facts.
+- Updated the design context to follow the current interface, including omission of unknown optional card values while preserving detail evidence.
+- Kept the 3400 development launcher hidden and managed by the existing port script.
+- Added the screening-table migration prerequisite and published-advice table to the Cloudflare deployment instructions.
+- Included the referenced audit and screening reports in version control so documentation links also work after checkout.
+
+### Why
+
+Ship the current interface and screening behavior together on main, using the latest changes as the integration standard.
+
+### Validation
+
+- The integrated changes passed `npm run check` and `npm run build:web` before the main merge.
+- Port restart and browser verification use the existing managed 3400 server.
+
+### Modified Files
+
+- Current web styles, discovery/detail components, display helpers, dictionaries and preview placeholders
+- `.impeccable.md`, `docs/AI_CONSTRAINTS.md`, `dev-port.ps1`, `CLOUDFLARE_DEPLOY_RUNBOOK.md`
+- `reports/2026-10-21-code-audit.md`, `reports/2026-10-30-ai-screening-comparison.md`, `reports/2026-10-30-multicountry-screening.md`

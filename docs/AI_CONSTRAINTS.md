@@ -1,7 +1,7 @@
 ---
 title: AI Repository Constraints
 status: done
-updated_at: 2026-10-21
+updated_at: 2026-10-30
 related_docs:
   - AGENTS.md
   - docs/AGENTS.md
@@ -57,6 +57,7 @@ Required traits:
 - search and filters visible at the top of the browse surface
 - a fast first-pass scan of the few fields that matter most on entry
 - a clear one-click path from scan view into the full normalized record
+- flat light surfaces and typographic grouping, with absent optional card values omitted
 
 Avoid:
 

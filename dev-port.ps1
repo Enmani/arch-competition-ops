@@ -439,6 +439,7 @@ function Start-WebDev {
     $launcher = Start-Process `
         -FilePath "npm.cmd" `
         -ArgumentList "run", "dev:web" `
+        -WindowStyle Hidden `
         -WorkingDirectory $RepoRoot `
         -RedirectStandardOutput $OutLog `
         -RedirectStandardError $ErrLog `
