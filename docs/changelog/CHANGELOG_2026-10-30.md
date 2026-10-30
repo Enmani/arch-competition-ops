@@ -80,6 +80,7 @@ Improve filtering through general decision criteria while preserving possible ar
 - Integrated the latest light, flat UI with AI screening, the collapsible discovery filters, compact opportunity cards and grouped detail facts.
 - Updated the design context to follow the current interface, including omission of unknown optional card values while preserving detail evidence.
 - Kept the 3400 development launcher hidden and managed by the existing port script.
+- Advanced the preview algorithm version to v2 for the new locator appearance, invalidating old card-image URLs.
 - Added the screening-table migration prerequisite and published-advice table to the Cloudflare deployment instructions.
 - Included the referenced audit and screening reports in version control so documentation links also work after checkout.
 

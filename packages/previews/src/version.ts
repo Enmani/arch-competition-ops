@@ -10,4 +10,4 @@
  * What does NOT need a bump: pipeline plumbing, logging, network hygiene. What DOES: any change
  * to src/address, src/geocode, src/render or src/official-image that alters output.
  */
-export const PREVIEW_ALGORITHM_VERSION = "v1";
+export const PREVIEW_ALGORITHM_VERSION = "v2";
