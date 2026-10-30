@@ -20,12 +20,12 @@
   },
   "dependencies": {
     "better-sqlite3": "^12.9.0",
-    "sharp": "^0.34.5",
-    "tsx": "^4.19.3"
+    "sharp": "^0.35.5",
+    "tsx": "^4.23.15"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
-    "@types/d3-geo": "^3.1.0",
+    "@types/d3-geo": "^3.1.1",
     "@types/topojson-client": "^3.1.5",
     "d3-geo": "^3.1.1",
     "topojson-client": "^3.1.0",
