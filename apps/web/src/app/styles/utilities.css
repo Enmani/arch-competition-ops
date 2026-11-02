@@ -23,11 +23,4 @@
     transition-duration: 0ms !important;
     animation-duration: 0ms !important;
   }
-
-  .route-shell,
-  .opportunity-tile {
-    animation: none !important;
-    opacity: 1;
-    transform: none;
-  }
 }

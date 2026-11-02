@@ -1,6 +1,9 @@
-/* Discover page: page frame, feed footer and the filter dock (one compact bar + a collapsible panel). */
+/* Discover page: page frame, feed footer and the filter dock.
+   The dock is a search bar and a row of filter pills. A pill opens a panel with that filter's
+   options; the panel hangs from the dock (a positioned box), so opening it never moves the results. */
 
 .discover-page {
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-xl);
   padding-top: 0;
 }
@@ -23,6 +26,7 @@
 }
 
 .discover-dock {
+  min-width: 0;
   position: sticky;
   top: var(--shell-topbar-height);
   z-index: 30;
@@ -31,60 +35,143 @@
   transition: opacity 180ms var(--ease-out-quart);
 }
 
-.discover-dock.is-pending {
-  opacity: 0.94;
+/* While a filter result loads, the list keeps its place and dims a little, and a hairline is drawn
+   along the dock: feedback within a frame, with no skeleton and no layout shift. */
+.discover-page:has(.discover-dock.is-pending) .waterfall-feed {
+  opacity: 0.6;
+}
+
+.discover-dock::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  background: var(--ink);
+  opacity: 0;
+  transform: scaleX(0);
+  transform-origin: left;
+  pointer-events: none;
+}
+
+.discover-dock.is-pending::after {
+  animation: dock-progress 1.4s var(--ease-out-quart) infinite;
+}
+
+@keyframes dock-progress {
+  0% {
+    opacity: 1;
+    transform: scaleX(0);
+  }
+
+  75% {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scaleX(1);
+  }
 }
 
 .filter-form {
-  gap: var(--space-sm);
-  padding: var(--space-md) 0;
+  /* minmax(0, ...) lets the pill row scroll instead of widening the whole page. */
+  grid-template-columns: minmax(0, 1fr);
+  padding: var(--space-sm) 0;
 }
 
-/* Always-visible bar: search, country, sort, panel toggle, actions. */
-.dock-bar {
-  display: grid;
-  grid-template-columns: minmax(12rem, 1fr) minmax(8.5rem, 11rem) minmax(8.5rem, 11rem) auto auto;
-  align-items: center;
-  gap: var(--space-sm);
-}
-
-.dock-bar > * {
-  min-width: 0;
-}
-
-.dock-actions {
+/* The whole filter is one row: country, the filter pills, then sort at the far end. A row that is
+   wider than the screen scrolls sideways instead of wrapping into a second line. */
+.dock-pills {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
   gap: var(--space-sm);
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 
-.dock-actions .button,
-.dock-toggle {
-  height: var(--control-h);
-  min-height: var(--control-h);
-  padding: 0 var(--space-lg);
+.dock-pills::-webkit-scrollbar {
+  display: none;
+}
+
+.dock-pills > * {
+  flex: none;
+}
+
+/* Anything absolutely positioned inside the scrolling row must be anchored to its own item, or its
+   box escapes the scroller and widens the page: the visually hidden labels of the two selects... */
+.dock-country,
+.dock-sort {
+  position: relative;
+}
+
+/* ...and the panel of a pill that is not open (its box would otherwise sit at the pill's x). */
+.dock-pill:not([open]) > .dock-panel {
+  display: none;
+}
+
+.dock-sort {
+  min-width: 11rem;
+  margin-left: auto;
+}
+
+.dock-sort select {
   font-size: var(--fs-sm);
-  white-space: nowrap;
 }
 
-.dock-toggle {
+.dock-country {
+  flex: 0 0 auto;
+  min-width: 9rem;
+}
+
+/* Same size as the pills beside it. */
+.dock-country select {
+  font-size: var(--fs-sm);
+}
+
+.dock-pill-summary,
+.dock-toggle-pill {
   display: inline-flex;
   align-items: center;
   gap: var(--space-sm);
+  height: var(--control-h);
+  padding: 0 var(--space-md);
   border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
   background: transparent;
   color: var(--ink);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
   cursor: pointer;
-  transition: border-color 180ms var(--ease-out-quart);
+  list-style: none;
+  /* A control, not text: a quick second click must not select its label. */
+  user-select: none;
+  transition:
+    border-color 180ms var(--ease-out-quart),
+    background-color 180ms var(--ease-out-quart);
 }
 
-.dock-toggle:hover,
-.discover-dock.is-open .dock-toggle {
+.dock-pill-summary::-webkit-details-marker {
+  display: none;
+}
+
+.dock-pill-summary:hover,
+.dock-toggle-pill:hover,
+.dock-pill[open] > .dock-pill-summary {
   border-color: var(--ink);
 }
 
-.dock-toggle:focus-visible,
+/* A pill that carries a choice reads as selected without relying on colour alone: it shows a count. */
+.dock-pill.is-active > .dock-pill-summary,
+.dock-toggle-pill:has(input:checked) {
+  border-color: var(--ink);
+  background: var(--surface-strong);
+}
+
+.dock-pill-summary:focus-visible,
+.dock-toggle-pill:has(input:focus-visible),
 .dock-reset:focus-visible {
   outline: var(--focus-ring);
   outline-offset: var(--focus-ring-offset);
@@ -96,10 +183,45 @@
   min-width: 1.25rem;
   height: 1.25rem;
   padding: 0 var(--space-xs);
+  border-radius: var(--radius-pill);
   background: var(--ink);
   color: var(--surface);
   font-size: var(--fs-sm);
   line-height: 1;
+}
+
+.dock-chevron {
+  flex: none;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-right: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+  transform: translateY(-0.12rem) rotate(45deg);
+  transition: transform 220ms var(--ease-out-expo);
+}
+
+.dock-pill[open] > .dock-pill-summary .dock-chevron {
+  transform: translateY(0.1rem) rotate(225deg);
+}
+
+/* The toggle pill is a checkbox: the real input covers it, so the whole pill is the hit area. */
+.dock-toggle-pill {
+  position: relative;
+}
+
+.dock-toggle-pill input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.dock-toggle-pill:has(input:checked)::before {
+  content: "✓";
+  font-weight: 700;
 }
 
 .dock-reset {
@@ -123,150 +245,149 @@
   pointer-events: none;
 }
 
-.discover-dock-toggle {
-  flex: none;
-  width: 0.55rem;
-  height: 0.55rem;
-  border-right: 1px solid currentColor;
-  border-bottom: 1px solid currentColor;
-  transform: translateY(-0.12rem) rotate(45deg);
-  transition: transform 220ms var(--ease-out-expo);
-}
-
-.discover-dock.is-open .discover-dock-toggle {
-  transform: translateY(0.1rem) rotate(225deg);
-}
-
-/* Collapsible panel: grid-rows 0fr -> 1fr animates height without measuring it. */
-.discover-dock-body {
-  grid-template-rows: 0fr;
-  overflow: hidden;
-  transition: grid-template-rows 280ms var(--ease-out-expo);
-}
-
-.discover-dock.is-open .discover-dock-body {
-  grid-template-rows: 1fr;
-}
-
-.discover-dock-panel {
-  min-height: 0;
-  overflow: hidden;
+/* The open pill's panel: full width of the dock, under the pill row. A tall one scrolls inside
+   itself instead of covering the viewport. */
+.dock-panel {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  left: 0;
+  display: grid;
   gap: var(--space-lg);
-  opacity: 0;
-  transform: translateY(-0.35rem);
-  transition:
-    opacity 180ms var(--ease-out-quart),
-    transform 280ms var(--ease-out-expo);
-}
-
-.discover-dock:not(.is-open) .discover-dock-panel {
-  pointer-events: none;
-}
-
-/* The sticky dock must never cover the whole viewport: a tall panel scrolls inside itself. */
-.discover-dock.is-open .discover-dock-panel {
-  max-height: min(58vh, 30rem);
+  max-height: min(60vh, 28rem);
   overflow-y: auto;
   overscroll-behavior: contain;
-  opacity: 1;
-  padding: var(--space-sm) 0 var(--space-xs);
-  transform: translateY(0);
+  padding: var(--space-lg) 0 var(--space-xl);
+  border-bottom: 1px solid var(--line-strong);
+  background: var(--bg);
 }
 
 .dock-label {
+  user-select: none;
   margin: 0;
   padding: 0;
   color: var(--ink-faint);
   font-size: var(--fs-sm);
 }
 
-/* Multi-select facets, side by side as wide as they fit. */
-.dock-facets {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr));
-  gap: var(--space-lg) var(--space-xl);
-}
-
-.dock-facets:empty {
-  display: none;
-}
-
-.dock-facet {
+.dock-group {
   min-width: 0;
   margin: 0;
   padding: 0;
   border: 0;
 }
 
-.dock-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-sm);
+.dock-group > .dock-label {
+  display: block;
+  margin-bottom: var(--space-sm);
 }
 
-.dock-facet .dock-chips {
-  margin-top: var(--space-sm);
+/* Two or three groups side by side inside one panel (dates, procedure, value). */
+.dock-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  gap: var(--space-lg) var(--space-2xl);
+  align-items: start;
 }
 
-/* A checkbox drawn as a pill. The real input stays focusable and covers the label, so the
-   whole pill is the hit area; the check mark keeps "selected" from relying on colour alone. */
-.dock-chip {
+/* A long list of options runs in columns, like a menu, not as a wall of buttons. */
+.dock-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
+  gap: 0 var(--space-xl);
+}
+
+.dock-group .dock-options {
+  grid-template-columns: 1fr;
+}
+
+.dock-option {
   position: relative;
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  min-height: 2rem;
-  padding: 0 var(--space-md);
-  border: 1px solid var(--line);
-  background: transparent;
+  gap: var(--space-md);
+  min-height: 2.25rem;
   color: var(--ink-soft);
-  font-size: var(--fs-sm);
-  line-height: 1.2;
+  font-size: var(--fs-md);
+  line-height: 1.3;
   cursor: pointer;
-  transition:
-    border-color 180ms var(--ease-out-quart),
-    background-color 180ms var(--ease-out-quart),
-    color 180ms var(--ease-out-quart);
+  user-select: none;
+  transition: color 180ms var(--ease-out-quart);
 }
 
-.dock-chip input {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+.dock-option:hover,
+.dock-option:has(input:checked) {
+  color: var(--ink);
+}
+
+.dock-option:has(input:checked) {
+  font-weight: 600;
+}
+
+/* The box sits in a reserved slot in front of the label, so nothing shifts when it appears: it shows
+   on hover or keyboard focus and stays once the option is selected. Where there is no hover (touch) it
+   is always drawn, since it would never be discoverable otherwise. */
+.dock-option input[type] {
+  appearance: none;
+  display: grid;
+  flex: none;
+  place-content: center;
+  width: 1rem;
+  height: 1rem;
   margin: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  background: transparent;
   opacity: 0;
   cursor: pointer;
+  transition:
+    opacity 120ms var(--ease-out-quart),
+    background-color 120ms var(--ease-out-quart),
+    border-color 120ms var(--ease-out-quart);
 }
 
-.dock-chip:hover {
-  border-color: var(--line-strong);
-  color: var(--ink);
+.dock-option input[type="radio"] {
+  border-radius: 50%;
 }
 
-.dock-chip:has(input:checked) {
+.dock-option:hover input[type],
+.dock-option input[type]:focus-visible,
+.dock-option input[type]:checked {
+  opacity: 1;
+}
+
+.dock-option input[type]:checked {
   border-color: var(--ink);
-  background: var(--surface-strong);
-  color: var(--ink);
+  background: var(--ink);
 }
 
-.dock-chip:has(input:checked)::before {
-  content: "✓";
-  margin-right: var(--space-sm);
-  font-size: var(--fs-sm);
-  font-weight: 700;
+.dock-option input[type="checkbox"]:checked::after {
+  content: "";
+  width: 0.28rem;
+  height: 0.55rem;
+  margin-top: -0.1rem;
+  border-right: 2px solid var(--surface);
+  border-bottom: 2px solid var(--surface);
+  transform: rotate(45deg);
 }
 
-.dock-chip:has(input:focus-visible) {
+.dock-option input[type="radio"]:checked::after {
+  content: "";
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: var(--surface);
+}
+
+.dock-option input[type]:focus-visible {
   outline: var(--focus-ring);
   outline-offset: var(--focus-ring-offset);
 }
 
-/* Labelled criteria fields (dates, value range, score, procedure, route). */
-.dock-criteria {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
-  align-items: end;
-  gap: var(--space-md);
+@media (hover: none) {
+  .dock-option input[type] {
+    opacity: 1;
+  }
 }
 
 .dock-field {
@@ -275,53 +396,19 @@
 }
 
 @media (pointer: coarse) {
-  .dock-chip {
+  .dock-option {
     min-height: var(--control-h);
   }
 }
 
 @media (max-width: 960px) {
+  /* Not sticky on narrow screens, but still the anchor the panel hangs from. */
   .discover-dock {
-    position: static;
+    position: relative;
+    top: auto;
   }
 
-  /* Narrow bar: search on its own line, the rest wraps; the actions stay at the end. */
-  .dock-bar {
-    display: flex;
-    flex-wrap: wrap;
-  }
-
-  .dock-search {
-    flex: 1 1 100%;
-  }
-
-  .dock-country,
-  .dock-sort {
-    flex: 1 1 9rem;
-  }
-
-  .dock-actions {
-    margin-left: auto;
-  }
-
-  .discover-dock.is-open .discover-dock-panel {
-    max-height: none;
-    overflow-y: visible;
-  }
-}
-
-@media (max-width: 560px) {
-  .dock-toggle {
-    flex: 1 1 auto;
-    justify-content: space-between;
-  }
-
-  .dock-actions {
-    flex: 1 1 100%;
-    margin-left: 0;
-  }
-
-  .dock-actions .button {
-    flex: 1 1 0;
+  .dock-panel {
+    max-height: 70vh;
   }
 }

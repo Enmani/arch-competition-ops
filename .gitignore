@@ -52,3 +52,5 @@ reports/**
 artifacts/**
 !artifacts/**/
 !artifacts/**/.gitkeep
+test-results/
+playwright-report/

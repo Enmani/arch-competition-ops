@@ -8,6 +8,9 @@ import type { StoredOpportunityQuery } from "@arch-competition/storage";
  */
 export type DiscoverSearchParams = DiscoverQueryInput;
 
+/** The filter form is referenced by id: the search box sits in the top bar, outside the form element. */
+export const DISCOVER_FILTER_FORM_ID = "discover-filters";
+
 const DISCOVER_DEFAULT_SORT: NonNullable<StoredOpportunityQuery["sort"]> = "deadline";
 
 /** Items rendered by the server on a fresh visit and fetched by each "load more". */

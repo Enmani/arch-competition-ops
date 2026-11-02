@@ -50,15 +50,15 @@
 }
 
 .ops-review-status.status-pending {
-  border-color: color-mix(in oklch, var(--accent) 45%, var(--line) 55%);
-  background: color-mix(in oklch, var(--accent-soft) 55%, var(--surface) 45%);
+  border-color: var(--accent-line);
+  background: var(--accent-wash);
   color: var(--accent);
 }
 
 .ops-review-status.status-needs_follow_up {
-  border-color: color-mix(in oklch, var(--danger) 35%, var(--line) 65%);
-  background: color-mix(in oklch, var(--danger) 10%, var(--surface) 90%);
-  color: color-mix(in oklch, var(--danger) 80%, var(--ink) 20%);
+  border-color: var(--danger-line);
+  background: var(--danger-wash);
+  color: var(--danger-ink);
 }
 
 .ops-review-actions {
@@ -76,7 +76,7 @@
   cursor: default;
   color: var(--ink-faint);
   border-color: var(--line);
-  background: color-mix(in oklch, var(--surface) 92%, var(--bg) 8%);
+  background: var(--surface-alt);
   transform: none;
 }
 

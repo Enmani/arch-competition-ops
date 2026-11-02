@@ -43,8 +43,8 @@
 }
 
 .button.primary:hover {
-  border-color: color-mix(in oklch, var(--accent) 84%, var(--ink) 16%);
-  background: color-mix(in oklch, var(--accent) 84%, var(--ink) 16%);
+  border-color: var(--accent-hover);
+  background: var(--accent-hover);
 }
 
 .button:focus-visible,

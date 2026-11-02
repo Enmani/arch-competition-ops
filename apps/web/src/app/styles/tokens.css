@@ -3,6 +3,7 @@
    not from extra sizes. Surfaces are flat: no shadows, no gradients, only hairline rules. */
 
 :root {
+  color-scheme: light dark;
   --bg: oklch(96.8% 0.008 103);
   --bg-alt: oklch(94.6% 0.01 103);
   --surface: oklch(98.8% 0.005 103);
@@ -17,6 +18,13 @@
   --accent: oklch(36% 0.074 151);
   --accent-soft: oklch(93% 0.028 151);
   --danger: oklch(49% 0.125 28);
+  /* Derived tints, named once so a theme only has to restate the base colours above. */
+  --accent-hover: color-mix(in oklch, var(--accent) 84%, var(--ink) 16%);
+  --accent-line: color-mix(in oklch, var(--accent) 45%, var(--line) 55%);
+  --accent-wash: color-mix(in oklch, var(--accent-soft) 55%, var(--surface) 45%);
+  --danger-line: color-mix(in oklch, var(--danger) 40%, var(--line) 60%);
+  --danger-wash: color-mix(in oklch, var(--danger) 9%, var(--surface) 91%);
+  --danger-ink: color-mix(in oklch, var(--danger) 82%, var(--ink) 18%);
   --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in-out-quiet: cubic-bezier(0.65, 0, 0.35, 1);
@@ -30,6 +38,8 @@
   /* One control height everywhere (topbar, dock, forms, buttons); touch devices get 44px. */
   --control-h: 2.5rem;
   --control-px: 0.75rem;
+  /* Filter pills: 0 keeps the square controls of the rest of the site; raise it (e.g. 999px) for capsules. */
+  --radius-pill: 0;
   --topbar-pad-y: max(0.5rem, env(safe-area-inset-top));
   --space-xs: 0.25rem;
   --space-sm: 0.5rem;
@@ -43,6 +53,26 @@
   /* Appended after the next/font families so Chinese glyphs do not fall to the OS default. */
   --font-cjk-fallback: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC",
     "Source Han Sans SC";
+}
+
+/* Dark theme: the same paper-and-ink system with the values inverted. Only base colours are
+   restated; the derived tints above follow. Preview images stay paper-toned on purpose. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: oklch(17.5% 0.008 103);
+    --bg-alt: oklch(20% 0.009 103);
+    --surface: oklch(21% 0.009 103);
+    --surface-alt: oklch(19.5% 0.009 103);
+    --surface-strong: oklch(25% 0.01 103);
+    --ink: oklch(94% 0.012 103);
+    --ink-soft: oklch(78% 0.012 103);
+    --ink-faint: oklch(66% 0.012 103);
+    --line: oklch(31% 0.01 103);
+    --line-strong: oklch(45% 0.013 103);
+    --accent: oklch(78% 0.095 151);
+    --accent-soft: oklch(28% 0.045 151);
+    --danger: oklch(72% 0.14 28);
+  }
 }
 
 @media (pointer: coarse) {

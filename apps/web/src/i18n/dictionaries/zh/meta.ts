@@ -18,7 +18,7 @@ export const meta = {
     },
     support: {
       title: "支持项目",
-      description: "了解项目如何运作，以及支持会优先投入哪里。",
+      description: "一个公益项目，帮建筑师更快找到自己感兴趣的项目。",
     },
     login: {
       title: "登录",

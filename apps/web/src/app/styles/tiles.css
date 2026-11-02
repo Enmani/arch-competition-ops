@@ -5,6 +5,9 @@
 /* Each tile spans four shared rows (image, title, category, meta) and hands them down as
    subgrids, so the hairlines and watch links of a whole feed row line up whatever the title length. */
 .waterfall-feed {
+  /* Where "scroll to the top of the results" lands: just under the sticky bar and dock. */
+  scroll-margin-top: calc(var(--shell-topbar-height, 0px) + 4.5rem);
+  transition: opacity 160ms var(--ease-out-quart);
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
   gap: 0 var(--space-xl);
@@ -18,9 +21,14 @@
   grid-template-rows: subgrid;
   gap: 0;
   min-width: 0;
-  opacity: 0;
-  animation: tile-enter 360ms var(--ease-out-quart) forwards;
-  animation-delay: calc(min(var(--tile-index, 0), 9) * 30ms);
+  /* Fades in when inserted (first paint, "load more", a new filter result). It starts from the
+     dimmed look the old list had while loading, so a swap reads as one continuous settle, not a
+     flash; a short stagger keeps a first paint from arriving as a single block. */
+  transition: opacity 240ms var(--ease-out-quart) calc(min(var(--tile-index, 0), 5) * 25ms);
+
+  @starting-style {
+    opacity: 0.35;
+  }
 }
 
 .opportunity-tile-link {
@@ -220,16 +228,6 @@
 .watch-toggle-state {
   color: var(--ink-faint);
   font-size: var(--fs-sm);
-}
-
-@keyframes tile-enter {
-  from {
-    opacity: 0;
-  }
-
-  to {
-    opacity: 1;
-  }
 }
 
 @media (hover: hover) {

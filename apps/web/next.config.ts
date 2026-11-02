@@ -31,6 +31,8 @@ const createNextConfig = (phase: string): NextConfig => {
   }
 
   return {
+    // The round "N" badge Next.js draws in the corner of the dev server; it is not part of the product.
+    devIndicators: false,
     distDir: isDevelopmentServer ? ".next-dev" : ".next",
     outputFileTracingRoot: path.join(currentDirectory, "../../"),
     transpilePackages: [

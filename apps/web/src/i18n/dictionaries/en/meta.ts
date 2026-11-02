@@ -20,7 +20,7 @@ export const meta = {
     },
     support: {
       title: "Support the project",
-      description: "How the project works and where support goes first.",
+      description: "A public-interest project that helps architects find opportunities faster.",
     },
     login: {
       title: "Log in",

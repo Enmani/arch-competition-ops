@@ -59,6 +59,7 @@ export const DiscoverSurface = async ({ dictionary, locale, searchParams }: Disc
       <DiscoverDock
         activeFilterCount={countActiveDiscoverFilters(filters)}
         copy={pickDiscoverDockCopy(dictionary)}
+        locale={locale}
         filterOptions={filterOptions}
         filters={filters}
         routeBase={routeBase}

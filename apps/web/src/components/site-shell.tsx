@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useLayoutEffect, useRef, type PropsWithChildren } from "react";
 
 import { LocaleSwitcher } from "@/components/locale-switcher";
+import { TopbarSearch } from "@/components/topbar-search";
 import { buildLocalePath, stripLocalePrefix, type AppLocale } from "@/i18n/config";
 import type { AppDictionary } from "@/i18n/dictionaries";
 
@@ -47,9 +48,6 @@ export const SiteShell = ({ authUserEmail, children, copy, locale, showOpsLink =
     }
     if (barePathname.startsWith("/dashboard")) {
       return copy.captions.dashboard;
-    }
-    if (supportSurface) {
-      return copy.captions.support;
     }
     if (authSurface) {
       return copy.captions.auth;
@@ -113,6 +111,7 @@ export const SiteShell = ({ authUserEmail, children, copy, locale, showOpsLink =
               <span className="brand-caption">{describeSurface()}</span>
             )}
           </div>
+          {barePathname === "/discover" ? <TopbarSearch copy={copy.search} /> : null}
           <div className="nav-cluster">
             <nav className="nav-row" aria-label={copy.ariaLabels.primaryNav}>
               {navigation.map((item) => {

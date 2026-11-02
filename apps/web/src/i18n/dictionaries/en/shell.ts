@@ -6,7 +6,6 @@ export const shell = {
     discover: "Public design opportunities for licensed architects and practices.",
     dashboard: "Internal review, tagging, and follow-up.",
     ops: "Source, parsing, and storage status.",
-    support: "How support fits the product and what it funds next.",
     auth: "Practice account access.",
     fallback: "Public design opportunity interface.",
   },
@@ -20,6 +19,10 @@ export const shell = {
     login: "Log in",
     register: "Register",
     logout: "Log out",
+  },
+  search: {
+    label: "Search",
+    placeholder: "Authority, organizer, notice ID, title",
   },
   skipToContent: "Skip to main content",
   ariaLabels: {

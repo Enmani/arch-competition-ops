@@ -195,16 +195,17 @@ export const buildOpportunityLocatorPlaceholderSvg = (
 `
     : "";
 
+  // The viewBox is the paper panel itself (x/y 52..668, minus its 1px rim): the image has no outer
+  // margin, so the card shows the locator edge to edge and the page supplies the only border.
   return `
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 720" role="img" aria-label="Opportunity location placeholder">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="53 53 614 614" role="img" aria-label="Opportunity location placeholder">
   <defs>
     <pattern id="locator-grid" width="72" height="72" patternUnits="userSpaceOnUse">
       <path d="M 72 0 L 0 0 0 72" fill="none" stroke="#21201b" stroke-opacity="${gridCellOpacity}" stroke-width="1" />
     </pattern>
   </defs>
 
-  <rect width="720" height="720" fill="#ece9de" />
-  <rect x="52" y="52" width="616" height="616" fill="#f4f2ea" stroke="#21201b" stroke-opacity="0.4" stroke-width="1.5" />
+  <rect x="52" y="52" width="616" height="616" fill="#f4f2ea" />
   <rect x="82" y="82" width="556" height="484" fill="url(#locator-grid)" stroke="#21201b" stroke-opacity="${gridFrameOpacity}" stroke-width="1" />
   <path d="M82 243H638 M82 404H638 M221 82V566 M499 82V566" fill="none" stroke="#21201b" stroke-opacity="${guideOpacity}" stroke-width="1.2" />
   <path d="M82 120H638 M82 528H638" fill="none" stroke="#21201b" stroke-opacity="${horizonOpacity}" stroke-width="1" />

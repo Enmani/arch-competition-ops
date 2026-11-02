@@ -33,6 +33,15 @@
   border-bottom: 1px solid var(--line);
 }
 
+/* On the discover page the search box takes the free middle of the bar. */
+.topbar:has(.topbar-search) {
+  grid-template-columns: auto minmax(12rem, 1fr) auto;
+}
+
+.topbar-search {
+  min-width: 0;
+}
+
 .brand-stack,
 .nav-cluster,
 .hero,
@@ -199,6 +208,16 @@
 }
 
 @media (max-width: 960px) {
+  /* Brand and navigation share the first row; the search box gets a row of its own. */
+  .topbar:has(.topbar-search) {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .topbar-search {
+    grid-column: 1 / -1;
+    order: 3;
+  }
+
   .nav-cluster {
     justify-content: flex-start;
   }

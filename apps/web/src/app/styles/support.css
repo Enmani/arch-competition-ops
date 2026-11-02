@@ -1,328 +1,84 @@
-/* Support page. */
-
-.sheet-index {
-  font-variant-numeric: tabular-nums;
-}
-
-.support-page,
-.support-hero,
-.support-contact-band,
-.support-contact-copy,
-.support-contact-grid,
-.support-contact-item,
-.support-principle-list,
-.support-principle-item,
-.support-point-grid,
-.support-track-grid,
-.support-track,
-.support-roadmap-grid,
-.support-roadmap-item,
-.support-rationale-grid,
-.support-closing-body {
-  display: grid;
-}
+/* Support page: one narrow column, an open letter and a list of ways to reach or support. */
 
 .support-page {
-  gap: var(--space-3xl);
-  padding: 0.35rem 0 var(--space-3xl);
-}
-
-.support-stage {
-  border-top: 1px solid var(--line-strong);
-  padding-top: var(--space-lg);
-  opacity: 0;
-  animation: support-enter 420ms var(--ease-out-quart) forwards;
-}
-
-.support-stage:first-child {
-  border-top: 0;
-}
-
-.support-stage:nth-child(2) {
-  animation-delay: 80ms;
-}
-
-.support-stage:nth-child(3) {
-  animation-delay: 140ms;
-}
-
-.support-stage:nth-child(4) {
-  animation-delay: 200ms;
-}
-
-.support-stage:nth-child(5) {
-  animation-delay: 260ms;
-}
-
-.support-hero {
-  grid-template-columns: minmax(0, 1.6fr) minmax(18rem, 0.9fr);
-  gap: var(--space-3xl);
-  align-items: start;
-  padding-top: clamp(2rem, 6svh, 4rem);
-}
-
-.support-hero-copy {
-  max-width: none;
-  align-self: start;
-}
-
-.support-hero-copy h1,
-.support-section-head h2,
-.support-track h3 {
-  margin: 0;
-  font-family: var(--font-display), var(--font-cjk-fallback), sans-serif;
-  font-weight: 600;
-  line-height: 1.25;
-}
-
-.support-hero-copy h1 {
-  font-size: var(--fs-xl);
-  max-width: 40rem;
-  white-space: pre-line;
-}
-
-.support-section-head {
   display: grid;
-  gap: 0.55rem;
-  max-width: 58rem;
-}
-
-.support-section-head h2 {
-  font-size: var(--fs-xl);
-}
-
-.support-intro,
-.support-body,
-.support-track-note,
-.support-principle-item dd,
-.support-roadmap-item p,
-.support-lead {
-  margin: 0;
-  color: var(--ink-soft);
-}
-
-.support-lead {
-  max-width: 60ch;
-  margin-top: var(--space-lg);
-}
-
-.support-contact-band {
   gap: var(--space-lg);
-  max-width: 58rem;
-  margin-top: clamp(2rem, 5svh, 4.4rem);
-  padding-top: var(--space-lg);
-  border-top: 1px solid var(--line-strong);
+  max-width: 36rem;
+  padding: var(--space-3xl) 0 var(--space-3xl);
 }
 
-.support-contact-copy {
-  gap: 0.55rem;
-  max-width: 52rem;
-}
-
-.support-contact-title {
+.support-page h1 {
   margin: 0;
+  font-family: var(--font-display), var(--font-cjk-fallback), sans-serif;
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  line-height: 1.25;
+  text-wrap: balance;
+}
+
+.support-page h1 + /* An open letter: plain paragraphs at reading size, no boxes, a signature at the end. */
+.support-letter {
+  display: grid;
+  gap: var(--space-lg);
+  margin-top: var(--space-sm);
+  line-height: 1.85;
+  text-wrap: pretty;
+}
+
+.support-letter p {
+  margin: 0;
+}
+
+.support-greeting {
+  font-weight: 600;
+}
+
+.support-signature {
+  margin-top: var(--space-sm);
   font-family: var(--font-display), var(--font-cjk-fallback), sans-serif;
   font-size: var(--fs-lg);
   font-weight: 600;
-  line-height: 1.25;
 }
 
-.support-contact-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-md);
-}
-
-.support-contact-item {
-  gap: 0.35rem;
-  padding-top: var(--space-md);
-  border-top: 1px solid var(--line);
-  color: var(--ink);
-  text-decoration: none;
-}
-
-.support-contact-label {
-  color: var(--ink-faint);
-  font-size: var(--fs-sm);
-}
-
-.support-contact-value {
-  overflow-wrap: anywhere;
-}
-
-.support-principles {
+/* One hairline-ruled row per way to reach or support the project; a new link is one more row. */
+.support-links {
   display: grid;
-  gap: var(--space-md);
-  padding-top: var(--space-lg);
-  border-top: 1px solid var(--line);
-  width: 100%;
-}
-
-.support-principle-list,
-.support-point-grid,
-.support-roadmap-grid {
-  gap: var(--space-md);
-}
-
-.support-principle-item {
-  gap: 0.25rem;
-  padding-top: 0;
-  border-top: 0;
-}
-
-.support-principle-item:first-child {
-  padding-top: 0;
-  border-top: 0;
-}
-
-.support-principle-item dt {
-  color: var(--ink-faint);
-  font-size: var(--fs-sm);
-}
-
-.support-principle-item dd {
-  margin: 0;
-}
-
-.support-rationale-grid {
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
-  gap: var(--space-2xl);
-  align-items: start;
-}
-
-.support-point-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.support-point,
-.support-roadmap-item {
-  margin: 0;
-  padding-top: var(--space-md);
-  border-top: 1px solid var(--line);
-  color: var(--ink);
-}
-
-.support-track-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-2xl);
-  align-items: start;
-}
-
-.support-track {
-  gap: var(--space-md);
-  padding-top: var(--space-md);
-  border-top: 1px solid var(--ink);
-}
-
-.support-track-topline {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-}
-
-.support-track h3 {
-  font-size: var(--fs-lg);
-}
-
-.support-track-list {
-  display: grid;
-  gap: 0.6rem;
-  margin: 0;
+  margin: var(--space-xl) 0 0;
   padding: 0;
+  border-bottom: 1px solid var(--line);
   list-style: none;
 }
 
-.support-track-list li {
-  position: relative;
-  padding-left: 1rem;
-  color: var(--ink-soft);
-}
-
-.support-track-list li::before {
-  content: "";
-  position: absolute;
-  top: 0.7em;
-  left: 0;
-  width: 0.42rem;
-  height: 1px;
-  background: var(--accent);
-}
-
-.support-track-note {
-  padding-top: var(--space-md);
+.support-link {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-lg);
+  padding: var(--space-md) 0;
   border-top: 1px solid var(--line);
-  font-size: var(--fs-sm);
+  transition: color 180ms var(--ease-out-quart);
 }
 
-.support-roadmap-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.support-roadmap-item {
-  gap: 0.45rem;
-}
-
-.support-closing {
-  display: grid;
-  grid-template-columns: minmax(0, 0.7fr) minmax(0, 1.3fr);
-  gap: var(--space-2xl);
-  align-items: start;
-}
-
-.support-closing-body {
-  gap: var(--space-md);
-  max-width: 46rem;
-}
-
-.support-disclaimer {
-  margin: 0;
-  padding-top: var(--space-md);
-  border-top: 1px solid var(--line);
+.support-link-label {
   color: var(--ink-faint);
   font-size: var(--fs-sm);
 }
 
-@keyframes support-enter {
-  from {
-    opacity: 0;
-  }
-
-  to {
-    opacity: 1;
-  }
+.support-link-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: right;
+  text-decoration: underline transparent;
+  text-underline-offset: 0.25em;
+  transition: text-decoration-color 180ms var(--ease-out-quart);
 }
 
-@media (max-width: 960px) {
-  .support-hero,
-  .support-rationale-grid,
-  .support-closing {
-    grid-template-columns: 1fr;
-  }
-
-  .support-point-grid,
-  .support-track-grid,
-  .support-contact-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .support-roadmap-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+.support-link:hover .support-link-value,
+.support-link:focus-visible .support-link-value {
+  text-decoration-color: currentColor;
 }
 
-@media (max-width: 640px) {
-  .support-page {
-    gap: var(--space-2xl);
-  }
-
-  .support-stage {
-    padding-top: var(--space-md);
-  }
-
-  .support-hero-copy h1 {
-    max-width: none;
-  }
-
-  .support-roadmap-grid {
-    grid-template-columns: 1fr;
-  }
+.support-link:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }

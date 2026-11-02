@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { StoredOpportunityFeedItem, StoredOpportunityQuery } from "@arch-competition/storage";
 
@@ -10,6 +10,7 @@ import { fillTemplate } from "@/i18n/format";
 import type { DiscoverFeedCopy } from "@/i18n/slices";
 import { describeApiFailure, requestJson, type ApiFailure } from "@/lib/api-client";
 import { buildDiscoverPageSearchParams, buildDiscoverSearchParams, DISCOVER_PAGE_SIZE } from "@/lib/discover";
+import { consumeFeedTopReset } from "@/lib/discover-navigation";
 import {
   appendFeedPage,
   createFeedState,
@@ -57,6 +58,15 @@ export const DiscoverFeed = ({
   const [failure, setFailure] = useState<ApiFailure | null>(null);
   const inFlightRef = useRef(false);
   const feedRef = useRef(feed);
+  const sectionRef = useRef<HTMLElement | null>(null);
+
+  // Mounted for new filters after the visitor scrolled down: show the top of the new list once.
+  useEffect(() => {
+    const section = sectionRef.current;
+    if (section && consumeFeedTopReset() && section.getBoundingClientRect().top < 0) {
+      section.scrollIntoView({ behavior: "instant", block: "start" });
+    }
+  }, []);
   const hasMore = hasMoreItems(feed);
 
   const loadMore = async () => {
@@ -102,7 +112,7 @@ export const DiscoverFeed = ({
 
   return (
     <>
-      <section aria-label={copy.discover.feedRegionLabel} className="waterfall-feed">
+      <section aria-label={copy.discover.feedRegionLabel} className="waterfall-feed" ref={sectionRef}>
         {feed.items.map((opportunity, index) => (
           <OpportunityStreamItem
             copy={copy}

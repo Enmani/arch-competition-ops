@@ -91,6 +91,101 @@
   text-overflow: ellipsis;
 }
 
+/* The list of a native select is drawn by the browser with its own colours; give it the theme's,
+   otherwise light text lands on a white list in the dark theme. */
+.field-stack select option {
+  background: var(--surface);
+  color: var(--ink);
+}
+
+/* Customizable select (Chromium): the same control and list, drawn by CSS instead of the OS, so the
+   open list is a flat paper panel in both themes. Other browsers keep the native list above. */
+@supports (appearance: base-select) {
+  .field-stack select,
+  .field-stack select::picker(select) {
+    appearance: base-select;
+  }
+
+  .field-stack select {
+    padding-right: var(--control-px);
+    background-image: none;
+  }
+
+  /* The thin chevron used elsewhere, as a mask so it takes the theme's colour. */
+  .field-stack select::picker-icon {
+    content: "";
+    flex: none;
+    align-self: center;
+    width: 0.75rem;
+    height: 0.5rem;
+    margin: 0 0 0 var(--space-sm);
+    background: var(--ink-faint);
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8' fill='none' stroke='black' stroke-width='1.2'%3E%3Cpath d='M1 1.5l5 5 5-5'/%3E%3C/svg%3E") center / contain no-repeat;
+    transition: rotate 180ms var(--ease-out-quart);
+  }
+
+  .field-stack select:open::picker-icon {
+    rotate: 180deg;
+  }
+
+  .field-stack select::picker(select) {
+    min-width: anchor-size(width);
+    margin-top: var(--space-xs);
+    padding: var(--space-xs);
+    border: 1px solid var(--line-strong);
+    border-radius: 0;
+    background: var(--surface);
+    color: var(--ink);
+    opacity: 0;
+    transition:
+      opacity 140ms var(--ease-out-quart),
+      overlay 140ms allow-discrete,
+      display 140ms allow-discrete;
+  }
+
+  .field-stack select::picker(select):popover-open {
+    opacity: 1;
+  }
+
+  @starting-style {
+    .field-stack select::picker(select):popover-open {
+      opacity: 0;
+    }
+  }
+
+  .field-stack select option {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    min-height: var(--control-h);
+    padding: 0 var(--control-px);
+    font-size: var(--fs-md);
+    cursor: pointer;
+  }
+
+  .field-stack select option:hover,
+  .field-stack select option:focus-visible {
+    background: var(--surface-strong);
+    outline: none;
+  }
+
+  /* The current choice reads by weight and a check mark, not by a coloured block. */
+  .field-stack select option:checked {
+    background: transparent;
+    font-weight: 600;
+  }
+
+  .field-stack select option:checked:hover {
+    background: var(--surface-strong);
+  }
+
+  .field-stack select option::checkmark {
+    order: 1;
+    margin-left: auto;
+    color: var(--accent);
+  }
+}
+
 .toolbar-actions {
   align-items: center;
   justify-content: flex-start;

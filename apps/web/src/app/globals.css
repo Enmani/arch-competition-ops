@@ -1,6 +1,7 @@
 /* Style entry point. Partials are imported in cascade order; do not reorder without
    checking selector specificity ties (later wins). Each partial owns its own @media
    blocks, so overrides stay next to the rules they affect. */
+@import "react-day-picker/style.css";
 @import "./styles/tokens.css";
 @import "./styles/layout.css";
 @import "./styles/buttons.css";
@@ -9,6 +10,7 @@
 @import "./styles/detail.css";
 @import "./styles/discover-dock.css";
 @import "./styles/discover-forms.css";
+@import "./styles/calendar.css";
 @import "./styles/empty-state.css";
 @import "./styles/tiles.css";
 @import "./styles/auth.css";

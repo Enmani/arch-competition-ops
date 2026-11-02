@@ -1,0 +1,114 @@
+/* The deadline calendar (react-day-picker). The library's base CSS is imported first in globals.css;
+   this maps its variables onto the site's tokens, so both themes and the flat look come for free. */
+
+.dock-range {
+  display: grid;
+  gap: var(--space-md);
+}
+
+.dock-range-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-md);
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.dock-range-summary .inline-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-soft);
+  font: inherit;
+  cursor: pointer;
+}
+
+.dock-range-summary .inline-link:hover {
+  color: var(--ink);
+}
+
+.dock-calendar.rdp-root {
+  --rdp-accent-color: var(--ink);
+  --rdp-accent-background-color: var(--surface-strong);
+  --rdp-today-color: var(--accent);
+  --rdp-day-height: 2.5rem;
+  --rdp-day-width: 2.5rem;
+  --rdp-day_button-height: 2.5rem;
+  --rdp-day_button-width: 2.5rem;
+  --rdp-day_button-border-radius: 0;
+  --rdp-day_button-border: 1px solid transparent;
+  --rdp-selected-border: 1px solid var(--ink);
+  --rdp-selected-font: 400 var(--fs-sm) / 1 var(--font-sans), sans-serif;
+  --rdp-weekday-opacity: 1;
+  --rdp-nav_button-height: var(--control-h);
+  --rdp-nav_button-width: var(--control-h);
+  --rdp-nav-height: var(--control-h);
+  --rdp-outside-opacity: 0.4;
+  --rdp-disabled-opacity: 0.3;
+  --rdp-months-gap: var(--space-2xl);
+  margin: 0;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+}
+
+.dock-calendar .rdp-month_caption {
+  font-size: var(--fs-md);
+  font-weight: 600;
+}
+
+.dock-calendar .rdp-weekday {
+  color: var(--ink-faint);
+  font-size: var(--fs-sm);
+  font-weight: 400;
+}
+
+.dock-calendar .rdp-day_button {
+  color: inherit;
+  transition: background-color 120ms var(--ease-out-quart);
+}
+
+.dock-calendar .rdp-day:not(.rdp-range_start):not(.rdp-range_end) .rdp-day_button:hover:not(:disabled) {
+  background: var(--surface-strong);
+}
+
+.dock-calendar .rdp-chevron {
+  fill: var(--ink);
+}
+
+.dock-calendar .rdp-button_previous,
+.dock-calendar .rdp-button_next {
+  border-radius: 0;
+}
+
+.dock-calendar .rdp-today:not(.rdp-selected) .rdp-day_button {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* The two ends of the range are solid ink squares; the days between sit on a quiet wash. */
+.dock-calendar .rdp-range_start .rdp-day_button,
+.dock-calendar .rdp-range_end .rdp-day_button {
+  font-weight: 600;
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--surface);
+}
+
+.dock-calendar .rdp-range_middle {
+  background: var(--surface-strong);
+  color: var(--ink);
+}
+
+.dock-calendar .rdp-range_middle .rdp-day_button {
+  background: transparent;
+  color: var(--ink);
+  font-weight: 400;
+}
+
+.dock-calendar .rdp-day_button:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: -2px;
+}
