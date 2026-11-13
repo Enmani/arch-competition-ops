@@ -66,8 +66,8 @@ test("main prints exactly one JSON line with the counts on stdout", async () => 
     const db = new Database(databasePath);
     db.exec(`CREATE TABLE competitions (id TEXT PRIMARY KEY, title TEXT NOT NULL, organizer TEXT,
       authority_name TEXT, brief_pdf_url TEXT, documents_portal_url TEXT, jurisdiction TEXT,
-      location_label TEXT, official_url TEXT, source_url TEXT, geo_lat REAL, geo_lng REAL,
-      status TEXT NOT NULL, deadline_at TEXT)`);
+      location_label TEXT, official_url TEXT, source_url TEXT, geo_lat REAL, geo_lng REAL, geo_confidence REAL,
+      geo_source TEXT, status TEXT NOT NULL, deadline_at TEXT)`);
     db.prepare("INSERT INTO competitions (id, title, status) VALUES ('x', 'Untraceable', 'discovered')").run();
     db.close();
 

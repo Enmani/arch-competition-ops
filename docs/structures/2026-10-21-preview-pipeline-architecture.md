@@ -29,7 +29,7 @@ apps/worker (after ingest, opt-in) ---------------->  pipeline/prewarm: per reco
    argv fixed: node prewarm.mjs --db <db> --only-from-stdin                |
    stdin: {"competitionIds": [...]}                      official image (Stadt Zuerich) | satellite
                                                                            |
-                                        address extraction -> geocoders (queue, cache) -> tiles -> sharp
+                     stored geo_lat/lng | address extraction -> geocoders (queue, cache) -> tiles -> sharp
                                                                            |
                                           artifacts/previews/{manifest.json, images/<slug>-<hash>.jpg, geocode-cache.json}
                                                                            |  npm run prewarm:previews -w @arch-competition/web (--publish)
@@ -76,7 +76,7 @@ GET /api/opportunities/[slug]/image?rev=<PREVIEW_ALGORITHM_VERSION>
 1. Ingest: the worker stores records, then (when `ARCH_PREVIEW_PREWARM=1`) runs the CLI for the new ids and reports `card previews ok|skipped|failed`; failure never affects ingested data.
 2. Publish: `npm run prewarm:previews -w @arch-competition/web` runs the CLI over all visible records and mirrors manifest plus referenced images into `apps/web/public/previews/`; the next build ships them as static assets.
 3. Request: manifest (cached 60 s per isolate) -> `images/<file>` -> response. A request with `rev` equal to `PREVIEW_ALGORITHM_VERSION` for an image made by that version is `public, max-age=31536000, immutable`; any other asset hit is `max-age=3600`; the placeholder is `max-age=300` (404 placeholder 60); `next dev` sends `no-store`.
-4. Per record generation: Stadt Zuerich official image if the record links to that site; otherwise title candidates, display locality, page signals (3 pages) and PDFs (3) in that order, geocode the first candidates, fetch 9 to 16 Esri tiles, compose, draw the precision ring and the credit line, JPEG.
+4. Per record generation: Stadt Zuerich official image if the record links to that site; otherwise the stored `geo_lat`/`geo_lng` when it is a real point (`geo_source` not `:country`, confidence >= 0.5), which needs no second geocode; only without such a point do the title candidates, display locality, page signals (3 pages) and PDFs (3) run in that order. The first usable point is geocoded, 9 to 16 Esri tiles are fetched, composed with the precision ring and credit line, and written as JPEG.
 
 ## Decision Records
 
@@ -90,7 +90,7 @@ Reason: hashing source files gave different values on different machines (CRLF v
 
 ### 3. The manifest, not file-name guessing, is the contract
 
-The old route probed about nine candidate file names over HTTP against its own domain. Now one manifest read answers everything, and file names carry a content hash (`<slug>-<hash10>.jpg`), so replaced images get new names, old ones are deleted, and a stale name can never be served. Manifest file names are validated (`^[A-Za-z0-9][A-Za-z0-9._-]*\.jpg$`) at parse time, so a hostile manifest cannot escape the images directory.
+The old route probed about nine candidate file names over HTTP against its own domain. Now one manifest read answers everything, and file names carry a content hash (`<slug>-<hash10>.jpg`), so replaced images get new names, old ones are deleted, and a stale name can never be served. Manifest file names are validated (`^[A-Za-z0-9_][A-Za-z0-9._-]*\.jpg$`; a non-Latin slug sanitises to leading underscores) at parse time, so a hostile manifest cannot escape the images directory.
 
 ### 4. Immutable only for matching revisions
 

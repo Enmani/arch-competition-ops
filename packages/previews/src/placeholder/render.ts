@@ -1,9 +1,12 @@
 // The locator placeholder: a neutral SVG that shows the country outline and, when the record's
 // coordinates are known, a marker on it. It is what the image route answers whenever no prebuilt
 // image exists, so it must be cheap and runtime-agnostic (Workers): no d3, no topojson, no atlas.
-// Outlines are precomputed by scripts/build-country-outlines.mjs into data/country-outlines.json.
+// Outlines are precomputed by scripts/build-country-outlines.mjs into data/country-outlines.json,
+// fitted to the whole 616px square.
+//
+// The drawing is edge to edge and carries no labels: the country and city are already set in type
+// under the image, so a caption inside the picture would only repeat them and shrink the map.
 import countryOutlines from "../../data/country-outlines.json";
-import { getOpportunityJurisdictionCode, pickOpportunityDisplayLocality } from "../location";
 import { normalizeJurisdictionKey } from "../text/normalize";
 import type { PreviewOpportunity } from "../types";
 
@@ -61,38 +64,11 @@ const escapeXml = (value: string) =>
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 
-// Width of the label area inside the locator frame (x 82..638).
-const LABEL_MAX_WIDTH = 556;
-
-/** Rough advance in em: CJK and fullwidth glyphs are square, Latin caps in a narrow face are not. */
-const estimateGlyphEm = (character: string) => {
-  const code = character.codePointAt(0) ?? 0;
-  if (code >= 0x2e80) {
-    return 1;
-  }
-  return character === " " ? 0.3 : 0.62;
-};
-
-/** Truncates a label with an ellipsis so that its estimated width fits the frame at the given type size. */
-const fitLabel = (value: string | null, fontSize: number, letterSpacingEm: number) => {
-  const trimmed = value?.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  const maxEm = LABEL_MAX_WIDTH / fontSize;
-  const characters = Array.from(trimmed);
-  let width = 0;
-  for (let index = 0; index < characters.length; index += 1) {
-    width += estimateGlyphEm(characters[index]) + letterSpacingEm;
-    if (width > maxEm) {
-      // Leave one glyph of room for the ellipsis.
-      return `${characters.slice(0, Math.max(index - 1, 1)).join("").trimEnd()}…`;
-    }
-  }
-
-  return trimmed;
-};
+// The paper panel itself (x/y 52..668). The map is fitted to this whole square, so the image has
+// no outer margin and the card shows the locator edge to edge.
+const PANEL_START = 52;
+const PANEL_END = 668;
+const PANEL_SIZE = PANEL_END - PANEL_START;
 
 const normalizeKey = normalizeJurisdictionKey;
 
@@ -111,7 +87,7 @@ const resolveOutline = (opportunity: OpportunityPlaceholderInput | null | undefi
 };
 
 const isProjectedPointInLocatorBounds = ([x, y]: [number, number]) =>
-  x >= 82 && x <= 638 && y >= 82 && y <= 566;
+  x >= PANEL_START && x <= PANEL_END && y >= PANEL_START && y <= PANEL_END;
 
 const resolveLocationAnchor = (
   outline: CountryOutlineModel | null,
@@ -119,8 +95,8 @@ const resolveLocationAnchor = (
 ) => {
   const fallback = {
     isProjected: false,
-    x: outline?.centroidX ?? 470,
-    y: outline?.centroidY ?? 300,
+    x: outline?.centroidX ?? PANEL_START + PANEL_SIZE / 2,
+    y: outline?.centroidY ?? PANEL_START + PANEL_SIZE / 2,
   };
 
   if (
@@ -160,55 +136,29 @@ export const buildOpportunityLocatorPlaceholderSvg = (
       : opportunity;
   const outline = resolveOutline(placeholderOpportunity);
   const jurisdictionKey = normalizeKey(placeholderOpportunity?.jurisdictionKey) ?? "unknown";
-  const jurisdictionCode = getOpportunityJurisdictionCode({
-    jurisdictionKey: placeholderOpportunity?.jurisdictionKey ?? null,
-    jurisdictionLabel: placeholderOpportunity?.jurisdictionLabel ?? null,
-  });
-  const countryLabel = fitLabel(placeholderOpportunity?.jurisdictionLabel ?? null, 18, 0.18);
-  const cityLabel = fitLabel(
-    placeholderOpportunity ? pickOpportunityDisplayLocality(placeholderOpportunity) : null,
-    34,
-    0.04,
-  );
-  const markerLabelY = cityLabel ? 610 : 628;
   const anchor = resolveLocationAnchor(outline, placeholderOpportunity);
   const anchorX = anchor.x;
   const anchorY = anchor.y;
+  // Without an outline the grid has to carry the texture on its own.
   const gridCellOpacity = outline ? "0.05" : "0.1";
-  const gridFrameOpacity = outline ? "0.16" : "0.24";
   const guideOpacity = outline ? "0.08" : "0.14";
-  const horizonOpacity = outline ? "0.05" : "0.1";
-
-  const cityText = cityLabel
-    ? `<text x="82" y="${markerLabelY}" fill="#21201b" font-family="'Arial Narrow', Arial, sans-serif" font-size="34" font-weight="700" letter-spacing="0.04em">${escapeXml(
-        cityLabel.toUpperCase(),
-      )}</text>`
-    : "";
-  const countryText = countryLabel
-    ? `<text x="82" y="648" fill="#5d5b50" font-family="Arial, sans-serif" font-size="18" letter-spacing="0.18em">${escapeXml(
-        countryLabel.toUpperCase(),
-      )}</text>`
-    : "";
   const outlineMarkup = outline
     ? `
   <path id="country-outline" data-country-key="${escapeXml(jurisdictionKey)}" data-outline-source="world-atlas" d="${outline.pathData}" fill="#21201b" fill-opacity="0.07" stroke="#21201b" stroke-opacity="0.78" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round" />
 `
     : "";
 
-  // The viewBox is the paper panel itself (x/y 52..668, minus its 1px rim): the image has no outer
-  // margin, so the card shows the locator edge to edge and the page supplies the only border.
   return `
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="53 53 614 614" role="img" aria-label="Opportunity location placeholder">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="52 52 ${PANEL_SIZE} ${PANEL_SIZE}" role="img" aria-label="Opportunity location placeholder">
   <defs>
-    <pattern id="locator-grid" width="72" height="72" patternUnits="userSpaceOnUse">
+    <pattern id="locator-grid" x="${PANEL_START}" y="${PANEL_START}" width="72" height="72" patternUnits="userSpaceOnUse">
       <path d="M 72 0 L 0 0 0 72" fill="none" stroke="#21201b" stroke-opacity="${gridCellOpacity}" stroke-width="1" />
     </pattern>
   </defs>
 
-  <rect x="52" y="52" width="616" height="616" fill="#f4f2ea" />
-  <rect x="82" y="82" width="556" height="484" fill="url(#locator-grid)" stroke="#21201b" stroke-opacity="${gridFrameOpacity}" stroke-width="1" />
-  <path d="M82 243H638 M82 404H638 M221 82V566 M499 82V566" fill="none" stroke="#21201b" stroke-opacity="${guideOpacity}" stroke-width="1.2" />
-  <path d="M82 120H638 M82 528H638" fill="none" stroke="#21201b" stroke-opacity="${horizonOpacity}" stroke-width="1" />
+  <rect x="${PANEL_START}" y="${PANEL_START}" width="${PANEL_SIZE}" height="${PANEL_SIZE}" fill="#f4f2ea" />
+  <rect x="${PANEL_START}" y="${PANEL_START}" width="${PANEL_SIZE}" height="${PANEL_SIZE}" fill="url(#locator-grid)" />
+  <path d="M${PANEL_START} 243H${PANEL_END} M${PANEL_START} 404H${PANEL_END} M221 ${PANEL_START}V${PANEL_END} M499 ${PANEL_START}V${PANEL_END}" fill="none" stroke="#21201b" stroke-opacity="${guideOpacity}" stroke-width="1.2" />
 
   ${outlineMarkup}
 
@@ -219,14 +169,6 @@ export const buildOpportunityLocatorPlaceholderSvg = (
     <circle r="20" fill="none" stroke="#285f47" stroke-width="4" />
     <path d="M0 -68V-24 M0 24V68 M-68 0H-24 M24 0H68" fill="none" stroke="#285f47" stroke-width="4" stroke-linecap="square" />
   </g>
-
-  <rect x="82" y="82" width="118" height="54" fill="#21201b" />
-  <text x="96" y="120" fill="#f4f2ea" font-family="'Arial Narrow', Arial, sans-serif" font-size="34" font-weight="700" letter-spacing="0.12em">${escapeXml(
-    jurisdictionCode,
-  )}</text>
-
-  ${cityText}
-  ${countryText}
 </svg>
 `.trim();
 };

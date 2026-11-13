@@ -24,7 +24,8 @@ test("file names are content-addressed per record and sanitised", () => {
 });
 
 test("only plain .jpg file names are accepted", () => {
-  for (const good of ["a.jpg", "road-work-0123456789.jpg", "A_b.c-d.jpg"]) {
+  // A Chinese slug sanitises to leading underscores; that name must still reach the image file.
+  for (const good of ["a.jpg", "road-work-0123456789.jpg", "A_b.c-d.jpg", "___ggzy__e4502002821022532001-3c954d697f.jpg"]) {
     assert.equal(isSafeImageFileName(good), true, good);
   }
   for (const bad of ["../a.jpg", "a/b.jpg", "a\b.jpg", ".hidden.jpg", "a.png", "a..jpg", "", "a.jpg/"]) {

@@ -146,7 +146,10 @@ test("an unknown record gets a neutral 404 placeholder", async () => {
 
   assert.equal(response.status, 404);
   assert.equal(response.headers.get("cache-control"), MISSING_CACHE);
-  assert.match(await response.text(), />OPS</);
+  // No country is known, so the placeholder is the neutral grid, still edge to edge and label-free.
+  const svg = await response.text();
+  assert.doesNotMatch(svg, /country-outline/);
+  assert.doesNotMatch(svg, /<text/);
 });
 
 test("a locator-only manifest entry places the marker on the placeholder", async () => {

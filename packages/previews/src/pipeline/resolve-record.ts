@@ -31,6 +31,39 @@ export type SatelliteResolution = {
   locator: OpportunityLocator | null;
 };
 
+/** Below this confidence the stored point is not precise enough to spend tiles on. */
+const STORED_COORDINATE_MIN_CONFIDENCE = 0.5;
+
+/**
+ * The record's own geocoded point. The worker already resolves the place (now with an AI-assisted
+ * pass), so the batch job does not need to geocode and crawl the notice again: it crops the tiles
+ * straight at the stored coordinates. A country centroid is not a place and is refused, since it
+ * would frame the middle of the country instead of the site.
+ */
+export const readStoredLocator = (opportunity: PreviewOpportunity): OpportunityLocator | null => {
+  const { geoLat, geoLng } = opportunity;
+  if (geoLat === null || geoLat === undefined || geoLng === null || geoLng === undefined) {
+    return null;
+  }
+  if (!Number.isFinite(geoLat) || !Number.isFinite(geoLng)) {
+    return null;
+  }
+  const source = (opportunity.geoSource ?? "").trim().toLowerCase();
+  if (source.endsWith(":country")) {
+    return null;
+  }
+  const confidence = opportunity.geoConfidence;
+  if (confidence !== null && confidence !== undefined && confidence < STORED_COORDINATE_MIN_CONFIDENCE) {
+    return null;
+  }
+  return {
+    label: opportunity.locationLabel?.trim() || opportunity.jurisdictionLabel,
+    lat: geoLat,
+    lng: geoLng,
+    precision: "locality",
+  };
+};
+
 export const resolveOpportunitySatellite = async (
   context: RecordContext,
   opportunity: PreviewOpportunity,
@@ -72,6 +105,28 @@ export const resolveOpportunitySatellite = async (
     return null;
   };
   const done = (image: Buffer | null): SatelliteResolution => ({ image, locator });
+
+  // Stored coordinates first: one tile fetch instead of a second geocode and page crawl.
+  const stored = readStoredLocator(opportunity);
+  if (stored) {
+    locator = stored;
+    const image = await renderSatellitePreview(
+      context,
+      stored.lat,
+      stored.lng,
+      {
+        address: stored.label,
+        kind: "locality",
+        localityHint: opportunity.locationLabel,
+        source: "title",
+      },
+      stored.precision,
+    );
+    if (image && !(await isInvalidSatellitePreviewBuffer(image))) {
+      return done(image);
+    }
+    context.log("stored-coordinate-render-failed", { slug: opportunity.slug });
+  }
 
   const titleCandidates = extractAddressCandidatesFromText(opportunity.title, "title");
   const localityCandidates = resolveOpportunityLocalityCandidates(opportunity);

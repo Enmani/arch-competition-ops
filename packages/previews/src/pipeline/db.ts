@@ -11,8 +11,10 @@ type Row = {
   authority_name: string | null;
   brief_pdf_url: string | null;
   documents_portal_url: string | null;
+  geo_confidence: number | null;
   geo_lat: number | null;
   geo_lng: number | null;
+  geo_source: string | null;
   id: string;
   jurisdiction: string | null;
   location_label: string | null;
@@ -45,8 +47,10 @@ const toOpportunity = (row: Row): PreviewOpportunity => ({
   authorityName: blankToNull(row.authority_name) ?? blankToNull(row.organizer) ?? "",
   briefPdfUrl: row.brief_pdf_url,
   documentsPortalUrl: row.documents_portal_url,
+  geoConfidence: row.geo_confidence,
   geoLat: row.geo_lat,
   geoLng: row.geo_lng,
+  geoSource: row.geo_source,
   jurisdictionKey: row.jurisdiction,
   jurisdictionLabel: titleCase(row.jurisdiction),
   locationLabel: row.location_label,
@@ -57,7 +61,8 @@ const toOpportunity = (row: Row): PreviewOpportunity => ({
 });
 
 const COLUMNS = `id, title, organizer, authority_name, brief_pdf_url, documents_portal_url,
-  jurisdiction, location_label, official_url, source_url, geo_lat, geo_lng`;
+  jurisdiction, location_label, official_url, source_url, geo_lat, geo_lng, geo_confidence,
+  geo_source`;
 
 export const readOpportunities = (databasePath: string, options: ReadOptions = {}) => {
   const database = new Database(databasePath, { fileMustExist: true, readonly: true });

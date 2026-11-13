@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { buildOpportunityLocatorPlaceholderSvg } from "./render";
 
-test("buildOpportunityLocatorPlaceholderSvg renders a jurisdiction code and city label", () => {
+test("buildOpportunityLocatorPlaceholderSvg fills the frame with the outline and no labels", () => {
   const svg = buildOpportunityLocatorPlaceholderSvg({
     authorityName: "Commune de Lausanne",
     geoLat: null,
@@ -14,9 +14,12 @@ test("buildOpportunityLocatorPlaceholderSvg renders a jurisdiction code and city
     title: "Concorso, 1005 Lausanne",
   });
 
-  assert.match(svg, />CH</);
-  assert.match(svg, /LAUSANNE/);
-  assert.match(svg, /SWITZERLAND/);
+  // Edge to edge: the whole square panel is the paper and the locator grid.
+  assert.match(svg, /viewBox="52 52 616 616"/);
+  assert.match(svg, /<rect x="52" y="52" width="616" height="616" fill="url\(#locator-grid\)"/);
+  // Country and city are set in type under the image, never inside it.
+  assert.doesNotMatch(svg, /<text/);
+  assert.doesNotMatch(svg, />CH</);
   assert.match(svg, /id="country-outline"/);
   assert.match(svg, /data-outline-source="world-atlas"/);
   assert.match(svg, /data-country-key="switzerland"/);
@@ -35,17 +38,16 @@ test("buildOpportunityLocatorPlaceholderSvg projects known coordinates onto the 
     title: "Extension du complexe sportif et de loisirs Looren, 8124 Maur",
   });
 
-  assert.match(svg, /MAUR/);
   assert.match(svg, /data-marker-source="geo-coordinates"/);
   assert.doesNotMatch(svg, /translate\(345 290\)/);
 });
 
-test("buildOpportunityLocatorPlaceholderSvg falls back to a neutral OPS code", () => {
+test("buildOpportunityLocatorPlaceholderSvg keeps a neutral grid when the country is unknown", () => {
   const svg = buildOpportunityLocatorPlaceholderSvg();
 
-  assert.match(svg, />OPS</);
   assert.doesNotMatch(svg, /id="country-outline"/);
-  assert.doesNotMatch(svg, /<\/text>\s*<text x="82" y="610"/);
+  assert.doesNotMatch(svg, /<text/);
+  assert.match(svg, /data-marker-source="country-centroid"/);
 });
 
 test("the marker position equals what d3.geoMercator computes from the stored projection", async () => {

@@ -41,9 +41,13 @@ export type PreviewManifest = {
 
 const kinds: ReadonlySet<string> = new Set(["official-image", "satellite", "locator", "none"]);
 
-/** File names come from the manifest, so they are re-validated before they reach a path or URL. */
+/**
+ * File names come from the manifest, so they are re-validated before they reach a path or URL.
+ * A non-Latin slug sanitises to leading underscores ("___ggzy_...jpg"), so an underscore is a
+ * legal first character; a leading dot is not, so no name can look like a hidden or parent path.
+ */
 export const isSafeImageFileName = (value: string) =>
-  /^[A-Za-z0-9][A-Za-z0-9._-]{0,200}\.jpg$/.test(value) && !value.includes("..");
+  /^[A-Za-z0-9_][A-Za-z0-9._-]{0,200}\.jpg$/.test(value) && !value.includes("..");
 
 export const sanitizePreviewSlug = (slug: string) =>
   slug.replace(/[^a-z0-9._-]+/gi, "_").slice(0, 120);

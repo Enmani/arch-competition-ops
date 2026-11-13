@@ -15,20 +15,39 @@ import { createPipelineServices, type PipelineServices } from "./context";
 import { runPrewarm } from "./prewarm";
 import { acquireLock, LockHeldError } from "./store";
 
-type Row = { id: string; sourceUrl?: string; status?: string; title: string };
+type Row = {
+  geoConfidence?: number;
+  geoLat?: number;
+  geoLng?: number;
+  geoSource?: string;
+  id: string;
+  sourceUrl?: string;
+  status?: string;
+  title: string;
+};
 
 const createDatabase = (file: string, rows: Row[]) => {
   const db = new Database(file);
   db.exec(`CREATE TABLE competitions (
     id TEXT PRIMARY KEY, title TEXT NOT NULL, organizer TEXT, authority_name TEXT,
     brief_pdf_url TEXT, documents_portal_url TEXT, jurisdiction TEXT, location_label TEXT,
-    official_url TEXT, source_url TEXT, geo_lat REAL, geo_lng REAL, status TEXT NOT NULL,
-    deadline_at TEXT)`);
+    official_url TEXT, source_url TEXT, geo_lat REAL, geo_lng REAL, geo_confidence REAL,
+    geo_source TEXT, status TEXT NOT NULL, deadline_at TEXT)`);
   const insert = db.prepare(
-    "INSERT INTO competitions (id, title, jurisdiction, status, source_url) VALUES (?, ?, 'italy', ?, ?)",
+    `INSERT INTO competitions (id, title, jurisdiction, status, source_url, geo_lat, geo_lng,
+      geo_confidence, geo_source) VALUES (?, ?, 'italy', ?, ?, ?, ?, ?, ?)`,
   );
   rows.forEach((row) =>
-    insert.run(row.id, row.title, row.status ?? "discovered", row.sourceUrl ?? null),
+    insert.run(
+      row.id,
+      row.title,
+      row.status ?? "discovered",
+      row.sourceUrl ?? null,
+      row.geoLat ?? null,
+      row.geoLng ?? null,
+      row.geoConfidence ?? null,
+      row.geoSource ?? null,
+    ),
   );
   return db;
 };
@@ -136,6 +155,52 @@ test("generates a satellite image with attribution, records it, then skips uncha
     assert.deepEqual(second, { attempted: 2, failed: 0, generated: 0, skipped: 2 });
     assert.deepEqual(h.calls, before);
     assert.deepEqual(await readdir(path.join(out, "images")), [entry.file]);
+  } finally {
+    await rm(h.directory, { force: true, recursive: true });
+  }
+});
+
+test("stored coordinates render without a second geocode; a country centroid does not", async () => {
+  const h = await setUp();
+  try {
+    const databasePath = path.join(h.directory, "competitions.sqlite");
+    const db = createDatabase(databasePath, [
+      {
+        geoConfidence: 0.82,
+        geoLat: 61.0987561,
+        geoLng: 7.4825328,
+        geoSource: "nominatim",
+        id: "stored-point",
+        title: "Planfagleg bistand til omraderegulering",
+      },
+      {
+        geoConfidence: 0.25,
+        geoLat: 35.86,
+        geoLng: 104.2,
+        geoSource: "nominatim:country",
+        id: "country-only",
+        title: "Generic design competition",
+      },
+    ]);
+    db.close();
+    const out = path.join(h.directory, "out");
+
+    const summary = await runPrewarm(h.services, {
+      databasePath,
+      now: () => FIXED_NOW,
+      outputDirectory: out,
+      prune: true,
+    });
+
+    assert.deepEqual(summary, { attempted: 2, failed: 0, generated: 1, skipped: 1 });
+    const manifest = await readManifest(out);
+    const entry = manifest?.entries["stored-point"];
+    assert.equal(entry?.kind, "satellite");
+    assert.equal(entry?.locator?.precision, "locality");
+    assert.equal(entry?.locator?.label, "Italy");
+    // The stored point was framed directly: no geocoder was asked for it.
+    assert.equal(h.calls.nominatim, 0);
+    assert.equal(manifest?.entries["country-only"].kind, "none");
   } finally {
     await rm(h.directory, { force: true, recursive: true });
   }

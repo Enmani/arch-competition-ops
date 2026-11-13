@@ -9,8 +9,10 @@ export type PreviewOpportunity = {
   authorityName: string;
   briefPdfUrl: string | null;
   documentsPortalUrl: string | null;
+  geoConfidence?: number | null;
   geoLat?: number | null;
   geoLng?: number | null;
+  geoSource?: string | null;
   jurisdictionKey: string | null;
   jurisdictionLabel: string;
   locationLabel: string | null;

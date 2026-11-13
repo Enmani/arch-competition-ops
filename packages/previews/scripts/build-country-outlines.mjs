@@ -129,10 +129,11 @@ const buildSimplifiedPath = (projection, shape) => {
     .join("");
 };
 const output = {
-  // The viewbox the paths were fitted into; the placeholder draws in a 720x720 frame.
+  // The paths are fitted to the full 616x616 placeholder panel (x/y 52..668), so the map runs
+  // edge to edge: no label band, no inner frame, no outer margin around the drawing.
   fitExtent: [
-    [140, 110],
-    [550, 470],
+    [52, 52],
+    [668, 668],
   ],
   source: `world-atlas@${atlasVersion} countries-50m`,
   countries: {},
