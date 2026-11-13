@@ -129,11 +129,11 @@ const buildSimplifiedPath = (projection, shape) => {
     .join("");
 };
 const output = {
-  // The paths are fitted to the full 616x616 placeholder panel (x/y 52..668), so the map runs
-  // edge to edge: no label band, no inner frame, no outer margin around the drawing.
+  // The paper runs edge to edge, but the outline keeps a 40px breathing room inside the 616px
+  // panel (x/y 52..668): a coastline that stops exactly on the frame reads as a crop, not a map.
   fitExtent: [
-    [52, 52],
-    [668, 668],
+    [92, 92],
+    [628, 628],
   ],
   source: `world-atlas@${atlasVersion} countries-50m`,
   countries: {},

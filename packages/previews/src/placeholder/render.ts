@@ -2,7 +2,7 @@
 // coordinates are known, a marker on it. It is what the image route answers whenever no prebuilt
 // image exists, so it must be cheap and runtime-agnostic (Workers): no d3, no topojson, no atlas.
 // Outlines are precomputed by scripts/build-country-outlines.mjs into data/country-outlines.json,
-// fitted to the whole 616px square.
+// fitted to the panel with a 40px inset.
 //
 // The drawing is edge to edge and carries no labels: the country and city are already set in type
 // under the image, so a caption inside the picture would only repeat them and shrink the map.

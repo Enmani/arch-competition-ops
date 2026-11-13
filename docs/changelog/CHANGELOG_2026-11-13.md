@@ -41,7 +41,7 @@ The list had grown a frame around every card and a badge on every filter, which 
 - The batch job now tries the record's own `geo_lat`/`geo_lng` before any address work. A stored point is used when `geo_source` is not a country centroid and confidence is at least 0.5; it renders tiles directly, so one record costs about 1.5 s instead of a second geocode plus a page crawl. Address candidates, page signals and PDFs remain the fallback when no usable point is stored.
 - A country centroid (`nominatim:country`, confidence 0.25) is deliberately never rendered as imagery: the middle of a country is not the site, and the country outline placeholder is the honest answer.
 - `isSafeImageFileName` accepts a leading underscore. A non-Latin slug sanitises to `___ggzy_...jpg`, and the previous rule dropped those manifest entries at parse time, so 8 Chinese records that had images always fell back to the placeholder.
-- The locator placeholder is fitted to the whole 616px square: the inner frame, the country code, the country/city labels and the label-fitting code are gone. The caption under the card already names the place.
+- The locator placeholder keeps the paper edge to edge but insets the country outline by 40px inside the 616px panel: the inner frame, the country code, the country/city labels and the label-fitting code are gone. A coastline that stops on the frame read as a crop; the caption under the card already names the place.
 
 ### Why
 
