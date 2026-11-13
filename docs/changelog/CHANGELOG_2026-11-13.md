@@ -62,3 +62,26 @@ The database already held worker-resolved coordinates for most records, but the 
 - `packages/previews/scripts/build-country-outlines.mjs`, `data/country-outlines.json`
 - `apps/web/src/lib/opportunity-image-response.test.ts`
 - `docs/structures/2026-10-21-preview-pipeline-architecture.md`
+
+## Production sync
+
+### Changed
+
+- Deployed Worker version `dcb6fe84-9c1e-4e36-992f-6bb6d7da9ab2` to `arch-competition.com` and `www.arch-competition.com`, with the 76 generated previews published as static assets.
+- Applied migrations `0004` to `0007` on remote D1; production was three migrations behind, so `/api/opportunities` failed with `internal_error` until they ran.
+- Imported the incremental upsert for `competitions` (140), `source_runs` (29), `ai_screening_results` (124), `source_health` (14) and `ops_review_queue_items` (30) without `--prune`: production keeps its older corpus, which is why it now holds 1046 competitions against 140 locally.
+- `build:cloudflare` passes `--dangerouslyUseUnsupportedNextVersion`, because OpenNext refuses the pinned Next 15.5.x now that it is outside the support window.
+
+### Why
+
+The live site had to show the new list and the new thumbnails, and its database was too old for the current API shape.
+
+### Validation
+
+- Time Travel bookmark `00005a4a-...afbfd13c837ed310a4b0bc4e` recorded; `wrangler d1 export` backup in `artifacts/backups/` (4.5 MB)
+- `curl -I https://arch-competition.com/zh/discover` and the `www` host return 200 with Cloudflare headers; `/api/opportunities?limit=2` returns JSON; a satellite record answers `x-arch-image-source: asset` and a country-only record answers the new placeholder (`viewBox="52 52 616 616"`, outline, no `<text>`)
+- Production screenshot: `artifacts/design/prod-discover-zh.png`
+
+### Modified Files
+
+- `apps/web/package.json`, `CLOUDFLARE_DEPLOY_RUNBOOK.md`

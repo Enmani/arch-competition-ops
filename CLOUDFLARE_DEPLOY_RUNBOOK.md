@@ -269,6 +269,23 @@ $env:NODE_OPTIONS="--max-old-space-size=4096"
 npm run build:web:cloudflare
 ```
 
+### OpenNext Refuses The Pinned Next.js Version
+
+OpenNext refuses to build a Next.js release that is older than the two-year support window, and
+the plugin in `apps/web` pins Next 15.5.x, so `opennextjs-cloudflare build` exits with
+`Next.js version 15.5.15 is not supported` and the deploy stops.
+
+The workspace script already passes the override:
+
+```json
+"build:cloudflare": "opennextjs-cloudflare build --dangerouslyUseUnsupportedNextVersion"
+```
+
+The flag only waives the version gate; the build itself, the deploy and the live checks are
+unchanged. The real fix is the Next.js 16 upgrade (dependabot branches exist for it). Remove the
+flag when `next` and `eslint-config-next` are upgraded, and re-check the OpenNext `compatibility_date`
+in `apps/web/wrangler.jsonc`.
+
 ### D1 Import Rejects Transactions
 
 `scripts/export-d1-data.mjs` must not emit `BEGIN TRANSACTION`, `COMMIT`, `SAVEPOINT` or `ROLLBACK`.

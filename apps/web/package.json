@@ -8,7 +8,7 @@
     "build": "next build",
     "prepare:cloudflare-build": "powershell -ExecutionPolicy Bypass -File ../../scripts/prepare-cloudflare-build.ps1",
     "prebuild:cloudflare": "npm run prepare:cloudflare-build",
-    "build:cloudflare": "opennextjs-cloudflare build",
+    "build:cloudflare": "opennextjs-cloudflare build --dangerouslyUseUnsupportedNextVersion",
     "deploy:cloudflare": "npm run build:cloudflare && opennextjs-cloudflare deploy",
     "d1:create": "wrangler d1 create arch-competition-ops",
     "d1:migrate:local": "wrangler d1 migrations apply arch-competition-ops --local",
