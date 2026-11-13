@@ -1,22 +1,22 @@
 /* Discover feed: opportunity tiles and the watch toggle.
-   A tile is an image, a title and one hairline-separated meta row on bare paper: no frames,
-   no boxes, no hover lift. The title underline is the only hover cue. */
+   A tile is a photo and four facts set in type: name, city-and-country, value, deadline.
+   No frame, no box, no hairline, no hover lift. The only hover cue is the title underline. */
 
-/* Each tile spans four shared rows (image, title, category, meta) and hands them down as
-   subgrids, so the hairlines and watch links of a whole feed row line up whatever the title length. */
+/* Each tile spans three shared rows (image, title, caption) and hands them down as subgrids,
+   so the captions of a whole feed row sit on one baseline whatever the title length. */
 .waterfall-feed {
   /* Where "scroll to the top of the results" lands: just under the sticky bar and dock. */
   scroll-margin-top: calc(var(--shell-topbar-height, 0px) + 4.5rem);
   transition: opacity 160ms var(--ease-out-quart);
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
-  gap: 0 var(--space-xl);
+  gap: var(--space-3xl) var(--space-xl);
 }
 
 .opportunity-tile {
   display: grid;
   position: relative;
-  grid-row: span 4;
+  grid-row: span 3;
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: subgrid;
   gap: 0;
@@ -33,13 +33,15 @@
 
 .opportunity-tile-link {
   display: grid;
-  grid-row: span 4;
+  grid-row: span 3;
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: subgrid;
   gap: 0;
   min-width: 0;
 }
 
+/* Preview assets are square (a locator map or a satellite crop); a square frame shows all of one
+   and crops none of the other. */
 .opportunity-media {
   position: relative;
   overflow: hidden;
@@ -57,7 +59,7 @@
 
 .opportunity-tile-copy {
   display: grid;
-  grid-row: span 3;
+  grid-row: span 2;
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: subgrid;
   gap: 0;
@@ -68,9 +70,10 @@
   display: -webkit-box;
   margin: 0;
   overflow: hidden;
-  font-size: var(--fs-lg);
+  font-size: var(--fs-md);
   font-weight: 600;
-  line-height: 1.3;
+  line-height: 1.4;
+  letter-spacing: -0.005em;
   overflow-wrap: anywhere;
   text-decoration: underline transparent;
   text-underline-offset: 0.2em;
@@ -79,52 +82,37 @@
   -webkit-line-clamp: 2;
 }
 
-/* Category on the left; the stated value, when there is one, on the right. A missing value is absent, not announced. */
-.opportunity-tile-category {
-  display: flex;
+/* The caption: place on the left, then the stated value and the deadline on the right edge.
+   Everything sits on one baseline; spacing, weight and colour do the separating. */
+.opportunity-tile-meta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-lg);
-  margin: var(--space-sm) 0 var(--space-md);
+  gap: var(--space-sm) var(--space-lg);
+  margin: 0;
+  padding-top: var(--space-sm);
   color: var(--ink-faint);
-  font-size: var(--fs-sm);
-}
-
-.opportunity-category-text {
-  min-width: 0;
-}
-
-.opportunity-value {
-  flex: none;
-  max-width: 55%;
-  overflow: hidden;
-  color: var(--ink);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.opportunity-meta-strip {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: var(--space-lg);
-  padding: var(--space-md) 0 var(--space-3xl);
-  border-top: 1px solid var(--line);
-  color: var(--ink-soft);
   font-size: var(--fs-sm);
   line-height: 1.4;
 }
 
-.opportunity-meta-value {
+.opportunity-meta-location,
+.opportunity-meta-value,
+.opportunity-meta-deadline {
   min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.opportunity-meta-value {
+  color: var(--ink);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 .opportunity-meta-deadline {
-  flex: none;
-  text-align: right;
+  color: var(--ink-soft);
   font-variant-numeric: tabular-nums;
 }
 
@@ -135,41 +123,34 @@
   gap: var(--space-md);
 }
 
-/* The card's watch control is a square + in the image corner. It appears on hover or keyboard
-   focus, stays visible once the record is watched, and is always shown where there is no hover. */
+/* The card's watch control is a bare + in the image corner: no box, no plate. It appears on hover
+   or keyboard focus, stays visible once the record is watched, and is always shown where there is
+   no hover. The glyph is dark with a pale halo so it reads on a pale placeholder and on a photo. */
 .opportunity-tile-actions {
   position: absolute;
-  top: var(--space-md);
-  right: var(--space-md);
+  top: var(--space-sm);
+  right: var(--space-sm);
   z-index: 1;
 }
 
 .watch-toggle-icon {
   display: inline-grid;
   place-items: center;
-  width: var(--control-h);
-  height: var(--control-h);
+  width: 2.25rem;
+  height: 2.25rem;
   padding: 0;
-  border: 1px solid var(--line-strong);
-  background: var(--surface);
-  color: var(--ink);
+  border: 0;
+  background: transparent;
+  color: #1c1b17;
   cursor: pointer;
+  filter: drop-shadow(0 0 2px rgb(255 255 255 / 0.9)) drop-shadow(0 1px 1px rgb(255 255 255 / 0.6));
   transition:
     opacity 180ms var(--ease-out-quart),
-    background-color 180ms var(--ease-out-quart),
-    color 180ms var(--ease-out-quart);
+    transform 180ms var(--ease-out-quart);
 }
 
 .watch-toggle-icon:hover:not(:disabled) {
-  background: var(--ink);
-  border-color: var(--ink);
-  color: var(--surface);
-}
-
-.watch-toggle-icon.is-active {
-  background: var(--ink);
-  border-color: var(--ink);
-  color: var(--surface);
+  transform: scale(1.12);
 }
 
 .watch-toggle-icon:focus-visible {

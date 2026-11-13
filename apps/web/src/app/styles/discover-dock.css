@@ -79,16 +79,19 @@
 .filter-form {
   /* minmax(0, ...) lets the pill row scroll instead of widening the whole page. */
   grid-template-columns: minmax(0, 1fr);
-  padding: var(--space-sm) 0;
+  padding: var(--space-md) 0 var(--space-sm);
 }
 
-/* The whole filter is one row: country, the filter pills, then sort at the far end. A row that is
-   wider than the screen scrolls sideways instead of wrapping into a second line. */
+/* The whole filter is one row of bare words: country, the filter facets, then sort at the far end.
+   No frames, no fills: the labels carry the row, spacing and weight separate the groups. A row
+   that does not fit wraps (English labels are longer than Chinese ones); on narrow screens it
+   scrolls sideways instead, so the dock stays one line tall above a single-column feed. */
 .dock-pills {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-sm);
-  overflow-x: auto;
+  gap: var(--space-sm) var(--space-xl);
+  overflow-x: visible;
   scrollbar-width: none;
 }
 
@@ -113,22 +116,45 @@
 }
 
 .dock-sort {
-  min-width: 11rem;
   margin-left: auto;
 }
 
-.dock-sort select {
+/* Both selects are bare text on paper, like the facets beside them: no field box in the dock. */
+.dock-pills .dock-sort select,
+.dock-pills .dock-country select {
+  height: auto;
+  min-height: 2rem;
+  padding: 0 1.25rem 0 0;
+  border: 0;
+  background-color: transparent;
+  background-position: right 0.2rem center;
+  color: var(--ink-soft);
   font-size: var(--fs-sm);
+  line-height: 1.4;
+  transition: color 180ms var(--ease-out-quart);
+}
+
+.dock-pills .dock-sort select:hover,
+.dock-pills .dock-country select:hover,
+.dock-pills .dock-sort select:focus-visible,
+.dock-pills .dock-country select:focus-visible {
+  border: 0;
+  color: var(--ink);
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* Where the browser draws the picker icon itself (Chromium's base-select), the text can sit right
+   next to it instead of leaving room for the drawn background arrow. */
+@supports (appearance: base-select) {
+  .dock-pills .dock-sort select,
+  .dock-pills .dock-country select {
+    padding-right: 0.35rem;
+  }
 }
 
 .dock-country {
   flex: 0 0 auto;
-  min-width: 9rem;
-}
-
-/* Same size as the pills beside it. */
-.dock-country select {
-  font-size: var(--fs-sm);
 }
 
 .dock-pill-summary,
@@ -136,21 +162,21 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-sm);
-  height: var(--control-h);
-  padding: 0 var(--space-md);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-pill);
+  height: auto;
+  min-height: 2rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
   background: transparent;
-  color: var(--ink);
+  color: var(--ink-soft);
   font-size: var(--fs-sm);
+  line-height: 1.4;
   white-space: nowrap;
   cursor: pointer;
   list-style: none;
   /* A control, not text: a quick second click must not select its label. */
   user-select: none;
-  transition:
-    border-color 180ms var(--ease-out-quart),
-    background-color 180ms var(--ease-out-quart);
+  transition: color 180ms var(--ease-out-quart);
 }
 
 .dock-pill-summary::-webkit-details-marker {
@@ -160,14 +186,17 @@
 .dock-pill-summary:hover,
 .dock-toggle-pill:hover,
 .dock-pill[open] > .dock-pill-summary {
-  border-color: var(--ink);
+  color: var(--ink);
 }
 
-/* A pill that carries a choice reads as selected without relying on colour alone: it shows a count. */
+/* A facet that carries a choice is underlined and counts its choices in parentheses: selected
+   without relying on colour alone, and without a badge. */
 .dock-pill.is-active > .dock-pill-summary,
 .dock-toggle-pill:has(input:checked) {
-  border-color: var(--ink);
-  background: var(--surface-strong);
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.35em;
 }
 
 .dock-pill-summary:focus-visible,
@@ -178,24 +207,25 @@
 }
 
 .dock-count {
-  display: inline-grid;
-  place-items: center;
-  min-width: 1.25rem;
-  height: 1.25rem;
-  padding: 0 var(--space-xs);
-  border-radius: var(--radius-pill);
-  background: var(--ink);
-  color: var(--surface);
+  display: inline;
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--accent);
   font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
   line-height: 1;
 }
 
 .dock-chevron {
   flex: none;
-  width: 0.55rem;
-  height: 0.55rem;
+  width: 0.45rem;
+  height: 0.45rem;
   border-right: 1px solid currentColor;
   border-bottom: 1px solid currentColor;
+  opacity: 0.55;
   transform: translateY(-0.12rem) rotate(45deg);
   transition: transform 220ms var(--ease-out-expo);
 }
@@ -227,8 +257,9 @@
 .dock-reset {
   display: inline-flex;
   align-items: center;
-  height: var(--control-h);
-  padding: 0 var(--space-xs);
+  height: auto;
+  min-height: 2rem;
+  padding: 0;
   color: var(--ink-faint);
   font-size: var(--fs-sm);
   text-decoration: underline;
@@ -406,6 +437,11 @@
   .discover-dock {
     position: relative;
     top: auto;
+  }
+
+  .dock-pills {
+    flex-wrap: nowrap;
+    overflow-x: auto;
   }
 
   .dock-panel {

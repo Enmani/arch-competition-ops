@@ -4,7 +4,12 @@ import test from "node:test";
 import type { StoredOpportunityFeedItem } from "@arch-competition/storage";
 
 import { dictionaries } from "../i18n/dictionaries";
-import { formatTaxonomyList, getOpportunityDisplayMeta, pickDisplayTitle } from "./opportunity-display";
+import {
+  formatTaxonomyList,
+  getOpportunityDisplayMeta,
+  pickCardLocationLine,
+  pickDisplayTitle,
+} from "./opportunity-display";
 
 // Only the fields the formatter reads; the rest of the read model is irrelevant here.
 const base = {
@@ -77,4 +82,24 @@ test("pickDisplayTitle prefers the title in the reader's language, then the clea
   assert.equal(pickDisplayTitle("zh", item({})), "中文");
   assert.equal(pickDisplayTitle("zh", item({ displayTitleZh: null })), "Cleaned");
   assert.equal(pickDisplayTitle("en", item({ displayTitleEn: null })), "Cleaned");
+});
+
+test("a card caption reads the place as city and country code, and falls back to the country alone", () => {
+  const place = (locationLabel: string | null, jurisdictionKey = "france", jurisdictionLabel = "France") =>
+    ({ ...base, locationLabel, jurisdictionKey, jurisdictionLabel }) as unknown as StoredOpportunityFeedItem;
+
+  assert.equal(pickCardLocationLine(place(null)), "France");
+  assert.equal(pickCardLocationLine(place("New York")), "New York, FR");
+  assert.equal(pickCardLocationLine(place("Tours")), "Tours, FR");
+  // A street address is not a city: the next comma-separated segment is used instead.
+  assert.equal(pickCardLocationLine(place("12 Rue de la Paix, Paris")), "Paris, FR");
+  // Even when the locator refuses the label as an address, the caption keeps its city segment.
+  assert.equal(pickCardLocationLine(place("230 Milson Line, Palmerston North")), "Palmerston North, FR");
+  // A Chinese address is shortened to its leading administrative city, never to the street.
+  assert.equal(
+    pickCardLocationLine(place("柳州市鸡喇路1号（广西壮族自治区脑科医院内）", "china", "China")),
+    "柳州市, CN",
+  );
+  // A locality that is too long to caption falls back to the country name.
+  assert.equal(pickCardLocationLine(place("Taihape Memorial Park and Riverside Recreation Reserve")), "France");
 });

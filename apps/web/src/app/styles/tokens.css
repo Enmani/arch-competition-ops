@@ -38,8 +38,6 @@
   /* One control height everywhere (topbar, dock, forms, buttons); touch devices get 44px. */
   --control-h: 2.5rem;
   --control-px: 0.75rem;
-  /* Filter pills: 0 keeps the square controls of the rest of the site; raise it (e.g. 999px) for capsules. */
-  --radius-pill: 0;
   --topbar-pad-y: max(0.5rem, env(safe-area-inset-top));
   --space-xs: 0.25rem;
   --space-sm: 0.5rem;

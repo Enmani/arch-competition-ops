@@ -151,7 +151,7 @@ const Pill = ({ children, count, id, label, onOpenChange, openId }: PillProps) =
   >
     <summary className="dock-pill-summary">
       <span>{label}</span>
-      {count > 0 ? <span className="dock-count">{count}</span> : null}
+      {count > 0 ? <span className="dock-count">({count})</span> : null}
       <span aria-hidden="true" className="dock-chevron" />
     </summary>
     <div className="dock-panel">{children}</div>

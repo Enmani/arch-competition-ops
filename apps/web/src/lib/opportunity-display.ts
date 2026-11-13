@@ -12,7 +12,7 @@ import {
   translateMappedValue,
 } from "../i18n/format";
 import { formatTokenLabel } from "./discover";
-import { pickOpportunityDisplayLocality } from "@arch-competition/previews/location";
+import { getOpportunityJurisdictionCode, pickOpportunityDisplayLocality } from "@arch-competition/previews/location";
 
 const combiningDiacriticPattern = /[\u0300-\u036f]/g;
 
@@ -98,6 +98,44 @@ const CARD_VALUE_TEXT_MAX_LENGTH = 32;
 const pickShortValueText = (value: string | null) => {
   const trimmed = value?.trim();
   return trimmed && trimmed.length <= CARD_VALUE_TEXT_MAX_LENGTH ? trimmed : null;
+};
+
+/** A Chinese address leads with the city: 柳州市鸡喇路1号 reads as 柳州市. */
+const HAN_CITY_LEAD_PATTERN = /^[\p{Script=Han}]{2,10}?(?:市|县|区|旗|镇|乡|街道)/u;
+/** A segment that is a street address, not a city, is skipped in favour of the next one. */
+const ADDRESS_SEGMENT_PATTERN =
+  /(?:\d|路|街|道|巷|弄|号|大道|广场|园区|新区|开发区|\b(?:avenue|ave|boulevard|bd|calle|gasse|laan|piazza|platz|road|rd|rue|straat|strasse|straße|street|st|ulica|via|viale|weg)\b)/iu;
+const TRAILING_PARENTHETICAL_PATTERN = /\s*[（(][^）)]*[）)]\s*$/u;
+const CARD_CITY_MAX_LENGTH = 28;
+
+const trimLocationSegment = (value: string) => value.replace(TRAILING_PARENTHETICAL_PATTERN, "").trim();
+
+/**
+ * The card line reads like a gallery caption: "New York, US". The city comes from the stored
+ * locality (an address is reduced to its leading city, never invented), the country from the
+ * jurisdiction record; a locality that cannot be reduced to a city falls back to the country alone.
+ */
+export const pickCardLocationLine = (opportunity: StoredOpportunityFeedItem) => {
+  // The locator rejects a label that is really a street address ("230 Milson Line, Palmerston
+  // North"); the card still reads the city from the stored label, never from the street.
+  const locality =
+    (pickOpportunityDisplayLocality(opportunity) ?? opportunity.locationLabel ?? "").trim();
+  const hanCity = HAN_CITY_LEAD_PATTERN.exec(locality)?.[0];
+  const city =
+    (hanCity ? trimLocationSegment(hanCity) : null) ??
+    locality
+      .split(/[,，;；]/u)
+      .map((segment) => trimLocationSegment(segment))
+      .find((segment) => segment.length > 0 && !ADDRESS_SEGMENT_PATTERN.test(segment)) ??
+    "";
+  const countryCode = getOpportunityJurisdictionCode(opportunity);
+  const countryName = opportunity.jurisdictionLabel.trim();
+
+  if (!city || city.length > CARD_CITY_MAX_LENGTH) {
+    return countryName || countryCode;
+  }
+
+  return `${city}, ${countryCode}`;
 };
 
 export const getOpportunityDisplayMeta = (
@@ -191,6 +229,8 @@ export const getOpportunityDisplayMeta = (
     opportunity,
     `${opportunityTypeLabel} · ${procedureLabel}`,
   );
+  // The card keeps to four facts; the full stored location stays on the detail page.
+  const locationLineLabel = pickCardLocationLine(opportunity);
 
   return {
     authorityLabel,
@@ -205,6 +245,7 @@ export const getOpportunityDisplayMeta = (
     implementationPathLabel,
     jurisdictionLabel,
     locationLabel,
+    locationLineLabel,
     officialPageLink,
     opportunityTypeLabel,
     participationCostLabel,

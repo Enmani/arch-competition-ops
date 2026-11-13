@@ -35,6 +35,22 @@
   overflow: hidden;
 }
 
+/* In the masthead the search is a line of type, not a field: no box, one hairline underneath that
+   darkens on hover and on focus. */
+.topbar-search .search-shell {
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+}
+
+.topbar-search .search-shell:hover {
+  border-bottom-color: var(--ink-faint);
+}
+
+.topbar-search .search-shell:focus-within {
+  border-bottom-color: var(--ink);
+}
+
 .discover-dock.is-pending .search-shell,
 .discover-dock.is-pending .field-stack input,
 .discover-dock.is-pending .field-stack select {

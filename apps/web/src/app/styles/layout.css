@@ -36,6 +36,8 @@
 /* On the discover page the search box takes the free middle of the bar. */
 .topbar:has(.topbar-search) {
   grid-template-columns: auto minmax(12rem, 1fr) auto;
+  /* The masthead carries no rule of its own: the filter row's line below it is the single rule. */
+  border-bottom-color: transparent;
 }
 
 .topbar-search {
@@ -163,22 +165,19 @@
   justify-content: center;
   gap: var(--space-sm);
   min-height: var(--control-h);
-  padding: 0 var(--space-md);
-  border: 1px solid var(--line);
+  padding: 0 var(--space-xs);
+  border: 0;
   background: transparent;
   color: var(--ink-faint);
   font-size: var(--fs-sm);
   text-decoration: none;
   white-space: nowrap;
-  transition:
-    color 180ms var(--ease-out-quart),
-    border-color 180ms var(--ease-out-quart);
+  transition: color 180ms var(--ease-out-quart);
 }
 
 .locale-switcher.is-open .locale-trigger,
 .locale-trigger:hover {
   color: var(--ink);
-  border-color: var(--line-strong);
 }
 
 .locale-globe {
@@ -230,6 +229,16 @@
 @media (max-width: 640px) {
   .topbar {
     grid-template-columns: 1fr;
+  }
+
+  /* The wordmark needs the full width: navigation on one row and the search on the next,
+     instead of a two-column bar that squeezes the brand into three lines. */
+  .topbar:has(.topbar-search) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .nav-cluster {
+    grid-column: 1 / -1;
   }
 
   .brand-stack {

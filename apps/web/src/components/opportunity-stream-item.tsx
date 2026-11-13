@@ -30,7 +30,7 @@ export const OpportunityStreamItem = ({
 }: OpportunityStreamItemProps) => {
   const localizedRecordLink = buildLocalePath(locale, `/opportunities/${opportunity.slug}`);
   const imageSrc = `/api/opportunities/${opportunity.slug}/image?rev=${opportunityImageRevision}`;
-  const { cardCategoryLabel, cardValueLabel, deadlineValueLabel, displayTitle, locationLabel } = getOpportunityDisplayMeta(
+  const { cardValueLabel, deadlineValueLabel, displayTitle, locationLineLabel } = getOpportunityDisplayMeta(
     copy,
     locale,
     opportunity,
@@ -43,7 +43,7 @@ export const OpportunityStreamItem = ({
           <Image
             alt=""
             fill
-            sizes="(max-width: 640px) 100vw, (max-width: 1200px) 50vw, 22rem"
+            sizes="(max-width: 640px) 100vw, (max-width: 1200px) 50vw, 33vw"
             src={imageSrc}
             unoptimized
           />
@@ -53,27 +53,25 @@ export const OpportunityStreamItem = ({
           <h2 className="opportunity-tile-title" title={displayTitle === opportunity.title ? undefined : opportunity.title}>
             {displayTitle}
           </h2>
-          {/* A name on a non-interactive element is not announced reliably, so field names are
-              spelled out as screen-reader-only text instead of aria-label. */}
-          <p className="opportunity-tile-category">
-            <span className="opportunity-category-text">{cardCategoryLabel}</span>
+          {/* A caption on a non-interactive element is not announced reliably, so field names are
+              spelled out as screen-reader-only text instead of aria-label. A missing value is
+              absent, never announced as pending. */}
+          <p className="opportunity-tile-meta">
+            <span className="opportunity-meta-location">
+              <span className="sr-only">{copy.discover.card.location}: </span>
+              {locationLineLabel}
+            </span>
             {cardValueLabel ? (
-              <span className="opportunity-value">
+              <span className="opportunity-meta-value">
                 <span className="sr-only">{copy.discover.card.value}: </span>
                 {cardValueLabel}
               </span>
             ) : null}
-          </p>
-          <div className="opportunity-meta-strip">
-            <span className="opportunity-meta-value">
-              <span className="sr-only">{copy.discover.card.location}: </span>
-              {locationLabel}
-            </span>
-            <span className="opportunity-meta-value opportunity-meta-deadline">
+            <span className="opportunity-meta-deadline">
               <span className="sr-only">{copy.discover.card.deadline}: </span>
               {deadlineValueLabel}
             </span>
-          </div>
+          </p>
         </div>
       </Link>
       <div className="opportunity-tile-actions">
