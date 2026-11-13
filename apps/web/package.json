@@ -22,11 +22,11 @@
     "@arch-competition/core": "0.1.0",
     "@arch-competition/previews": "0.1.0",
     "@arch-competition/storage": "0.1.0",
-    "@opennextjs/cloudflare": "^1.19.4",
+    "@opennextjs/cloudflare": "^1.20.16",
     "next": "^15.5.15",
-    "react": "^19.0.0",
+    "react": "^19.3.1",
     "react-day-picker": "^9.14.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.3.1"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260429.1",
