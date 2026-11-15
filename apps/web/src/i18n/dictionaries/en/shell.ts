@@ -30,6 +30,12 @@ export const shell = {
     context: "Context",
   },
   localeSwitcherLabel: "Language",
+  theme: {
+    label: "Appearance",
+    system: "Match system",
+    light: "Light",
+    dark: "Dark",
+  },
   localeNames: {
     zh: "Chinese",
     en: "English",

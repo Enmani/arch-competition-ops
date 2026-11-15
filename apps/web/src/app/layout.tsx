@@ -4,6 +4,7 @@ import { type ReactNode } from "react";
 
 import { getDictionary, getRequestLocale } from "@/i18n/server";
 import { getSiteOrigin } from "@/lib/page-metadata";
+import { themeBootScript } from "@/lib/theme";
 
 import "./globals.css";
 
@@ -57,7 +58,12 @@ const RootLayout = async ({ children }: RootLayoutProps) => {
       className={`${displayFont.variable} ${sansFont.variable}`}
       data-scroll-behavior="smooth"
       lang={locale}
+      suppressHydrationWarning
     >
+      <head>
+        {/* Applies a saved theme before first paint so a chosen dark page never flashes light. */}
+        <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
+      </head>
       <body>{children}</body>
     </html>
   );

@@ -54,9 +54,12 @@
 }
 
 /* Dark theme: the same paper-and-ink system with the values inverted. Only base colours are
-   restated; the derived tints above follow. Preview images stay paper-toned on purpose. */
+   restated; the derived tints above follow. Preview images stay paper-toned on purpose.
+   The theme button sets data-theme on <html> ("light" or "dark"); with no attribute the system
+   setting decides. CSS cannot share one block between a media query and an attribute selector,
+   so the values are written twice: keep the two blocks identical. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: oklch(17.5% 0.008 103);
     --bg-alt: oklch(20% 0.009 103);
     --surface: oklch(21% 0.009 103);
@@ -71,6 +74,31 @@
     --accent-soft: oklch(28% 0.045 151);
     --danger: oklch(72% 0.14 28);
   }
+}
+
+:root[data-theme="dark"] {
+  --bg: oklch(17.5% 0.008 103);
+  --bg-alt: oklch(20% 0.009 103);
+  --surface: oklch(21% 0.009 103);
+  --surface-alt: oklch(19.5% 0.009 103);
+  --surface-strong: oklch(25% 0.01 103);
+  --ink: oklch(94% 0.012 103);
+  --ink-soft: oklch(78% 0.012 103);
+  --ink-faint: oklch(66% 0.012 103);
+  --line: oklch(31% 0.01 103);
+  --line-strong: oklch(45% 0.013 103);
+  --accent: oklch(78% 0.095 151);
+  --accent-soft: oklch(28% 0.045 151);
+  --danger: oklch(72% 0.14 28);
+}
+
+/* Native controls, scrollbars and form fields follow the chosen theme too. */
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
 }
 
 @media (pointer: coarse) {

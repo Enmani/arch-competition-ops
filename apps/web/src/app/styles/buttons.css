@@ -48,6 +48,7 @@
 }
 
 .button:focus-visible,
+.theme-toggle:focus-visible,
 .field-stack input:focus-visible:not(.search-input),
 .field-stack select:focus-visible,
 .search-shell:focus-within,

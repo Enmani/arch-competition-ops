@@ -149,3 +149,18 @@ The Windows scheduled task only runs while the owner's PC is on. The ledger and 
 - `apps/web/src/app/api/opportunities/[slug]/route.ts`, `apps/web/src/lib/api/{http.ts,opportunities.ts}`, `apps/web/src/lib/opportunity-detail-client.ts`, `apps/web/src/components/{opportunity-detail-body.tsx,opportunity-drawer.tsx,opportunity-sheet.tsx,opportunity-detail-surface.tsx,opportunity-stream-item.tsx,discover-feed.tsx}`, `apps/web/src/lib/opportunity-detail-model*.ts`, `apps/web/src/app/styles/{detail,layout,surfaces,tiles}.css`, `apps/web/src/i18n/dictionaries/*/detail.ts`
 - `packages/core/src/{ai-assessment.ts,index.ts}`, `packages/storage/src/opportunities/{repository.ts,types.ts}`, `packages/storage/src/{index.ts,ai-screening.test.ts}`
 - `docs/ARCHITECTURE.md`, `docs/DATA_CONTRACT.md`
+
+## Appearance toggle
+
+### Changed
+
+- A button next to the language switch cycles Match system, Light and Dark. The dark theme had followed the system setting only; there was never a manual switch. The choice is kept in `localStorage` and applied as `data-theme` on `<html>` by a small script in `<head>` before first paint (a cookie would make every page dynamic). `tokens.css` restates the dark values for the attribute (CSS cannot share one block between a media query and an attribute selector; a comment says to keep the two identical).
+
+### Validation
+
+- `npm run typecheck`, `lint:web`, `test:web`. Checked in Edge: cycling, persistence over a reload with the dark background present at DOM-ready, forcing dark on a light system and light on a dark system, no console errors.
+
+### Modified Files
+
+- `apps/web/src/components/{theme-toggle.tsx,site-shell.tsx}`, `apps/web/src/lib/theme.ts`, `apps/web/src/app/{layout.tsx,styles/tokens.css,styles/buttons.css}`, `apps/web/src/i18n/dictionaries/*/shell.ts`
+

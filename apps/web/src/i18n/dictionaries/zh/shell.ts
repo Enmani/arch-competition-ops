@@ -28,6 +28,12 @@ export const shell = {
     context: "上下文",
   },
   localeSwitcherLabel: "语言",
+  theme: {
+    label: "显示模式",
+    system: "跟随系统",
+    light: "浅色",
+    dark: "深色",
+  },
   localeNames: {
     zh: "中文",
     en: "英文",

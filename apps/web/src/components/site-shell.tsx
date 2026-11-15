@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useLayoutEffect, useRef, type PropsWithChildren } from "react";
 
 import { LocaleSwitcher } from "@/components/locale-switcher";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { TopbarSearch } from "@/components/topbar-search";
 import { buildLocalePath, stripLocalePrefix, type AppLocale } from "@/i18n/config";
 import type { AppDictionary } from "@/i18n/dictionaries";
@@ -174,6 +175,7 @@ export const SiteShell = ({ authUserEmail, children, copy, locale, showOpsLink =
                 ariaLabel={copy.localeSwitcherLabel}
                 localeNames={copy.localeNames}
               />
+              <ThemeToggle copy={copy.theme} />
             </div>
           </div>
         </header>
