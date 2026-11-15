@@ -20,13 +20,16 @@ export const pickWatchToggleCopy = (dictionary: Dictionary): WatchToggleCopy => 
   workspace: { watchlist: dictionary.workspace.watchlist },
 });
 
+/** Everything the list and the side sheet opened from it read. */
 export type DiscoverFeedCopy = DisplayCopy &
   WatchToggleCopy & {
+    detail: Dictionary["detail"];
     discover: Pick<Dictionary["discover"], "buttons" | "card" | "feed" | "feedRegionLabel">;
   };
 
 export const pickDiscoverFeedCopy = (dictionary: Dictionary): DiscoverFeedCopy => ({
   common: dictionary.common,
+  detail: dictionary.detail,
   discover: {
     buttons: dictionary.discover.buttons,
     card: dictionary.discover.card,

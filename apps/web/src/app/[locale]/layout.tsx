@@ -7,14 +7,12 @@ import { getCurrentAuthUser, isAdminEmail } from "@/lib/auth";
 
 type LocaleLayoutProps = {
   children: ReactNode;
-  /** Parallel slot: the opportunity side sheet (see @modal). */
-  modal: ReactNode;
   params: Promise<{ locale: string }>;
 };
 
 export const generateStaticParams = () => locales.map((locale) => ({ locale }));
 
-const LocaleLayout = async ({ children, modal, params }: LocaleLayoutProps) => {
+const LocaleLayout = async ({ children, params }: LocaleLayoutProps) => {
   const { locale: rawLocale } = await params;
   const locale = resolveLocaleOrNotFound(rawLocale);
   const dictionary = getDictionary(locale);
@@ -30,7 +28,6 @@ const LocaleLayout = async ({ children, modal, params }: LocaleLayoutProps) => {
       >
         {children}
       </SiteShell>
-      {modal}
     </>
   );
 };

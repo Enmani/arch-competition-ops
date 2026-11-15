@@ -9,6 +9,8 @@ import { StorageBusyError, StorageNotFoundError, StorageValidationError } from "
  */
 export const NO_STORE = "no-store";
 export const PUBLIC_LIST_CACHE_CONTROL = "public, max-age=0, s-maxage=60, stale-while-revalidate=300";
+/** One opportunity changes at most once a day; a minute in the browser, five at the edge. */
+export const PUBLIC_DETAIL_CACHE_CONTROL = "public, max-age=60, s-maxage=300, stale-while-revalidate=3600";
 
 const STATUS_BY_CODE: Record<ApiErrorCode, number> = {
   conflict: 409,

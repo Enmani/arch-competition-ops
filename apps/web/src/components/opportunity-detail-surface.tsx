@@ -4,10 +4,10 @@ import type { StoredOpportunityFeedItem } from "@arch-competition/storage";
 
 import { OpportunityDetailBody } from "@/components/opportunity-detail-body";
 import { buildLocalePath, type AppLocale } from "@/i18n/config";
-import type { AppDictionary } from "@/i18n/dictionaries";
+import type { DiscoverFeedCopy } from "@/i18n/slices";
 
 type OpportunityDetailSurfaceProps = {
-  dictionary: AppDictionary;
+  copy: DiscoverFeedCopy;
   isWatched: boolean;
   locale: AppLocale;
   opportunity: StoredOpportunityFeedItem;
@@ -16,7 +16,7 @@ type OpportunityDetailSurfaceProps = {
 
 /** The standalone page (direct visit, shared link, search result): the same body with a way back. */
 export const OpportunityDetailSurface = ({
-  dictionary,
+  copy,
   isWatched,
   locale,
   opportunity,
@@ -27,10 +27,10 @@ export const OpportunityDetailSurface = ({
       <svg aria-hidden="true" fill="none" height="16" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 16 16" width="16">
         <path d="M10 3L5 8l5 5" />
       </svg>
-      {dictionary.detail.drawer.back}
+      {copy.detail.drawer.back}
     </Link>
     <OpportunityDetailBody
-      dictionary={dictionary}
+      copy={copy}
       isWatched={isWatched}
       locale={locale}
       now={new Date()}

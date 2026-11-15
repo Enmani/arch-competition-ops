@@ -63,19 +63,26 @@ export const getOpportunityBySlug = async (
   slug: string,
 ): Promise<StoredOpportunityFeedItem | undefined> => {
   const candidates = slugCandidates(slug);
-  const rows = await readRows<OpportunityRow>(
-    context.reader,
-    `SELECT ${OPPORTUNITY_COLUMNS} FROM competitions WHERE id IN (${placeholders(candidates.length)})`,
-    candidates,
-  );
+  // The record and its published assessment go out as one batch (one D1 round trip); the
+  // assessment is matched to the record's current revision here, after both have arrived.
+  const [recordRows, assessmentRows] = await readBatch(context.reader, [
+    {
+      sql: `SELECT ${OPPORTUNITY_COLUMNS} FROM competitions WHERE id IN (${placeholders(candidates.length)})`,
+      parameters: candidates,
+    },
+    {
+      sql: `SELECT competition_id, source_updated_at, result_json FROM ai_screening_results WHERE competition_id IN (${placeholders(candidates.length)})`,
+      parameters: candidates,
+    },
+  ]);
+  const rows = recordRows as OpportunityRow[];
+  const assessments = assessmentRows as { competition_id: string; result_json: string; source_updated_at: string }[];
   for (const candidate of candidates) {
     const row = rows.find((item) => item.id === candidate);
     if (row) {
       const item = toOpportunityFeedItem(row, context.logger);
-      const published = await readRows<{ result_json: string }>(
-        context.reader,
-        "SELECT result_json FROM ai_screening_results WHERE competition_id = ? AND source_updated_at = ?",
-        [row.id, row.updated_at],
+      const published = assessments.filter(
+        (entry) => entry.competition_id === row.id && entry.source_updated_at === row.updated_at,
       );
       try {
         const result: unknown = JSON.parse(published[0]?.result_json ?? "{}");

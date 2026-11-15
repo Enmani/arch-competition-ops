@@ -4,8 +4,9 @@ import { useEffect, useRef, useState } from "react";
 
 import type { StoredOpportunityFeedItem, StoredOpportunityQuery } from "@arch-competition/storage";
 
+import { OpportunitySheet } from "@/components/opportunity-sheet";
 import { OpportunityStreamItem } from "@/components/opportunity-stream-item";
-import { serializeSearchParams, type AppLocale } from "@/i18n/config";
+import { buildLocalePath, serializeSearchParams, type AppLocale } from "@/i18n/config";
 import { fillTemplate } from "@/i18n/format";
 import type { DiscoverFeedCopy } from "@/i18n/slices";
 import { describeApiFailure, requestJson, type ApiFailure } from "@/lib/api-client";
@@ -59,6 +60,7 @@ export const DiscoverFeed = ({
   const inFlightRef = useRef(false);
   const feedRef = useRef(feed);
   const sectionRef = useRef<HTMLElement | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
 
   // Mounted for new filters after the visitor scrolled down: show the top of the new list once.
   useEffect(() => {
@@ -68,6 +70,30 @@ export const DiscoverFeed = ({
     }
   }, []);
   const hasMore = hasMoreItems(feed);
+
+  // The side sheet is a history entry, not a navigation: the list keeps its place and state, the
+  // address becomes the opportunity's own page, and Back, Esc and the close button all return to
+  // the list. A reload on that address renders the standalone page.
+  const openOpportunity = (opportunity: StoredOpportunityFeedItem) => {
+    window.history.pushState({ sheet: opportunity.id }, "", buildLocalePath(locale, `/opportunities/${opportunity.slug}`));
+    setOpenId(opportunity.id);
+  };
+  const closeOpportunity = () => {
+    if (window.history.state?.sheet) {
+      window.history.back();
+    } else {
+      setOpenId(null);
+    }
+  };
+  useEffect(() => {
+    const syncWithHistory = () => {
+      const id: unknown = window.history.state?.sheet;
+      setOpenId(typeof id === "string" && feedRef.current.items.some((item) => item.id === id) ? id : null);
+    };
+    window.addEventListener("popstate", syncWithHistory);
+    return () => window.removeEventListener("popstate", syncWithHistory);
+  }, []);
+  const openItem = feed.items.find((item) => item.id === openId);
 
   const loadMore = async () => {
     if (inFlightRef.current || !hasMoreItems(feedRef.current)) {
@@ -120,12 +146,26 @@ export const DiscoverFeed = ({
             isWatched={watchedIds.has(opportunity.id)}
             key={opportunity.id}
             locale={locale}
+            onOpen={openOpportunity}
             onWatchChange={(nextWatched) => handleWatchChange(opportunity.id, nextWatched)}
             opportunity={opportunity}
             signedIn={signedIn}
           />
         ))}
       </section>
+
+      {openItem ? (
+        <OpportunitySheet
+          copy={copy}
+          isWatched={watchedIds.has(openItem.id)}
+          key={openItem.id}
+          locale={locale}
+          onClose={closeOpportunity}
+          onWatchChange={(nextWatched) => handleWatchChange(openItem.id, nextWatched)}
+          opportunity={openItem}
+          signedIn={signedIn}
+        />
+      ) : null}
 
       <div className="discover-feed-footer">
         <p aria-live="polite" className="discover-feed-status" role="status">

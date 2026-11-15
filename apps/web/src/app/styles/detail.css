@@ -224,6 +224,18 @@
   margin-bottom: var(--space-md);
 }
 
+/* Placeholder lines where the AI overview will appear: flat blocks, nothing moving. */
+.detail-skeleton-lines {
+  display: grid;
+  gap: var(--space-md);
+}
+
+.detail-skeleton-lines span {
+  display: block;
+  height: 1rem;
+  background: var(--surface-strong);
+}
+
 /* Side sheet. The native dialog gives the focus trap and Esc; this file only places it. */
 .detail-drawer {
   position: fixed;

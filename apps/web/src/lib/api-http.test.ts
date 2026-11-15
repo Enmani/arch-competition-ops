@@ -6,7 +6,7 @@ import { seedOpportunity } from "@arch-competition/storage/testing";
 
 import { assertFormRequest, assertSameOrigin } from "./api/csrf";
 import { HttpError } from "./api/http";
-import { createOpportunitiesHandlers } from "./api/opportunities";
+import { createOpportunitiesHandlers, createOpportunityDetailHandlers } from "./api/opportunities";
 import { createWatchlistHandlers } from "./api/watchlists";
 import { buildRequest, createApiTestContext, readError, type ApiTestContext } from "./api-test-support";
 import { isAdminEmail, parseAdminEmails } from "./auth";
@@ -86,6 +86,23 @@ test("the public opportunities API validates and bounds its query and sets a sho
       assert.equal((await readError(response)).code, "invalid_request");
       assert.equal(response.headers.get("cache-control"), "no-store");
     }
+  });
+});
+
+test("one opportunity is served with public caching and an unknown slug is a plain 404", async () => {
+  await withContext(async (context) => {
+    seedOpportunity(context.test.raw, { id: "known", title: "Known" });
+    const { GET } = createOpportunityDetailHandlers(context.deps);
+
+    const found = await GET(buildRequest("/api/opportunities/known"), "known");
+    assert.equal(found.status, 200);
+    assert.match(found.headers.get("cache-control") ?? "", /^public, max-age=60, s-maxage=300/);
+    assert.equal(((await found.json()) as { opportunity: { id: string } }).opportunity.id, "known");
+
+    const missing = await GET(buildRequest("/api/opportunities/nope"), "nope");
+    assert.equal(missing.status, 404);
+    assert.equal((await readError(missing)).code, "not_found");
+    assert.equal(missing.headers.get("cache-control"), "no-store");
   });
 });
 

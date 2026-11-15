@@ -4,9 +4,8 @@ import type { StoredOpportunityFeedItem } from "@arch-competition/storage";
 
 import WatchToggleButton from "@/components/watch-toggle-button";
 import type { AppLocale } from "@/i18n/config";
-import type { AppDictionary } from "@/i18n/dictionaries";
 import { fillTemplate, formatLocalizedDate, getIntlLocale } from "@/i18n/format";
-import { pickWatchToggleCopy } from "@/i18n/slices";
+import type { DiscoverFeedCopy } from "@/i18n/slices";
 import {
   classifyMissingInformation,
   countDeadline,
@@ -23,11 +22,14 @@ import {
 import { opportunityImageRevision } from "@/lib/opportunity-preview-revision";
 
 type OpportunityDetailBodyProps = {
-  dictionary: AppDictionary;
+  copy: DiscoverFeedCopy;
   isWatched: boolean;
   locale: AppLocale;
   now: Date;
+  onWatchChange?: (isWatched: boolean) => void;
   opportunity: StoredOpportunityFeedItem;
+  /** The sheet opened from list data; the AI overview and excerpts are still on their way. */
+  pending?: boolean;
   signedIn: boolean;
 };
 
@@ -56,15 +58,17 @@ const Section = ({ children, title, note }: { children: React.ReactNode; note?: 
 );
 
 export const OpportunityDetailBody = ({
-  dictionary,
+  copy,
   isWatched,
   locale,
   now,
+  onWatchChange,
   opportunity,
+  pending = false,
   signedIn,
 }: OpportunityDetailBodyProps) => {
-  const meta = getOpportunityDisplayMeta(dictionary, locale, opportunity);
-  const { common, detail } = dictionary;
+  const meta = getOpportunityDisplayMeta(copy, locale, opportunity);
+  const { common, detail } = copy;
   const isZh = locale === "zh";
   const assessment = opportunity.aiAssessment;
   const hasValue = opportunity.estimatedContractValueEur !== null || Boolean(opportunity.estimatedContractValueText);
@@ -119,7 +123,7 @@ export const OpportunityDetailBody = ({
   if (opportunity.localPartnerRequired !== null) {
     conditionRows.push({
       label: detail.requirements.localPartner,
-      value: truthFlag(dictionary, opportunity.localPartnerRequired, common.likelyRequired, common.notSignaledInNotice),
+      value: truthFlag(copy, opportunity.localPartnerRequired, common.likelyRequired, common.notSignaledInNotice),
     });
   }
   const feeStated = opportunity.registrationFeeEur !== null || opportunity.submissionFeeEur !== null;
@@ -153,9 +157,9 @@ export const OpportunityDetailBody = ({
 
   const typeChips = [
     meta.cardCategoryLabel,
-    ...formatTaxonomyList(dictionary, "builtAssetTypes", opportunity.builtAssetTypes).split(" · "),
-    ...formatTaxonomyList(dictionary, "designScopes", opportunity.designScopes).split(" · "),
-    ...formatTaxonomyList(dictionary, "projectModes", opportunity.projectModes).split(" · "),
+    ...formatTaxonomyList(copy, "builtAssetTypes", opportunity.builtAssetTypes).split(" · "),
+    ...formatTaxonomyList(copy, "designScopes", opportunity.designScopes).split(" · "),
+    ...formatTaxonomyList(copy, "projectModes", opportunity.projectModes).split(" · "),
   ].filter((chip, index, all) => chip && chip !== common.unstated && all.indexOf(chip) === index);
 
   const mapPrecision = !hasCoordinates
@@ -249,14 +253,24 @@ export const OpportunityDetailBody = ({
           </a>
         ))}
         <WatchToggleButton
-          copy={pickWatchToggleCopy(dictionary)}
+          copy={copy}
           initialWatched={isWatched}
           locale={locale}
+          onToggle={onWatchChange}
           opportunityId={opportunity.id}
           showStatus
           signedIn={signedIn}
         />
       </div>
+
+      {pending ? (
+        <div aria-busy="true" className="detail-skeleton-lines" role="status">
+          <span className="sr-only">{detail.drawer.loading}</span>
+          <span style={{ width: "92%" }} />
+          <span style={{ width: "86%" }} />
+          <span style={{ width: "60%" }} />
+        </div>
+      ) : null}
 
       {summary ? (
         <Section note={detail.summary.aiNote} title={detail.summary.title}>

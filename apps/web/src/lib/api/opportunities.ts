@@ -1,7 +1,7 @@
 import { DISCOVER_DEFAULT_LIMIT, parseDiscoverQuery } from "@arch-competition/core";
 
 import type { AuthDeps } from "../auth";
-import { HttpError, PUBLIC_LIST_CACHE_CONTROL, guarded, jsonResponse, searchParamsToRecord } from "./http";
+import { HttpError, PUBLIC_DETAIL_CACHE_CONTROL, PUBLIC_LIST_CACHE_CONTROL, guarded, jsonResponse, searchParamsToRecord } from "./http";
 
 /** Public, read-only discover feed. Filtering, sorting and paging happen in SQL. */
 export const createOpportunitiesHandlers = (deps: Pick<AuthDeps, "getStorage">) => ({
@@ -25,5 +25,19 @@ export const createOpportunitiesHandlers = (deps: Pick<AuthDeps, "getStorage">) 
       },
       { cacheControl: PUBLIC_LIST_CACHE_CONTROL },
     );
+  }),
+});
+
+/**
+ * One opportunity with its published AI assessment. Public data only (nothing per visitor), so
+ * browsers and the edge may cache it; the side sheet opens from list data and fills in from here.
+ */
+export const createOpportunityDetailHandlers = (deps: Pick<AuthDeps, "getStorage">) => ({
+  GET: guarded("GET /api/opportunities/[slug]", async (_request: Request, slug: string) => {
+    const opportunity = await (await deps.getStorage()).opportunities.getBySlug(slug);
+    if (!opportunity) {
+      throw new HttpError("not_found", "Opportunity not found.");
+    }
+    return jsonResponse({ opportunity }, { cacheControl: PUBLIC_DETAIL_CACHE_CONTROL });
   }),
 });

@@ -6,6 +6,7 @@ import type { StoredOpportunityFeedItem } from "@arch-competition/storage";
 import WatchToggleButton from "@/components/watch-toggle-button";
 import { buildLocalePath, type AppLocale } from "@/i18n/config";
 import type { DiscoverFeedCopy } from "@/i18n/slices";
+import { loadOpportunityDetail } from "@/lib/opportunity-detail-client";
 import { getOpportunityDisplayMeta } from "@/lib/opportunity-display";
 import { opportunityImageRevision } from "@/lib/opportunity-preview-revision";
 
@@ -14,6 +15,7 @@ type OpportunityStreamItemProps = {
   index: number;
   isWatched: boolean;
   locale: AppLocale;
+  onOpen?: (opportunity: StoredOpportunityFeedItem) => void;
   onWatchChange?: (isWatched: boolean) => void;
   opportunity: StoredOpportunityFeedItem;
   signedIn: boolean;
@@ -24,6 +26,7 @@ export const OpportunityStreamItem = ({
   index,
   isWatched,
   locale,
+  onOpen,
   onWatchChange,
   opportunity,
   signedIn,
@@ -38,7 +41,22 @@ export const OpportunityStreamItem = ({
 
   return (
     <article className="opportunity-tile" style={{ ["--tile-index" as string]: index }}>
-      <Link className="opportunity-tile-link" href={localizedRecordLink}>
+      {/* A plain click opens the side sheet from the data already on screen; the link itself stays for
+          new tabs, middle clicks, copying the address and crawlers. Hover or focus starts the
+          detail request, so the AI overview is usually there by the time the sheet opens. */}
+      <Link
+        className="opportunity-tile-link"
+        href={localizedRecordLink}
+        onClick={(event) => {
+          if (!onOpen || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+            return;
+          }
+          event.preventDefault();
+          onOpen(opportunity);
+        }}
+        onFocus={() => void loadOpportunityDetail(opportunity.slug)}
+        onPointerEnter={() => void loadOpportunityDetail(opportunity.slug)}
+      >
         <div className="opportunity-media">
           <Image
             alt=""

@@ -6,6 +6,7 @@ import { workspaceKeyForUser } from "@arch-competition/storage";
 
 import { OpportunityDetailSurface } from "@/components/opportunity-detail-surface";
 import { fillTemplate } from "@/i18n/format";
+import { pickDiscoverFeedCopy } from "@/i18n/slices";
 import { getDictionary, resolveLocaleOrNotFound } from "@/i18n/server";
 import { getCurrentAuthUser } from "@/lib/auth";
 import { getOpportunityDisplayMeta } from "@/lib/opportunity-display";
@@ -64,7 +65,7 @@ const LocalizedOpportunityDetailPage = async ({ params }: LocalizedOpportunityDe
 
   return (
     <OpportunityDetailSurface
-      dictionary={getDictionary(locale)}
+      copy={pickDiscoverFeedCopy(getDictionary(locale))}
       isWatched={isWatched}
       locale={locale}
       opportunity={opportunity}
