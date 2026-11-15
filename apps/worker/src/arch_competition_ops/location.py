@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 import unicodedata
 
+from arch_competition_ops.countries import get_country_entry
+
 COUNTRY_CODE_BY_JURISDICTION = {
     "austria": "at",
     "belgium": "be",
@@ -176,14 +178,23 @@ def get_country_code_for_jurisdiction(value: str | None) -> str | None:
     jurisdiction = normalize_jurisdiction_key(value)
     if not jurisdiction:
         return None
-    return COUNTRY_CODE_BY_JURISDICTION.get(jurisdiction)
+    code = COUNTRY_CODE_BY_JURISDICTION.get(jurisdiction)
+    if code:
+        return code
+    # Any other country (Uganda, Mauritania, ...) comes from the shared country registry.
+    entry = get_country_entry(jurisdiction)
+    return entry["iso2"].lower() if entry else None
 
 
 def get_country_label_for_jurisdiction(value: str | None) -> str | None:
     jurisdiction = normalize_jurisdiction_key(value)
     if not jurisdiction:
         return None
-    return COUNTRY_LABEL_BY_JURISDICTION.get(jurisdiction)
+    label = COUNTRY_LABEL_BY_JURISDICTION.get(jurisdiction)
+    if label:
+        return label
+    entry = get_country_entry(jurisdiction)
+    return entry["en"] if entry else None
 
 
 def _title_location_candidates(title: str | None) -> list[str]:

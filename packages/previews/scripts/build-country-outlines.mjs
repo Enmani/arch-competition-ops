@@ -23,14 +23,25 @@ const atlasVersion = JSON.parse(
   readFileSync(path.join(path.dirname(require.resolve("world-atlas/countries-50m.json")), "package.json"), "utf8"),
 ).version;
 
-// Which countries get an outline, and how many of their largest polygons to keep (islands,
-// overseas territories and the like would otherwise shrink the mainland to a speck), comes from the
-// jurisdiction registry: an entry with an `atlasName` gets an outline.
-const registry = JSON.parse(readFileSync(path.join(here, "..", "data", "jurisdictions.json"), "utf8"));
+// Every country in the country registry (data/countries.json, built by build-country-registry.mjs)
+// that the atlas can draw gets an outline, so a record from any country has one. How many of the
+// largest polygons to keep (islands, overseas territories and the like would otherwise shrink the
+// mainland to a speck) is set per jurisdiction in jurisdictions.json (`polygonCount`). Every other
+// country keeps its mainland (the largest polygon) except the island states listed in
+// MULTI_ISLAND, where one island would not look like the country.
+const jurisdictions = JSON.parse(readFileSync(path.join(here, "..", "data", "jurisdictions.json"), "utf8"));
+const registry = JSON.parse(readFileSync(path.join(here, "..", "data", "countries.json"), "utf8")).countries;
+const MULTI_ISLAND = {
+  bahamas: 6, cuba: 2, fiji: 3, greece: 5, indonesia: 8, japan: 4, malaysia: 2, maldives: 12,
+  malta: 2, philippines: 8, sao_tome_principe: 2, vanuatu: 4,
+};
 const countries = Object.fromEntries(
   Object.entries(registry)
     .filter(([, entry]) => entry.atlasName)
-    .map(([key, entry]) => [key, { name: entry.atlasName, polygons: entry.polygonCount ?? 1 }]),
+    .map(([key, entry]) => [
+      key,
+      { name: entry.atlasName, polygons: jurisdictions[key]?.polygonCount ?? MULTI_ISLAND[key] ?? 1 },
+    ]),
 );
 
 const collection = feature(atlas, atlas.objects.countries);
@@ -139,7 +150,7 @@ const output = {
   countries: {},
 };
 
-for (const [key, { name, polygons = 1 }] of Object.entries(countries)) {
+for (const [key, { name, polygons }] of Object.entries(countries)) {
   const source = byName.get(name);
   if (!source) {
     throw new Error(`country not found in atlas: ${name}`);

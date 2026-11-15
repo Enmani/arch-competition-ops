@@ -42,12 +42,57 @@ test("buildOpportunityLocatorPlaceholderSvg projects known coordinates onto the 
   assert.doesNotMatch(svg, /translate\(345 290\)/);
 });
 
-test("buildOpportunityLocatorPlaceholderSvg keeps a neutral grid when the country is unknown", () => {
+test("with no country and no place name the card is the neutral grid and nothing else", () => {
   const svg = buildOpportunityLocatorPlaceholderSvg();
 
   assert.doesNotMatch(svg, /id="country-outline"/);
   assert.doesNotMatch(svg, /<text/);
-  assert.match(svg, /data-marker-source="country-centroid"/);
+  assert.doesNotMatch(svg, /data-marker-source/);
+});
+
+test("with no country but a place name the card shows the name, not an empty grid or a made-up marker", () => {
+  const svg = buildOpportunityLocatorPlaceholderSvg({
+    authorityName: "Erfurt",
+    jurisdictionKey: "eu",
+    jurisdictionLabel: "Eu",
+    locationLabel: "Municipiul Craiova <&>",
+    title: "Servicii de proiectare",
+  });
+
+  assert.doesNotMatch(svg, /id="country-outline"/);
+  assert.doesNotMatch(svg, /data-marker-source/);
+  assert.match(svg, /<text [^>]*>Municipiul<\/text>/);
+  assert.match(svg, /Craiova &lt;&amp;&gt;/, "the name is escaped");
+  // Chinese place names wrap on characters and stay within three lines.
+  const han = buildOpportunityLocatorPlaceholderSvg({
+    authorityName: "",
+    jurisdictionKey: "global",
+    jurisdictionLabel: "Global",
+    locationLabel: "某某省某某市某某区某某街道某某路某某号某某大厦某某楼某某室某某单位",
+    title: "",
+  });
+  assert.equal((han.match(/<text /g) ?? []).length, 3);
+  assert.match(han, /…<\/text>/);
+});
+
+test("a generic jurisdiction still gets its country's outline when the record's own text names it", () => {
+  const draw = (jurisdictionKey: string, locationLabel: string | null, title: string) =>
+    buildOpportunityLocatorPlaceholderSvg({
+      authorityName: "",
+      jurisdictionKey,
+      jurisdictionLabel: jurisdictionKey,
+      locationLabel,
+      title,
+    });
+
+  assert.match(draw("eu", "Côte d'Ivoire", "France – Survey services"), /data-country-key="cote_d_ivoire"/);
+  assert.match(draw("global", "à Nouakchott, en Mauritanie", "Projet d'Extension"), /data-country-key="mauritania"/);
+  assert.match(draw("eu", "Bad Ischl", "Austria – Works for complete construction"), /data-country-key="austria"/);
+  assert.match(draw("europe", null, "Romania – Specialty design services"), /data-country-key="romania"/);
+  // Countries that used to have no outline at all.
+  assert.match(draw("poland", null, ""), /id="country-outline"/);
+  assert.match(draw("netherlands", null, ""), /id="country-outline"/);
+  assert.match(draw("uganda", null, ""), /id="country-outline"/);
 });
 
 test("the marker position equals what d3.geoMercator computes from the stored projection", async () => {
@@ -76,6 +121,7 @@ test("the marker position equals what d3.geoMercator computes from the stored pr
 });
 
 test("every covered jurisdiction ships a non-empty outline and the placeholder stays small", async () => {
+  const { default: registry } = await import("../../data/countries.json", { with: { type: "json" } });
   const { default: outlines } = await import("../../data/country-outlines.json", {
     with: { type: "json" },
   });
@@ -91,7 +137,16 @@ test("every covered jurisdiction ships a non-empty outline and the placeholder s
     });
     assert.match(svg, /id="country-outline"/);
   }
-  assert.ok(JSON.stringify(outlines).length < 80_000, "outline data stays far below the 756 KB atlas");
+  // Every country in the registry that the atlas can draw has an outline, so no record falls back
+  // to a bare grid for want of one.
+  assert.deepEqual(
+    Object.entries(registry.countries)
+      .filter(([, entry]) => (entry as { atlasName?: string }).atlasName)
+      .map(([key]) => key)
+      .filter((key) => !(key in outlines.countries)),
+    [],
+  );
+  assert.ok(JSON.stringify(outlines).length < 450_000, "outline data for every country stays below the 756 KB atlas it replaces");
 });
 
 test("hyphenated and underscored jurisdiction keys resolve to the same outline", () => {

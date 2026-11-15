@@ -239,3 +239,39 @@ Sign-in used a full-page POST, a 303 redirect and a full reload of the next page
 
 - `packages/previews/src/{render/satellite.ts,render/projection.ts,version.ts,config.ts,placeholder/render.ts,placeholder/render.test.ts,pipeline/prewarm.test.ts}`, `apps/web/src/lib/{opportunity-image-response.ts,opportunity-image-response.test.ts,opportunity-satellite.ts}`, `apps/web/src/components/{opportunity-media.tsx,imagery-credit.tsx,opportunity-detail-body.tsx}`, `apps/web/src/app/styles/tiles.css`
 
+## Cards without an outline or a satellite image: root cause and fix
+
+### What was wrong
+
+- On the local list (29 cards) 9 had no country outline and 11 no satellite image (screenshots of "Arua and Mbale" and "SAN PEDRO"). They were not two failures but a chain from one cause.
+- **No country.** Records from multi-country sources carry `eu` (TED), `europe` or `global` (Islamic Development Bank) as their jurisdiction. 35 of 143 stored records (24 %) had one. Nothing in the pipeline turned that into a country, although the notices state it: TED's `placeOfPerformance` holds `["DEE06", "DEU"]`, the listing holds `"country": "Uganda"`, the text says "Place of performance Country : Côte d'Ivoire", the title opens "Austria – ...". The model can only choose among the 34 labels of the taxonomy, which lacks Uganda, Romania, Mauritania and others.
+- **No coordinates, so no satellite.** `geocoding.py` returns at once when the jurisdiction has no entry in its 40-country label table (`if not country_label: return record`). Of the 29 listed cards, 8 had no coordinates at all, 6 of them for this reason; the preview generator then had nothing to crop.
+- **No outline.** The outline needs a country key; `eu`/`global` have none. Separately, only 21 countries had an outline drawing, so Poland and the Netherlands (both in the taxonomy) had none either.
+- **Wrong caption.** The country code on the card came from the jurisdiction: "GL" for global, "EU" for TED records, for projects in Uganda and Côte d'Ivoire.
+
+### Changed
+
+- Country registry for every country (`packages/previews/data/countries.json`, 258 countries: slug, ISO codes, names in 38 languages from CLDR, atlas name), built by `npm run build:countries`; the worker reads a copy inside its package (a test fails if the two differ). Country outlines now exist for 222 countries (the 21 existing drawings are byte for byte unchanged; mainland only, plus a short list of island states).
+- `resolveOpportunityCountry` (TypeScript) and `countries.py` (Python) read the country from the notice and the record's text; ambiguous names ("Congo", "Georgia") and short names inside running text match nothing.
+- Worker: `extract_record` resolves a generic jurisdiction from the notice; the label and code lookups for geocoding accept any registry country; new command `repair-jurisdictions` applies it to stored records (also run by the cloud workflow, best effort and idempotent). Assessments stay current (the same re-stamp that coordinates use).
+- Card: the outline and the caption's country code and country name (Chinese or English) use the resolved country. With no country the card draws the place name as text instead of an empty grid with a crosshair that would claim a place nobody stated; with neither it stays a plain grid.
+
+### Result on the local list
+
+- Cards with an outline: 20 of 29 to 29 of 29. Cards with a satellite image: 18 of 29 to 20 of 29. Captions "Arua and Mbale, GL" and "Burg, EU" now read "UG" and "DE".
+- 33 of the 35 generic records got a country; the two left name none. The 9 cards still without a satellite image: 4 name a place the geocoder cannot match ("Arua and Mbale", "à Nouakchott, en Mauritanie", a hospital name, a street without a city), 3 know only the country (a country centre is not a place and is refused), 2 state no place. These show the country outline.
+
+### Known limit
+
+- A bare place name can match a homonym: "Burg" (buyer in Sachsen-Anhalt) resolves to a village in Rhineland-Palatinate in the geocoder, and the preview generator already did the same before this change (it had cached a different wrong "Burg" under `eu`). Repair therefore sets the country only; geocoding stored places is opt-in. A better disambiguation (the buyer's region, the NUTS code) is a separate change.
+
+### Validation
+
+- Worker 802 tests (new: 9 in `test_countries.py`, including a repair that keeps assessments current and a geocode in a country outside the old table), previews 193, web 108, workflow test, lint. Checked on `localhost:3400` with the real list before and after; the four fallback drawings were rendered and viewed.
+
+### Modified Files
+
+- `packages/previews/{data/countries.json,data/country-outlines.json,scripts/build-country-registry.mjs,scripts/build-country-outlines.mjs,src/countries.ts,src/countries.test.ts,src/location.ts,src/placeholder/render.ts,src/placeholder/render.test.ts,package.json}`
+- `apps/worker/src/arch_competition_ops/{countries.py,data/countries.json,location.py,maintenance.py,cli.py,screening/extraction.py,storage/competitions.py,storage/screening.py,storage/__init__.py}`, `apps/worker/tests/test_countries.py`
+- `apps/web/src/lib/{opportunity-display.ts,opportunity-display.test.ts}`, `.github/workflows/daily-ingest.yml`, `tests/daily-ingest-workflow.test.mjs`
+- `docs/DATA_CONTRACT.md`, `docs/ARCHITECTURE.md`, `docs/structures/2026-10-21-preview-pipeline-architecture.md`

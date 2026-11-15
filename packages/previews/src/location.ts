@@ -1,3 +1,4 @@
+import { getCountryEntry, resolveOpportunityCountry } from "./countries";
 import { getJurisdictionEntry } from "./jurisdictions";
 import type { PreviewOpportunity } from "./types";
 
@@ -315,10 +316,20 @@ export const pickOpportunityDisplayLocality = (
 export const getOpportunityJurisdictionCode = (opportunity: {
   jurisdictionKey: string | null | undefined;
   jurisdictionLabel: string | null | undefined;
+  locationLabel?: string | null;
+  title?: string | null;
 }) => {
   const registered = getJurisdictionEntry(opportunity.jurisdictionKey);
   if (registered) {
     return registered.code;
+  }
+
+  // A generic jurisdiction ("eu", "global") or a country outside the product's own list: the code
+  // of the country the record's own text names, never "GL" or "EU" for a project in Uganda.
+  const country = resolveOpportunityCountry(opportunity);
+  const named = country ? (getJurisdictionEntry(country)?.code ?? getCountryEntry(country)?.iso2) : null;
+  if (named) {
+    return named;
   }
 
   const label = opportunity.jurisdictionLabel?.trim();

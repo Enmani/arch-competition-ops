@@ -36,6 +36,7 @@ from arch_competition_ops.maintenance import (
     cleanup_expired_competitions,
     rebuild_review_queue,
     refresh_missing_geocodes,
+    repair_record_jurisdictions,
 )
 from arch_competition_ops.normalizers.competition import configure_procedure_registry
 from arch_competition_ops.postprocess.registry import POSTPROCESS_TASKS
@@ -90,6 +91,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="geocode stored opportunity locations and update coordinate fields",
     )
     geocode_parser.add_argument("--limit", type=int, default=50)
+    repair_parser = subparsers.add_parser(
+        "repair-jurisdictions",
+        help="give records stored as eu/europe/global the country their notice names",
+    )
+    repair_parser.add_argument(
+        "--geocode",
+        action="store_true",
+        help="also geocode the repaired records' stored place names (can match a homonym)",
+    )
     preview_parser = subparsers.add_parser(
         "prewarm-card-previews",
         help="run the offline preview generator (packages/previews) for the given ids",
@@ -250,6 +260,15 @@ def _handle_ingest_lock_status(settings: Settings, _args: argparse.Namespace) ->
     return EXIT_LOCK_HELD
 
 
+def _handle_repair_jurisdictions(settings: Settings, args: argparse.Namespace) -> int:
+    result = repair_record_jurisdictions(settings, geocode=args.geocode)
+    _safe_print(
+        f"Jurisdictions repaired: scanned={result.scanned}, repaired={result.repaired}, "
+        f"geocoded={result.geocoded}"
+    )
+    return 0
+
+
 def _handle_cleanup(settings: Settings, args: argparse.Namespace) -> int:
     result = cleanup_expired_competitions(
         settings, retention_days=args.retention_days, limit=args.limit, force=args.force
@@ -387,6 +406,7 @@ def _handler_for(args: argparse.Namespace) -> Callable[[Settings, argparse.Names
             )
             or 0
         ),
+        "repair-jurisdictions": _handle_repair_jurisdictions,
         "prewarm-card-previews": _handle_prewarm,
         "cleanup-expired-competitions": _handle_cleanup,
         "show-sources": _handle_show_sources,

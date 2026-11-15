@@ -14,6 +14,7 @@ import {
 } from "../i18n/format";
 import { formatTokenLabel } from "./discover";
 import { prettifyAmountText } from "./opportunity-detail-model";
+import { getCountryName, isGenericJurisdiction, resolveOpportunityCountry } from "@arch-competition/previews/countries";
 import { getOpportunityJurisdictionCode, pickOpportunityDisplayLocality } from "@arch-competition/previews/location";
 
 const combiningDiacriticPattern = /[\u0300-\u036f]/g;
@@ -117,7 +118,10 @@ const trimLocationSegment = (value: string) => value.replace(TRAILING_PARENTHETI
  * locality (an address is reduced to its leading city, never invented), the country from the
  * jurisdiction record; a locality that cannot be reduced to a city falls back to the country alone.
  */
-export const pickCardLocationLine = (opportunity: StoredOpportunityFeedItem) => {
+export const pickCardLocationLine = (
+  opportunity: StoredOpportunityFeedItem,
+  countryLabel: string = opportunity.jurisdictionLabel,
+) => {
   // The locator rejects a label that is really a street address ("230 Milson Line, Palmerston
   // North"); the card still reads the city from the stored label, never from the street.
   const locality =
@@ -131,7 +135,7 @@ export const pickCardLocationLine = (opportunity: StoredOpportunityFeedItem) => 
       .find((segment) => segment.length > 0 && !ADDRESS_SEGMENT_PATTERN.test(segment)) ??
     "";
   const countryCode = getOpportunityJurisdictionCode(opportunity);
-  const countryName = opportunity.jurisdictionLabel.trim();
+  const countryName = countryLabel.trim();
 
   if (!city || city.length > CARD_CITY_MAX_LENGTH) {
     return countryName || countryCode;
@@ -150,11 +154,24 @@ export const getOpportunityDisplayMeta = (
     dictionary.taxonomy.statuses,
     opportunity.statusLabel,
   );
-  const jurisdictionLabel = translateMappedValue(
+  const declaredJurisdictionLabel = translateMappedValue(
     opportunity.jurisdictionKey ?? opportunity.jurisdictionLabel,
     dictionary.taxonomy.jurisdictions,
     opportunity.jurisdictionLabel,
   );
+  // "Eu" or "Global" says nothing about where a project is. When the record's own text names the
+  // country (or its jurisdiction is a country the dictionary has no word for), the country is
+  // shown, in the page language.
+  const namedCountry = resolveOpportunityCountry(opportunity);
+  const jurisdictionKnownToDictionary =
+    Object.hasOwn(
+      dictionary.taxonomy.jurisdictions,
+      (opportunity.jurisdictionKey ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_"),
+    ) && !isGenericJurisdiction(opportunity.jurisdictionKey);
+  const jurisdictionLabel =
+    namedCountry && !jurisdictionKnownToDictionary
+      ? (getCountryName(namedCountry, locale) ?? declaredJurisdictionLabel)
+      : declaredJurisdictionLabel;
   const procedureLabel = translateMappedValue(
     opportunity.procedureTypeKey ?? opportunity.procedureTypeLabel,
     dictionary.taxonomy.procedures,
@@ -236,7 +253,7 @@ export const getOpportunityDisplayMeta = (
     `${opportunityTypeLabel} · ${procedureLabel}`,
   );
   // The card keeps to four facts; the full stored location stays on the detail page.
-  const locationLineLabel = pickCardLocationLine(opportunity);
+  const locationLineLabel = pickCardLocationLine(opportunity, jurisdictionLabel);
 
   return {
     authorityLabel,

@@ -126,7 +126,8 @@ The CLI opens the database read-only with a fixed column list. `packages/storage
 
 ## Extension Points
 
-- A new covered country: add it to `data/jurisdictions.json` (and `atlasName`/`polygonCount` for an outline), then `npm run build:outlines -w @arch-competition/previews`.
+- A new covered country: every country is already in `data/countries.json` (names in many languages, ISO codes, atlas name) and has an outline (`data/country-outlines.json`, built from the atlas: mainland only, plus the island states listed in `build-country-outlines.mjs`). Rebuild with `npm run build:countries` then `npm run build:outlines -w @arch-competition/previews`; `jurisdictions.json` only carries what the product targets (code, comparison names, `polygonCount`).
+- A card with no country shows the drawn locator when it has an outline and the place name as text when it has none (never an empty grid with a crosshair); the card caption and country code use the country the record's own text names when its jurisdiction is generic.
 - A new official image source: add host rules next to `src/official-image/scoring.ts` and widen `isStadtZurichOpportunitySource`; keep fetching on the `DocumentContext`.
 - R2 delivery: implement `PreviewAssetSource` over `env.PREVIEWS` and select it in the route (see runbook).
 

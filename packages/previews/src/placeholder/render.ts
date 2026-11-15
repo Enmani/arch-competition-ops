@@ -16,6 +16,7 @@
 // The drawing is edge to edge and carries no labels: the country and city are already set in type
 // under the image, so a caption inside the picture would only repeat them and shrink the map.
 import countryOutlines from "../../data/country-outlines.json";
+import { resolveOpportunityCountry } from "../countries";
 import { normalizeJurisdictionKey } from "../text/normalize";
 import type { PreviewOpportunity } from "../types";
 
@@ -95,8 +96,12 @@ const PLACEHOLDER_STYLE = `
 
 const normalizeKey = normalizeJurisdictionKey;
 
+/** The country a record is about: its jurisdiction when that is a country, else what its text names. */
+const resolveCountryKey = (opportunity: OpportunityPlaceholderInput | null | undefined) =>
+  opportunity ? resolveOpportunityCountry(opportunity) : null;
+
 const resolveOutline = (opportunity: OpportunityPlaceholderInput | null | undefined) => {
-  const jurisdictionKey = normalizeKey(opportunity?.jurisdictionKey);
+  const jurisdictionKey = resolveCountryKey(opportunity);
   const outline = jurisdictionKey ? outlinesByKey[jurisdictionKey] : undefined;
   if (!jurisdictionKey || !outline) {
     return null;
@@ -160,7 +165,9 @@ const resolveLocator = (
   const outline = resolveOutline(placeholderOpportunity);
   return {
     anchor: resolveLocationAnchor(outline, placeholderOpportunity),
-    jurisdictionKey: normalizeKey(placeholderOpportunity?.jurisdictionKey) ?? "unknown",
+    jurisdictionKey:
+      resolveCountryKey(placeholderOpportunity) ?? normalizeKey(placeholderOpportunity?.jurisdictionKey) ?? "unknown",
+    locationText: placeholderOpportunity?.locationLabel ?? null,
     outline,
   };
 };
@@ -194,11 +201,45 @@ export const buildOpportunityLocatorInsetSvg = (
 `.trim();
 };
 
+const LABEL_LINE_CHARS = 14;
+const LABEL_MAX_LINES = 3;
+const LABEL_LINE_HEIGHT = 56;
+
+/** Breaks a place name into at most three centred lines; Han text breaks anywhere, the rest at spaces. */
+const wrapLabel = (text: string) => {
+  const clean = text.replace(/\s+/g, " ").trim();
+  const lines: string[] = [];
+  if (/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(clean)) {
+    const size = Math.ceil(LABEL_LINE_CHARS * 0.7);
+    for (let index = 0; index < clean.length; index += size) {
+      lines.push(clean.slice(index, index + size));
+    }
+  } else {
+    let line = "";
+    for (const word of clean.split(" ")) {
+      if (line && `${line} ${word}`.length > LABEL_LINE_CHARS) {
+        lines.push(line);
+        line = word;
+      } else {
+        line = line ? `${line} ${word}` : word;
+      }
+    }
+    if (line) {
+      lines.push(line);
+    }
+  }
+  const shown = lines.slice(0, LABEL_MAX_LINES);
+  if (lines.length > LABEL_MAX_LINES) {
+    shown[LABEL_MAX_LINES - 1] = `${shown[LABEL_MAX_LINES - 1].slice(0, -1)}…`;
+  }
+  return shown;
+};
+
 export const buildOpportunityLocatorPlaceholderSvg = (
   opportunity?: OpportunityPlaceholderInput | null,
   override?: OpportunityPlaceholderOverride | null,
 ) => {
-  const { anchor, jurisdictionKey, outline } = resolveLocator(opportunity, override);
+  const { anchor, jurisdictionKey, locationText, outline } = resolveLocator(opportunity, override);
   const anchorX = anchor.x;
   const anchorY = anchor.y;
   // Without an outline the grid has to carry the texture on its own.
@@ -208,6 +249,24 @@ export const buildOpportunityLocatorPlaceholderSvg = (
     ? `
   <path id="country-outline" data-country-key="${escapeXml(jurisdictionKey)}" data-outline-source="world-atlas" d="${outline.pathData}" class="ink-fill ink" fill-opacity="0.07" stroke-opacity="0.78" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round" />
 `
+    : "";
+
+  // With an outline the marker shows where the record is. Without one there is no country to put it
+  // on, and a crosshair in the middle of an empty grid would claim a place nobody stated, so the
+  // card shows the place name instead (nothing at all when the record names none).
+  const markerMarkup = `<g transform="translate(${anchorX} ${anchorY})" data-marker-source="${anchor.isProjected ? "geo-coordinates" : "country-centroid"}">
+    <rect x="-54" y="-54" width="108" height="108" class="mark" fill="none" stroke-opacity="0.34" stroke-width="2" />
+    <circle r="44" class="mark" fill="none" stroke-opacity="0.34" stroke-width="2" />
+    <circle r="11" class="mark-fill" />
+    <circle r="20" class="mark" fill="none" stroke-width="4" />
+    <path d="M0 -68V-24 M0 24V68 M-68 0H-24 M24 0H68" class="mark" fill="none" stroke-width="4" stroke-linecap="square" />
+  </g>`;
+  const labelLines = locationText ? wrapLabel(locationText) : [];
+  const firstLineY = 360 - ((labelLines.length - 1) * LABEL_LINE_HEIGHT) / 2;
+  const labelMarkup = labelLines.length
+    ? `<g data-label-source="location" font-family="system-ui, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="40" font-weight="600" text-anchor="middle" class="ink-fill" fill-opacity="0.8">
+    ${labelLines.map((line, index) => `<text x="360" y="${firstLineY + index * LABEL_LINE_HEIGHT}">${escapeXml(line)}</text>`).join("")}
+  </g>`
     : "";
 
   return `
@@ -226,13 +285,7 @@ export const buildOpportunityLocatorPlaceholderSvg = (
 
   ${outlineMarkup}
 
-  <g transform="translate(${anchorX} ${anchorY})" data-marker-source="${anchor.isProjected ? "geo-coordinates" : "country-centroid"}">
-    <rect x="-54" y="-54" width="108" height="108" class="mark" fill="none" stroke-opacity="0.34" stroke-width="2" />
-    <circle r="44" class="mark" fill="none" stroke-opacity="0.34" stroke-width="2" />
-    <circle r="11" class="mark-fill" />
-    <circle r="20" class="mark" fill="none" stroke-width="4" />
-    <path d="M0 -68V-24 M0 24V68 M-68 0H-24 M24 0H68" class="mark" fill="none" stroke-width="4" stroke-linecap="square" />
-  </g>
+  ${outline ? markerMarkup : labelMarkup}
 </svg>
 `.trim();
 };

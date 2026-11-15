@@ -363,6 +363,47 @@ def update_competition_geocode_fields(
             )
 
 
+def list_competitions_with_generic_jurisdiction(db_path: Path) -> list[sqlite3.Row]:
+    """Rows whose jurisdiction names no country (``eu``, ``europe``, ``global``, blank)."""
+    ensure_schema(db_path)
+    with connect(db_path) as connection:
+        return connection.execute(
+            """
+            SELECT id, title, location_label, jurisdiction
+            FROM competitions
+            WHERE jurisdiction IS NULL
+               OR TRIM(jurisdiction) = ''
+               OR LOWER(TRIM(jurisdiction)) IN
+                  ('eu', 'europe', 'global', 'international', 'unknown', 'worldwide')
+            ORDER BY id
+            """
+        ).fetchall()
+
+
+def update_competition_jurisdiction(
+    db_path: Path, *, competition_id: str, jurisdiction: str
+) -> None:
+    """Sets the country of a record whose source named none (derived metadata, like coordinates)."""
+    ensure_schema(db_path)
+    with write_transaction(db_path) as connection:
+        previous = connection.execute(
+            "SELECT updated_at FROM competitions WHERE id = ?", (competition_id,)
+        ).fetchone()
+        now_iso = clock.now_utc().isoformat()
+        connection.execute(
+            "UPDATE competitions SET jurisdiction = ?, updated_at = ? WHERE id = ?",
+            (jurisdiction, now_iso, competition_id),
+        )
+        if previous:
+            # The country is read from the notice that is already stored, not a newer notice:
+            # current advice stays current, an already stale assessment stays stale.
+            connection.execute(
+                "UPDATE ai_screening_results SET source_updated_at = ? "
+                "WHERE competition_id = ? AND source_updated_at = ?",
+                (now_iso, competition_id, previous["updated_at"]),
+            )
+
+
 def update_competition_source_url(db_path: Path, *, competition_id: str, source_url: str) -> None:
     ensure_schema(db_path)
     with write_transaction(db_path) as connection:

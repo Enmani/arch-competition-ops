@@ -8,6 +8,7 @@ from datetime import date
 from urllib.parse import urlsplit
 
 from arch_competition_ops.config_loader import load_taxonomy
+from arch_competition_ops.countries import is_generic_jurisdiction, resolve_record_country
 from arch_competition_ops.location import get_country_label_for_jurisdiction
 from arch_competition_ops.models import CompetitionRecord, SourceDefinition
 from arch_competition_ops.normalizers.dates import parse_date, slash_order_for_jurisdiction
@@ -142,6 +143,17 @@ def extract_record(
         evidence_level="official_notice" if source.source_tier == "primary" else "secondary",
     )
     record = CompetitionRecord.model_validate({**record.model_dump(), **updates})
+    # A multi-country source (TED, the Islamic Development Bank) leaves "eu" or "global" unless the
+    # model happened to pick a country from its short list; the notice itself names the country.
+    # Without one, geocoding, the outline and the card's country code all silently give up.
+    if is_generic_jurisdiction(record.jurisdiction):
+        country = resolve_record_country(
+            title=record.title,
+            location_labels=[*place_components, record.location_label],
+            notice_text=evidence_fields.get("notice_text"),
+        )
+        if country:
+            record.jurisdiction = country
     record.geocode_queries = list(
         dict.fromkeys(
             filter(

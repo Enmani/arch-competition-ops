@@ -14,6 +14,7 @@ from typing import Any
 
 from arch_competition_ops import clock
 from arch_competition_ops.bootstrap import initialize_database
+from arch_competition_ops.countries import resolve_record_country
 from arch_competition_ops.geocoding import NominatimGeocoder, enrich_record_geocode
 from arch_competition_ops.models import CompetitionRecord
 from arch_competition_ops.review_queue import refresh_review_queue
@@ -21,10 +22,13 @@ from arch_competition_ops.settings import Settings
 from arch_competition_ops.storage import (
     delete_competitions,
     list_competitions_missing_geocodes,
+    list_competitions_with_generic_jurisdiction,
     list_expired_competition_ids,
     update_competition_geocode_fields,
+    update_competition_jurisdiction,
 )
 from arch_competition_ops.storage.screening import (
+    latest_screening_notice_text,
     list_excluded_competition_ids,
     shrink_old_screening_runs,
 )
@@ -58,6 +62,45 @@ def rebuild_review_queue(settings: Settings) -> list[dict[str, object | None]]:
     return refresh_review_queue(db_path)
 
 
+def _geocode_stored_row(
+    db_path: Path, row: Any, *, cache_path: Path, geocoder: NominatimGeocoder
+) -> bool:
+    """Geocodes one stored row; True when any of its location fields changed."""
+    record = CompetitionRecord(
+        competition_id=row["id"],
+        title=row["title"],
+        organizer=row["organizer"],
+        authority_name=row["authority_name"],
+        source_url=row["source_url"],
+        jurisdiction=row["jurisdiction"],
+        location_label=row["location_label"],
+        geo_lat=row["geo_lat"],
+        geo_lng=row["geo_lng"],
+        geo_source=row["geo_source"],
+        geo_confidence=row["geo_confidence"],
+    )
+    enriched = enrich_record_geocode(record, cache_path=cache_path, geocoder=geocoder)
+    unchanged = (
+        enriched.location_label == row["location_label"]
+        and enriched.geo_lat == row["geo_lat"]
+        and enriched.geo_lng == row["geo_lng"]
+        and enriched.geo_source == row["geo_source"]
+        and enriched.geo_confidence == row["geo_confidence"]
+    )
+    if unchanged:
+        return False
+    update_competition_geocode_fields(
+        db_path,
+        competition_id=row["id"],
+        location_label=enriched.location_label,
+        geo_lat=enriched.geo_lat,
+        geo_lng=enriched.geo_lng,
+        geo_source=enriched.geo_source,
+        geo_confidence=enriched.geo_confidence,
+    )
+    return True
+
+
 def refresh_missing_geocodes(settings: Settings, *, limit: int = 50) -> int:
     db_path = initialize_database(settings)
     cache_path = settings.resolve_path(settings.geocode_cache)
@@ -67,46 +110,65 @@ def refresh_missing_geocodes(settings: Settings, *, limit: int = 50) -> int:
 
     try:
         for row in list_competitions_missing_geocodes(db_path, limit=scan_limit):
-            record = CompetitionRecord(
-                competition_id=row["id"],
-                title=row["title"],
-                organizer=row["organizer"],
-                authority_name=row["authority_name"],
-                source_url=row["source_url"],
-                jurisdiction=row["jurisdiction"],
-                location_label=row["location_label"],
-                geo_lat=row["geo_lat"],
-                geo_lng=row["geo_lng"],
-                geo_source=row["geo_source"],
-                geo_confidence=row["geo_confidence"],
-            )
-            enriched = enrich_record_geocode(record, cache_path=cache_path, geocoder=geocoder)
-            unchanged = (
-                enriched.location_label == row["location_label"]
-                and enriched.geo_lat == row["geo_lat"]
-                and enriched.geo_lng == row["geo_lng"]
-                and enriched.geo_source == row["geo_source"]
-                and enriched.geo_confidence == row["geo_confidence"]
-            )
-            if unchanged:
-                continue
-
-            update_competition_geocode_fields(
-                db_path,
-                competition_id=row["id"],
-                location_label=enriched.location_label,
-                geo_lat=enriched.geo_lat,
-                geo_lng=enriched.geo_lng,
-                geo_source=enriched.geo_source,
-                geo_confidence=enriched.geo_confidence,
-            )
-            updated_count += 1
-            if updated_count >= limit:
-                break
+            if _geocode_stored_row(db_path, row, cache_path=cache_path, geocoder=geocoder):
+                updated_count += 1
+                if updated_count >= limit:
+                    break
     finally:
         geocoder.flush()
 
     return updated_count
+
+
+@dataclass(frozen=True)
+class JurisdictionRepairResult:
+    scanned: int
+    repaired: int
+    geocoded: int
+
+
+def repair_record_jurisdictions(
+    settings: Settings, *, geocode: bool = False
+) -> JurisdictionRepairResult:
+    """Gives records from multi-country sources the country their own notice names.
+
+    Records stored with ``eu``, ``europe`` or ``global`` carry no country, so their card could not
+    draw an outline or print a country code. The country is read from the notice the model last
+    read, the place names and the title; a record that names none stays as it is. Idempotent: a
+    repaired record is no longer generic.
+
+    Only the country is set. Geocoding the stored place name is opt-in (``geocode=True``): a bare
+    name such as "Burg" matches a village in the wrong state, and a wrong marker is worse than
+    none. The preview generator finds a place by its own, stricter means (title, notice pages).
+    """
+    db_path = initialize_database(settings)
+    rows = list_competitions_with_generic_jurisdiction(db_path)
+    repaired_ids: list[str] = []
+    for row in rows:
+        country = resolve_record_country(
+            title=row["title"],
+            location_labels=[row["location_label"]],
+            notice_text=latest_screening_notice_text(db_path, row["id"]),
+        )
+        if country:
+            update_competition_jurisdiction(db_path, competition_id=row["id"], jurisdiction=country)
+            repaired_ids.append(row["id"])
+
+    geocoded = 0
+    if geocode and repaired_ids:
+        cache_path = settings.resolve_path(settings.geocode_cache)
+        geocoder = NominatimGeocoder(cache_path=cache_path)
+        try:
+            for row in list_competitions_missing_geocodes(
+                db_path, limit=len(repaired_ids) * 4 + 50
+            ):
+                if row["id"] in repaired_ids and _geocode_stored_row(
+                    db_path, row, cache_path=cache_path, geocoder=geocoder
+                ):
+                    geocoded += 1
+        finally:
+            geocoder.flush()
+    return JurisdictionRepairResult(len(rows), len(repaired_ids), geocoded)
 
 
 # -- expired-opportunity cleanup ----------------------------------------------------------------

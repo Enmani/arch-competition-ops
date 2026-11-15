@@ -103,3 +103,27 @@ test("a card caption reads the place as city and country code, and falls back to
   // A locality that is too long to caption falls back to the country name.
   assert.equal(pickCardLocationLine(place("Taihape Memorial Park and Riverside Recreation Reserve")), "France");
 });
+
+test("a record from a multi-country source shows the country its own text names, not Global or EU", () => {
+  const record = (jurisdictionKey: string, jurisdictionLabel: string, locationLabel: string | null, title: string) =>
+    ({ ...base, jurisdictionKey, jurisdictionLabel, locationLabel, title }) as unknown as StoredOpportunityFeedItem;
+  const ivory = record("eu", "Eu", "Côte d'Ivoire", "France – Survey services");
+  const austria = record("eu", "Eu", "Bad Ischl", "Austria – Works for complete or part construction");
+  const uganda = record("global", "Global", "Arua and Mbale, Uganda", "Establishment of Regional Oncology Centers");
+  const unknown = record("global", "Global", "Fatih Sultan Mehmet Training & Research Hospital", "Disaster-Resilient Health");
+
+  assert.equal(pickCardLocationLine(ivory, "Côte d'Ivoire"), "Côte d'Ivoire, CI");
+  assert.equal(getOpportunityDisplayMeta(dictionaries.en, "en", ivory).jurisdictionLabel, "Côte d'Ivoire");
+  assert.equal(getOpportunityDisplayMeta(dictionaries.zh, "zh", ivory).jurisdictionLabel, "科特迪瓦");
+  assert.equal(getOpportunityDisplayMeta(dictionaries.en, "en", austria).locationLineLabel, "Bad Ischl, AT");
+  assert.equal(getOpportunityDisplayMeta(dictionaries.zh, "zh", uganda).jurisdictionLabel, "乌干达");
+  assert.equal(getOpportunityDisplayMeta(dictionaries.en, "en", uganda).locationLineLabel, "Arua and Mbale, UG");
+  // Nothing in the record names a country: the generic label stays, as it is the truth.
+  assert.equal(getOpportunityDisplayMeta(dictionaries.en, "en", unknown).jurisdictionLabel, "Global");
+  // A jurisdiction the dictionary knows is never overridden by text.
+  assert.equal(
+    getOpportunityDisplayMeta(dictionaries.zh, "zh", record("germany", "Germany", "Paris", "Paris – Étude")).jurisdictionLabel,
+    "德国",
+  );
+});
+

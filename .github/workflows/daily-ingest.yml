@@ -105,6 +105,15 @@ jobs:
           echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
           exit 0
 
+      # Records stored before the country was read from the notice (eu / europe / global) get their
+      # country and a geocode. Idempotent: a repaired record is no longer generic, so later runs
+      # only pay for new leftovers. Best effort; it never blocks the ingest.
+      - name: Repair record countries
+        if: ${{ steps.pull.outcome == 'success' }}
+        timeout-minutes: 15
+        continue-on-error: true
+        run: uv run arch-competition-ops repair-jurisdictions | tee "$RUNNER_TEMP/countries.log"
+
       # Some sources failing is normal: record the exit code, finish the sync, and fail the job in
       # the last step. The step has its own limit, well under the job's, so that a runaway ingest
       # still leaves time for the D1 sync and the state push (the job limit would skip them).

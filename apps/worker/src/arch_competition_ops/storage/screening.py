@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from datetime import date
 from pathlib import Path
@@ -272,3 +273,24 @@ def upsert_screened_competitions(
             )
             ids.append(competition_id)
     return ids
+
+
+def latest_screening_notice_text(db_path: Path, competition_id: str) -> str:
+    """The notice text the model last read for a record ('' when none is kept: runs older than
+    SCREENING_RUN_PAYLOAD_RETENTION_DAYS are blanked)."""
+    ensure_schema(db_path)
+    with connect(db_path) as connection:
+        row = connection.execute(
+            "SELECT input_json FROM ai_screening_runs "
+            "WHERE competition_id = ? AND input_json IS NOT NULL AND input_json <> '' "
+            "ORDER BY started_at DESC LIMIT 1",
+            (competition_id,),
+        ).fetchone()
+    if not row:
+        return ""
+    try:
+        request = json.loads(row["input_json"])
+        notice = json.loads(request["input"])["evidence_fields"]["notice_text"]
+    except (ValueError, KeyError, TypeError):
+        return ""
+    return notice if isinstance(notice, str) else ""

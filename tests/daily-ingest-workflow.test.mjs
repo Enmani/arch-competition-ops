@@ -92,11 +92,12 @@ test("the run script prints no environment and no data files", () => {
   assert.doesNotMatch(code, /set -x|ACTIONS_STEP_DEBUG/);
 });
 
-test("the sequence: pull, cleanup, ingest, sync, push, keepalive, with the guards on each", () => {
+test("the sequence: pull, cleanup, repair countries, ingest, sync, push, keepalive, with the guards on each", () => {
   const code = CODE.join("\n");
   const order = [
     "cloud-state.mjs pull",
     "cleanup-expired-competitions",
+    "repair-jurisdictions",
     "ingest-batch",
     "export-d1-data.mjs --apply",
     "cloud-state.mjs push",

@@ -6,6 +6,7 @@
   "description": "Opportunity card previews: offline generation (satellite imagery, official images) and the runtime-safe lookup used by the Web image route.",
   "exports": {
     "./version": "./src/version.ts",
+    "./countries": "./src/countries.ts",
     "./jurisdictions": "./src/jurisdictions.ts",
     "./location": "./src/location.ts",
     "./placeholder": "./src/placeholder/render.ts",
@@ -15,6 +16,7 @@
   },
   "scripts": {
     "prewarm": "node bin/prewarm.mjs",
+    "build:countries": "node scripts/build-country-registry.mjs",
     "build:outlines": "node scripts/build-country-outlines.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
