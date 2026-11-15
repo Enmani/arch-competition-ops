@@ -84,5 +84,6 @@ export const detail = {
     close: "Close details",
     back: "Back to list",
     label: "Project details",
+    loading: "Loading",
   },
 } satisfies AppDictionary["detail"];

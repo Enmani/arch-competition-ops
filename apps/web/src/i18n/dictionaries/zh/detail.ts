@@ -82,5 +82,6 @@ export const detail = {
     close: "关闭详情",
     back: "返回列表",
     label: "项目详情",
+    loading: "正在加载",
   },
 };
