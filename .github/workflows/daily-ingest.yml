@@ -124,6 +124,17 @@ jobs:
           echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
           exit 0
 
+      # Sources run in parallel and polishing display titles takes a non-blocking lock, so a source
+      # that finishes while another one polishes leaves its new titles as rules-cleaned only. One
+      # pass here translates whatever is still pending (cached answers cost nothing). Best effort.
+      - name: Polish titles
+        if: ${{ always() && steps.pull.outcome == 'success' && inputs.dry_run != true }}
+        timeout-minutes: 20
+        continue-on-error: true
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: uv run arch-competition-ops polish-titles --max-batches 100 | tee "$RUNNER_TEMP/titles.log"
+
       - name: Check the D1 export (dry run)
         if: ${{ inputs.dry_run == true }}
         run: node scripts/export-d1-data.mjs --retention | tee "$RUNNER_TEMP/d1.log"

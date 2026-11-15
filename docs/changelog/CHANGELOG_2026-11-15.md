@@ -111,3 +111,21 @@ The Windows scheduled task only runs while the owner's PC is on. The ledger and 
 
 - `.github/workflows/daily-ingest.yml`, `scripts/{cloud-state.mjs,export-d1-data.mjs}`, `scripts/lib/{wrangler.mjs,d1-sync/apply.mjs,d1-sync/retention.mjs,d1-sync/batching.mjs,d1-sync/table-specs.mjs}`
 - `tests/{cloud-state,d1-retention-apply,daily-ingest-workflow}.test.mjs`, `tests/helpers/fake-wrangler.mjs`, `package.json`, `CLOUDFLARE_DEPLOY_RUNBOOK.md`
+
+## First cloud run and follow-up fixes
+
+### Changed
+
+- The first real cloud run (run 43751027681, 75 min) ingested 976 documents from 24 sources at an estimated 3.5 USD, synced 1044 rows to D1 (remote competitions 1046 to 1911) and pushed state. Two defects showed in its log and are fixed here.
+- `TRIAGE_BATCH_SIZE` 100 to 50: a batch of 100 long candidates exceeded the 200 KB request cap, so triage was skipped for every large source and all candidates went to the paid detail assessment. A regression test builds 250 long multilingual candidates and checks every request stays under the cap.
+- New workflow step "Polish titles" after the ingest: sources run in parallel and title polishing takes a non-blocking lock, so a source that finished while another polished kept rules-cleaned titles only. The step is best effort (`continue-on-error`).
+
+### Validation
+
+- `npm run lint:worker`, worker suite 793 tests, `npm run test:tools` 51 tests; the new triage test fails with batch size 100 and passes with 50.
+- Run exit code 1 came from 24 skipped documents in 8 sources (connection failures, no source-grounded title, incomplete responses), not from failed sources; skipped documents are not in the ledger and are read again next run.
+
+### Modified Files
+
+- `apps/worker/src/arch_competition_ops/screening/triage.py`, `apps/worker/tests/test_ai_triage.py`, `.github/workflows/daily-ingest.yml`
+

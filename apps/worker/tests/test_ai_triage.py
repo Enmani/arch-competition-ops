@@ -94,3 +94,38 @@ def test_triage_threshold_is_a_configurable_score_not_a_missing_information_gate
         excluded = triage_documents(settings, docs, limit=1, client=client)
     assert len(retained.documents) == 1
     assert excluded.excluded == 1 and excluded.cached
+
+
+def test_triage_batches_stay_under_the_request_cap_for_long_multilingual_notices(tmp_path):
+    write_minimal_config(tmp_path, "sources: []")
+    settings = Settings(root=tmp_path, _env_file=None)
+    docs = [
+        CollectedSourceDocument(
+            f"https://example.org/notices/{'x' * 300}/{i}", "建筑设计服务公告 " * 400
+        )
+        for i in range(250)
+    ]
+    sizes = []
+
+    def handler(request):
+        sizes.append(len(request.content))
+        body = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={
+                "answers": [
+                    {"type": "choice", "name": q["name"], "choice": "keep", "confidence": 0.9}
+                    for q in body["questions"]
+                ],
+                "usage": {"input_tokens": 1000, "output_tokens": 0},
+            },
+        )
+
+    with OpenAI(
+        api_key="test-secret",
+        max_retries=0,
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    ) as client:
+        result = triage_documents(settings, docs, limit=500, client=client)
+    assert len(result.documents) == 250
+    assert len(sizes) == 5 and max(sizes) < 200_000

@@ -32,8 +32,10 @@ from arch_competition_ops.storage.screening import (
 )
 
 # One Decisions call answers one question per candidate; larger lists are split into batches
-# instead of being cut, so no candidate is dropped unread.
-TRIAGE_BATCH_SIZE = 100
+# instead of being cut, so no candidate is dropped unread. Each candidate adds a ~650-byte
+# question and up to 1200 bytes of text to a request capped at 200 KB; 100 per batch overran that
+# cap on a real run (every large source skipped triage), so 50 leaves room for long URLs.
+TRIAGE_BATCH_SIZE = 50
 
 
 @dataclass
