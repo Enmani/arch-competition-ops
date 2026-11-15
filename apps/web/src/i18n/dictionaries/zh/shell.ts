@@ -15,7 +15,6 @@ export const shell = {
   utility: {
     support: "支持",
     login: "登录",
-    register: "注册",
     logout: "退出",
   },
   search: {
@@ -27,6 +26,7 @@ export const shell = {
     primaryNav: "主导航",
     context: "上下文",
   },
+  closeLabel: "关闭",
   localeSwitcherLabel: "语言",
   theme: {
     label: "显示模式",

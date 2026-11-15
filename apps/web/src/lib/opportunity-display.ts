@@ -9,9 +9,11 @@ import {
   formatLocalizedDate,
   formatParticipationCost,
   formatStampLabel,
+  getIntlLocale,
   translateMappedValue,
 } from "../i18n/format";
 import { formatTokenLabel } from "./discover";
+import { prettifyAmountText } from "./opportunity-detail-model";
 import { getOpportunityJurisdictionCode, pickOpportunityDisplayLocality } from "@arch-competition/previews/location";
 
 const combiningDiacriticPattern = /[\u0300-\u036f]/g;
@@ -179,13 +181,17 @@ export const getOpportunityDisplayMeta = (
   // '' means the buyer is not published; never fall back to the platform name or invent one.
   const authorityLabel = opportunity.authorityName.trim() || dictionary.common.organizerNotPublished;
   // null when the notice states no value, so a card can leave the slot out instead of announcing "pending".
+  // A stated amount such as "3000000.0 NOK" gets digit grouping; other wording is shown as written.
+  const statedValueText = opportunity.estimatedContractValueText
+    ? prettifyAmountText(opportunity.estimatedContractValueText, getIntlLocale(locale))
+    : null;
   const cardValueLabel =
     formatCompactCurrency(locale, opportunity.estimatedContractValueEur) ??
-    pickShortValueText(opportunity.estimatedContractValueText) ??
+    pickShortValueText(statedValueText) ??
     pickShortValueText(opportunity.prizeSummary);
   const valueLabel =
     formatCurrency(locale, opportunity.estimatedContractValueEur) ??
-    opportunity.estimatedContractValueText ??
+    statedValueText ??
     opportunity.prizeSummary ??
     dictionary.common.valuePending;
   const participationCostLabel = formatParticipationCost(

@@ -74,7 +74,7 @@ export const DiscoverSurface = async ({ dictionary, locale, searchParams }: Disc
           initialNextOffset={feed.nextOffset}
           initialTotal={feed.total}
           initialWatchedIds={watchedOpportunityIds}
-          key={filtersKey}
+          key={`${filtersKey}:${user !== null}`}
           locale={locale}
           routeBase={routeBase}
           signedIn={user !== null}

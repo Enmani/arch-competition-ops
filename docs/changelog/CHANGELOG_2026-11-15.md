@@ -164,3 +164,40 @@ The Windows scheduled task only runs while the owner's PC is on. The ledger and 
 
 - `apps/web/src/components/{theme-toggle.tsx,site-shell.tsx}`, `apps/web/src/lib/theme.ts`, `apps/web/src/app/{layout.tsx,styles/tokens.css,styles/buttons.css}`, `apps/web/src/i18n/dictionaries/*/shell.ts`
 
+## Sign-in sheet without page loads
+
+### Changed
+
+- The topbar shows one "Sign in" entry instead of two links. It opens a sheet over the current page (blurred page behind, frosted card, "还没有账号？注册" / "Already registered? Sign in" at the bottom of the card) with no navigation. The frosted glass is a requested exception to the flat look and is limited to this overlay; browsers without `backdrop-filter` get solid paper. The sign-in links on cards and the watch button open the same sheet.
+- The sheet posts the same form with `Accept: application/json`. `POST /api/auth/login`, `register` and `logout` now answer such a request with `{ ok: true }` plus the cookie, or `{ ok: false, reason }` (401 invalid credentials, 429 throttled with `Retry-After`, 400 otherwise) using the reason codes the pages already show. Requests that accept HTML or send no `Accept` header behave as before (303 redirects). On success the server components are refreshed in place: the account appears, watch state loads, and the page keeps its scroll position and list. Sign-out works the same way.
+- `/login` and `/register` stay as the no-JavaScript path and for direct links.
+- The list remounts when the signed-in state changes, so already watched items show as watched without a reload.
+
+### Why
+
+Sign-in used a full-page POST, a 303 redirect and a full reload of the next page, which felt heavy.
+
+### Validation
+
+- `npm run typecheck`, `lint:web`, `test:web` (new JSON-mode handler test). Checked in Edge: the sheet opens in about 100 ms, a wrong password shows the message in place, switching to registration, a password mismatch, a successful registration closing the sheet with the account shown (the same document, scroll kept), sign-out in place, Esc, dark theme.
+
+### Modified Files
+
+- `apps/web/src/components/{auth-dialog.tsx,site-shell.tsx,watch-toggle-button.tsx,discover-surface.tsx}`, `apps/web/src/lib/{auth-dialog.tsx,api/auth-routes.ts,api-auth-routes.test.ts}`, `apps/web/src/app/{[locale]/layout.tsx,styles/auth.css}`, `apps/web/src/i18n/dictionaries/*/shell.ts`
+
+## Blur strength and dark map cards
+
+### Changed
+
+- The sign-in sheet blurs the page behind it at 28 px (was 10 px).
+- The locator placeholder (the drawn country outline shown when no satellite image exists) now has a dark palette inside the SVG: paper a step lighter than the dark page (`#24231e` on `#11110d`), light ink and a mint marker. An SVG shown through `<img>` follows the embedding page's `color-scheme` in Chromium, so the page's theme button (which sets `color-scheme`) switches it with no second URL, no client code and no refetch; satellite JPEGs are untouched. Firefox and Safari may follow only the system setting for SVG images, so there a manual theme choice that differs from the system leaves the placeholder in the system's palette.
+- A stated amount such as `3000000.0 NOK` gets digit grouping on the list card as well as in the detail (one place, `getOpportunityDisplayMeta`).
+
+### Validation
+
+- `npm run test:previews` (185, with a new dark-palette test), `test:web`, typecheck, lint. Checked in Edge on a light system with dark forced, a dark system and a light system: placeholder palette follows the page; the sheet's blur.
+
+### Modified Files
+
+- `packages/previews/src/placeholder/{render.ts,render.test.ts}`, `apps/web/src/app/styles/auth.css`, `apps/web/src/lib/opportunity-display.ts`, `apps/web/src/components/opportunity-detail-body.tsx`
+

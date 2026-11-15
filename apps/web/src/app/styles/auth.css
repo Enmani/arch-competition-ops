@@ -77,8 +77,19 @@
 }
 
 .auth-link {
+  padding: 0;
+  border: 0;
+  background: none;
   color: var(--accent);
+  font: inherit;
   font-weight: 600;
+  cursor: pointer;
+}
+
+.auth-link:focus-visible,
+.auth-dialog-close:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .account-label {
@@ -91,3 +102,108 @@
   text-overflow: ellipsis;
   text-transform: none;
 }
+
+/* Sign-in sheet: a frosted card over a blurred page. The glass is a deliberate exception to the
+   flat look and is limited to this one overlay; browsers without backdrop-filter get solid paper. */
+.auth-dialog {
+  width: min(calc(100vw - 2rem), 26rem);
+  max-width: none;
+  max-height: calc(100dvh - 2rem);
+  margin: auto;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+}
+
+.auth-dialog[open] {
+  animation: auth-dialog-in 220ms var(--ease-out-quart);
+}
+
+.auth-dialog::backdrop {
+  background: color-mix(in oklch, var(--ink) 26%, transparent);
+  backdrop-filter: blur(28px);
+  animation: auth-scrim-in 220ms var(--ease-out-quart);
+}
+
+.auth-dialog-card {
+  position: relative;
+  display: grid;
+  gap: var(--space-lg);
+  max-height: calc(100dvh - 2rem);
+  padding: var(--space-2xl);
+  overflow-y: auto;
+  border: 1px solid color-mix(in oklch, var(--line-strong) 50%, transparent);
+  background: color-mix(in oklch, var(--surface) 64%, transparent);
+  backdrop-filter: blur(24px) saturate(1.4);
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  .auth-dialog-card {
+    background: var(--surface);
+  }
+}
+
+.auth-dialog-card h2 {
+  margin: 0;
+  padding-right: calc(var(--control-h) + var(--space-sm));
+  font-family: var(--font-display), var(--font-cjk-fallback), sans-serif;
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.auth-dialog-card p {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+.auth-dialog-card .auth-error {
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--danger-line);
+  background: var(--danger-wash);
+  color: var(--danger-ink);
+}
+
+.auth-dialog-card .auth-field input {
+  background: color-mix(in oklch, var(--surface) 55%, transparent);
+}
+
+.auth-dialog-close {
+  position: absolute;
+  top: var(--space-md);
+  right: var(--space-md);
+  display: inline-grid;
+  place-items: center;
+  width: var(--control-h);
+  height: var(--control-h);
+  border: 0;
+  background: transparent;
+  color: var(--ink-soft);
+}
+
+.auth-dialog-close:hover {
+  color: var(--ink);
+}
+
+@keyframes auth-dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.75rem) scale(0.98);
+  }
+}
+
+@keyframes auth-scrim-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-dialog[open],
+  .auth-dialog::backdrop {
+    animation: none;
+  }
+}
+

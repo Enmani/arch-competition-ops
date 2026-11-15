@@ -11,7 +11,6 @@ import {
   countDeadline,
   humanizeExcerpt,
   isMachineNote,
-  prettifyAmountText,
 } from "@/lib/opportunity-detail-model";
 import {
   formatTaxonomyList,
@@ -93,13 +92,7 @@ export const OpportunityDetailBody = ({
 
   const facts: Row[] = [
     { label: detail.facts.deadline, value: meta.deadlineValueLabel },
-    {
-      label: detail.facts.value,
-      value:
-        opportunity.estimatedContractValueEur === null && opportunity.estimatedContractValueText
-          ? prettifyAmountText(opportunity.estimatedContractValueText, getIntlLocale(locale))
-          : meta.valueLabel,
-    },
+    { label: detail.facts.value, value: meta.valueLabel },
     { label: detail.facts.location, value: meta.locationLabel },
     { label: detail.facts.authority, value: meta.authorityLabel },
   ];

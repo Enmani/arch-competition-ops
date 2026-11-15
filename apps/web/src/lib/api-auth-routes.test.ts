@@ -245,3 +245,39 @@ test("unexpected failures return a generic 500 without internal details", async 
     console.error = original;
   }
 });
+
+test("the sign-in sheet asks for JSON: success sets the cookie without a redirect, failures name the reason", async () => {
+  await withContext(async (context) => {
+    await context.signIn("member@example.com");
+    const { login, register } = createAuthHandlers(context.deps);
+    const json = { accept: "application/json" };
+
+    const ok = await login(loginRequest({ email: "member@example.com", locale: "en", password: "correct-password" }, json));
+    assert.equal(ok.status, 200);
+    assert.equal(ok.headers.get("location"), null);
+    assert.deepEqual(await ok.json(), { ok: true });
+    assert.match(ok.headers.get("set-cookie") ?? "", /HttpOnly/);
+
+    const wrong = await login(loginRequest({ email: "member@example.com", locale: "en", password: "nope-nope-nope" }, json));
+    assert.equal(wrong.status, 401);
+    assert.deepEqual(await wrong.json(), { ok: false, reason: "invalid_credentials" });
+    assert.equal(wrong.headers.get("set-cookie"), null);
+
+    const missing = await login(loginRequest({ email: "", locale: "en", password: "" }, json));
+    assert.equal(missing.status, 400);
+    assert.equal(((await missing.json()) as { reason: string }).reason, "missing_fields");
+
+    const mismatch = await register(
+      buildRequest("/api/auth/register", { accept: "application/json", body: form({ ...registerValues, passwordConfirmation: "different-pass" }), method: "POST" }),
+    );
+    assert.equal(mismatch.status, 400);
+    assert.equal(((await mismatch.json()) as { reason: string }).reason, "password_mismatch");
+
+    const created = await register(
+      buildRequest("/api/auth/register", { accept: "application/json", body: form(registerValues), method: "POST" }),
+    );
+    assert.equal(created.status, 200);
+    assert.match(created.headers.get("set-cookie") ?? "", /HttpOnly/);
+  });
+});
+

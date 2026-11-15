@@ -101,3 +101,21 @@ test("hyphenated and underscored jurisdiction keys resolve to the same outline",
   assert.match(a, /id="country-outline"/);
   assert.match(b, /id="country-outline"/);
 });
+
+test("the placeholder carries a dark palette so it follows the page's colour scheme", () => {
+  const svg = buildOpportunityLocatorPlaceholderSvg({
+    authorityName: "Commune de Maur",
+    jurisdictionKey: "switzerland",
+    jurisdictionLabel: "Switzerland",
+    locationLabel: "Maur",
+    title: "Extension du complexe sportif",
+  });
+  // Colours come from classes, not from attributes, so the dark rules can replace them.
+  assert.match(svg, /@media \(prefers-color-scheme: dark\)/);
+  assert.match(svg, /class="paper"/);
+  assert.doesNotMatch(svg, /fill="#f4f2ea"/);
+  assert.doesNotMatch(svg, /stroke="#21201b"/);
+  // Dark paper is the lightest surface of the dark page, not a black hole.
+  assert.match(svg, /@media \(prefers-color-scheme: dark\) \{[^}]*\.paper \{ fill: #24231e; \}/);
+});
+

@@ -6,7 +6,7 @@ import { getRequestSessionToken, type AuthDeps } from "../auth";
 import { sanitizeReturnPath } from "../return-path";
 import { serializeClearedSessionCookie, serializeSessionCookie } from "../session-cookie";
 import { assertFormRequest, assertSameOrigin } from "./csrf";
-import { HttpError, clientIp, errorResponse, guarded } from "./http";
+import { HttpError, clientIp, errorResponse, guarded, jsonResponse } from "./http";
 
 /**
  * Login / register / logout form endpoints (`POST /api/auth/*`).
@@ -58,9 +58,42 @@ const failureRedirect = (locale: AppLocale, page: "/login" | "/register", error:
   return redirectTo(`${buildLocalePath(locale, page)}?${params.toString()}`);
 };
 
+/**
+ * The sign-in sheet posts the same form with `Accept: application/json` and gets JSON back
+ * (`{ ok: true }` plus the cookie, or `{ ok: false, reason }` with the same reason codes the
+ * pages show) instead of a redirect, so it can stay on the page.
+ */
+const wantsJson = (request: Request) => {
+  const accept = request.headers.get("accept") ?? "";
+  return accept.includes("application/json") && !accept.includes("text/html");
+};
+
+const FAILURE_STATUS: Record<string, number> = { invalid_credentials: 401, too_many_attempts: 429 };
+
+const failure = (
+  request: Request,
+  locale: AppLocale,
+  page: "/login" | "/register",
+  reason: string,
+  next: string,
+  retryAfterSeconds?: number,
+) =>
+  wantsJson(request)
+    ? jsonResponse(
+        { ok: false, reason },
+        {
+          headers: retryAfterSeconds ? { "retry-after": String(retryAfterSeconds) } : undefined,
+          status: FAILURE_STATUS[reason] ?? 400,
+        },
+      )
+    : failureRedirect(locale, page, reason, next);
+
+const success = (request: Request, path: string, cookie: string) =>
+  wantsJson(request) ? jsonResponse({ ok: true }, { headers: { "set-cookie": cookie } }) : redirectTo(path, { cookie });
+
 const tooManyAttempts = (request: Request, locale: AppLocale, page: "/login" | "/register", next: string, retryAfterSeconds: number) =>
-  wantsHtml(request)
-    ? failureRedirect(locale, page, "too_many_attempts", next)
+  wantsHtml(request) || wantsJson(request)
+    ? failure(request, locale, page, "too_many_attempts", next, retryAfterSeconds)
     : errorResponse("rate_limited", "Too many attempts. Please wait before trying again.", {
         "retry-after": String(retryAfterSeconds),
       });
@@ -80,7 +113,7 @@ export const createAuthHandlers = (deps: AuthDeps) => ({
     const locale = resolveLocale(form?.locale ?? "");
     const next = sanitizeReturnPath(form?.next, locale);
     if (!form || !form.email || !form.password) {
-      return failureRedirect(locale, "/login", "missing_fields", form?.next ?? "");
+      return failure(request, locale, "/login", "missing_fields", form?.next ?? "");
     }
 
     const storage = await deps.getStorage();
@@ -93,11 +126,11 @@ export const createAuthHandlers = (deps: AuthDeps) => ({
     const user = await storage.auth.authenticate({ email: form.email, password: form.password });
     if (!user) {
       await storage.auth.recordAttempt({ ...subject, scope: "login" });
-      return failureRedirect(locale, "/login", "invalid_credentials", form.next);
+      return failure(request, locale, "/login", "invalid_credentials", form.next);
     }
 
     await storage.auth.clearLoginFailures(subject);
-    return redirectTo(next, { cookie: await startSession(storage, request, user.id, deps) });
+    return success(request, next, await startSession(storage, request, user.id, deps));
   }),
 
   register: guarded("POST /api/auth/register", async (request: Request) => {
@@ -105,7 +138,7 @@ export const createAuthHandlers = (deps: AuthDeps) => ({
     const locale = resolveLocale(form?.locale ?? "");
     const next = sanitizeReturnPath(form?.next, locale);
     if (!form || !form.email || !form.password || !form.passwordConfirmation) {
-      return failureRedirect(locale, "/register", "missing_fields", form?.next ?? "");
+      return failure(request, locale, "/register", "missing_fields", form?.next ?? "");
     }
 
     const storage = await deps.getStorage();
@@ -118,16 +151,16 @@ export const createAuthHandlers = (deps: AuthDeps) => ({
     await storage.auth.recordAttempt({ ip: subject.ip, scope: "register" });
 
     if (form.password !== form.passwordConfirmation) {
-      return failureRedirect(locale, "/register", "password_mismatch", form.next);
+      return failure(request, locale, "/register", "password_mismatch", form.next);
     }
 
     try {
       const user = await storage.auth.register({ email: form.email, password: form.password });
-      return redirectTo(next, { cookie: await startSession(storage, request, user.id, deps) });
+      return success(request, next, await startSession(storage, request, user.id, deps));
     } catch (error) {
       if (isStoredAuthError(error)) {
         const code = error.code === "invalid_email" || error.code === "weak_password" ? error.code : "registration_failed";
-        return failureRedirect(locale, "/register", code, form.next);
+        return failure(request, locale, "/register", code, form.next);
       }
       throw error;
     }
@@ -160,6 +193,9 @@ export const createAuthHandlers = (deps: AuthDeps) => ({
       }
       await storage.auth.deleteSession(token);
     }
-    return redirectTo(buildLocalePath(locale, "/login"), { cookie: serializeClearedSessionCookie(production) });
+    const cleared = serializeClearedSessionCookie(production);
+    return wantsJson(request)
+      ? jsonResponse({ ok: true }, { headers: { "set-cookie": cleared } })
+      : redirectTo(buildLocalePath(locale, "/login"), { cookie: cleared });
   }),
 });

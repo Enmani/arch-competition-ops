@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useRef, useState } from "react";
+import { useRef, useState, type MouseEvent } from "react";
 
 import type { AppLocale } from "@/i18n/config";
 import type { WatchToggleCopy } from "@/i18n/slices";
 import { describeApiFailure, sendJson, type ApiFailure } from "@/lib/api-client";
+import { useAuthDialog } from "@/lib/auth-dialog";
 import { buildLoginRedirect } from "@/lib/return-path";
 
 type WatchToggleButtonProps = {
@@ -53,7 +54,18 @@ const WatchToggleButton = ({
   const [failure, setFailure] = useState<ApiFailure | null>(null);
   const inFlightRef = useRef(false);
   const dictionary = copy.workspace.watchlist;
+  const openAuth = useAuthDialog();
   const loginHref = buildLoginRedirect(locale, search ? `${pathname}?${search}` : pathname);
+
+  // With the sign-in sheet available a plain click opens it (the page and the list stay put);
+  // the link remains for a new tab and for no JavaScript.
+  const openSignIn = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (!openAuth || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+      return;
+    }
+    event.preventDefault();
+    openAuth("login");
+  };
 
   if (!signedIn) {
     return (
@@ -63,12 +75,13 @@ const WatchToggleButton = ({
             aria-label={dictionary.signInToWatch}
             className="watch-toggle-icon"
             href={loginHref}
+            onClick={openSignIn}
             title={dictionary.signInToWatch}
           >
             <WatchGlyph watched={false} />
           </Link>
         ) : (
-          <Link className="button secondary watch-toggle-button" href={loginHref}>
+          <Link className="button secondary watch-toggle-button" href={loginHref} onClick={openSignIn}>
             {dictionary.signInToWatch}
           </Link>
         )}

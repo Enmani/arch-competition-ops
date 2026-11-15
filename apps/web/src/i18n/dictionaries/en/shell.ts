@@ -17,7 +17,6 @@ export const shell = {
   utility: {
     support: "Support",
     login: "Log in",
-    register: "Register",
     logout: "Log out",
   },
   search: {
@@ -29,6 +28,7 @@ export const shell = {
     primaryNav: "Primary",
     context: "Context",
   },
+  closeLabel: "Close",
   localeSwitcherLabel: "Language",
   theme: {
     label: "Appearance",

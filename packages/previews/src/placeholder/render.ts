@@ -4,6 +4,11 @@
 // Outlines are precomputed by scripts/build-country-outlines.mjs into data/country-outlines.json,
 // fitted to the panel with a 40px inset.
 //
+// Colours live in a <style> block, with a dark palette under prefers-color-scheme. An SVG shown
+// through <img> follows the embedding page's `color-scheme` (the site sets it from its theme
+// button), so the placeholder darkens with the page and needs no second URL. The dark paper is a
+// step lighter than the dark page (#11110d) so the square still reads as a card.
+//
 // The drawing is edge to edge and carries no labels: the country and city are already set in type
 // under the image, so a caption inside the picture would only repeat them and shrink the map.
 import countryOutlines from "../../data/country-outlines.json";
@@ -69,6 +74,20 @@ const escapeXml = (value: string) =>
 const PANEL_START = 52;
 const PANEL_END = 668;
 const PANEL_SIZE = PANEL_END - PANEL_START;
+
+const PLACEHOLDER_STYLE = `
+    .paper { fill: #f4f2ea; }
+    .ink { stroke: #21201b; }
+    .ink-fill { fill: #21201b; }
+    .mark { stroke: #285f47; }
+    .mark-fill { fill: #285f47; }
+    @media (prefers-color-scheme: dark) {
+      .paper { fill: #24231e; }
+      .ink { stroke: #dfded6; }
+      .ink-fill { fill: #dfded6; }
+      .mark { stroke: #8ac998; }
+      .mark-fill { fill: #8ac998; }
+    }`;
 
 const normalizeKey = normalizeJurisdictionKey;
 
@@ -144,30 +163,32 @@ export const buildOpportunityLocatorPlaceholderSvg = (
   const guideOpacity = outline ? "0.08" : "0.14";
   const outlineMarkup = outline
     ? `
-  <path id="country-outline" data-country-key="${escapeXml(jurisdictionKey)}" data-outline-source="world-atlas" d="${outline.pathData}" fill="#21201b" fill-opacity="0.07" stroke="#21201b" stroke-opacity="0.78" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round" />
+  <path id="country-outline" data-country-key="${escapeXml(jurisdictionKey)}" data-outline-source="world-atlas" d="${outline.pathData}" class="ink-fill ink" fill-opacity="0.07" stroke-opacity="0.78" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round" />
 `
     : "";
 
   return `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="52 52 ${PANEL_SIZE} ${PANEL_SIZE}" role="img" aria-label="Opportunity location placeholder">
   <defs>
+    <style>${PLACEHOLDER_STYLE}
+    </style>
     <pattern id="locator-grid" x="${PANEL_START}" y="${PANEL_START}" width="72" height="72" patternUnits="userSpaceOnUse">
-      <path d="M 72 0 L 0 0 0 72" fill="none" stroke="#21201b" stroke-opacity="${gridCellOpacity}" stroke-width="1" />
+      <path d="M 72 0 L 0 0 0 72" class="ink" fill="none" stroke-opacity="${gridCellOpacity}" stroke-width="1" />
     </pattern>
   </defs>
 
-  <rect x="${PANEL_START}" y="${PANEL_START}" width="${PANEL_SIZE}" height="${PANEL_SIZE}" fill="#f4f2ea" />
+  <rect x="${PANEL_START}" y="${PANEL_START}" width="${PANEL_SIZE}" height="${PANEL_SIZE}" class="paper" />
   <rect x="${PANEL_START}" y="${PANEL_START}" width="${PANEL_SIZE}" height="${PANEL_SIZE}" fill="url(#locator-grid)" />
-  <path d="M${PANEL_START} 243H${PANEL_END} M${PANEL_START} 404H${PANEL_END} M221 ${PANEL_START}V${PANEL_END} M499 ${PANEL_START}V${PANEL_END}" fill="none" stroke="#21201b" stroke-opacity="${guideOpacity}" stroke-width="1.2" />
+  <path d="M${PANEL_START} 243H${PANEL_END} M${PANEL_START} 404H${PANEL_END} M221 ${PANEL_START}V${PANEL_END} M499 ${PANEL_START}V${PANEL_END}" class="ink" fill="none" stroke-opacity="${guideOpacity}" stroke-width="1.2" />
 
   ${outlineMarkup}
 
   <g transform="translate(${anchorX} ${anchorY})" data-marker-source="${anchor.isProjected ? "geo-coordinates" : "country-centroid"}">
-    <rect x="-54" y="-54" width="108" height="108" fill="none" stroke="#285f47" stroke-opacity="0.34" stroke-width="2" />
-    <circle r="44" fill="none" stroke="#285f47" stroke-opacity="0.34" stroke-width="2" />
-    <circle r="11" fill="#285f47" />
-    <circle r="20" fill="none" stroke="#285f47" stroke-width="4" />
-    <path d="M0 -68V-24 M0 24V68 M-68 0H-24 M24 0H68" fill="none" stroke="#285f47" stroke-width="4" stroke-linecap="square" />
+    <rect x="-54" y="-54" width="108" height="108" class="mark" fill="none" stroke-opacity="0.34" stroke-width="2" />
+    <circle r="44" class="mark" fill="none" stroke-opacity="0.34" stroke-width="2" />
+    <circle r="11" class="mark-fill" />
+    <circle r="20" class="mark" fill="none" stroke-width="4" />
+    <path d="M0 -68V-24 M0 24V68 M-68 0H-24 M24 0H68" class="mark" fill="none" stroke-width="4" stroke-linecap="square" />
   </g>
 </svg>
 `.trim();

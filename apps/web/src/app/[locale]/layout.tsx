@@ -21,6 +21,7 @@ const LocaleLayout = async ({ children, params }: LocaleLayoutProps) => {
   return (
     <>
       <SiteShell
+        authCopy={dictionary.auth}
         authUserEmail={authUser?.email ?? null}
         copy={dictionary.shell}
         locale={locale}
