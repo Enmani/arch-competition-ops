@@ -1,4 +1,7 @@
-import { buildOpportunityLocatorPlaceholderSvg } from "@arch-competition/previews/placeholder";
+import {
+  buildOpportunityLocatorInsetSvg,
+  buildOpportunityLocatorPlaceholderSvg,
+} from "@arch-competition/previews/placeholder";
 import {
   lookupPreview,
   type ManifestLoader,
@@ -8,7 +11,10 @@ import {
 /**
  * The response logic of /api/opportunities/[slug]/image, free of any runtime binding so it can be
  * tested. The request path does two things only: look the record up in the prebuilt preview
- * manifest and return that asset, or draw the locator placeholder. Everything expensive
+ * manifest and return that asset, or draw the locator placeholder. `?kind=locator` always answers
+ * the drawn locator (the card's resting picture; the satellite image is fetched on hover) and
+ * `?kind=inset` the small corner map for the revealed satellite (404 when no real position is
+ * known). Everything expensive
  * (geocoding, fetching notice pages and PDFs, map tiles, image processing) happens offline in
  * packages/previews. Nothing here fetches a third-party URL or this site's own domain.
  */
@@ -29,28 +35,58 @@ export const IMMUTABLE_CACHE = "public, max-age=31536000, immutable";
 export const ASSET_CACHE = "public, max-age=3600";
 export const PLACEHOLDER_CACHE = "public, max-age=300";
 export const MISSING_CACHE = "public, max-age=60";
+/** The drawn locator and its corner inset change only when the record's position does. */
+export const LOCATOR_CACHE = "public, max-age=3600, s-maxage=86400";
 const NO_STORE = "no-store, max-age=0";
 
 export const createOpportunityImageHandler = (deps: OpportunityImageDeps) => {
   const cacheControl = (value: string) => (deps.development ? NO_STORE : value);
+
+  const svg = (body: string, cache: string, source: string, status = 200) =>
+    new Response(body, {
+      headers: {
+        "cache-control": cacheControl(cache),
+        "content-type": "image/svg+xml; charset=utf-8",
+        "x-arch-image-source": source,
+      },
+      status,
+    });
 
   const placeholder = (
     opportunity?: PlaceholderOpportunity,
     override?: Parameters<typeof buildOpportunityLocatorPlaceholderSvg>[1],
     status = 200,
   ) =>
-    new Response(buildOpportunityLocatorPlaceholderSvg(opportunity, override), {
-      headers: {
-        "cache-control": cacheControl(status === 200 ? PLACEHOLDER_CACHE : MISSING_CACHE),
-        "content-type": "image/svg+xml; charset=utf-8",
-        "x-arch-image-source": "placeholder",
-      },
+    svg(
+      buildOpportunityLocatorPlaceholderSvg(opportunity, override),
+      status === 200 ? PLACEHOLDER_CACHE : MISSING_CACHE,
+      "placeholder",
       status,
-    });
+    );
 
   return async (request: Request, slug: string): Promise<Response> => {
     const { loader, source } = await deps.getPreviewSource();
+    const kind = new URL(request.url).searchParams.get("kind");
     const preview = await lookupPreview(loader, source, slug);
+
+    if (kind === "locator" || kind === "inset") {
+      const opportunity = await deps.getOpportunity(slug);
+      if (!opportunity) {
+        return kind === "locator"
+          ? placeholder(undefined, undefined, 404)
+          : new Response(null, { headers: { "cache-control": cacheControl(MISSING_CACHE) }, status: 404 });
+      }
+      // The generator may know where the record is even though it could not render imagery.
+      const known = preview?.entry.locator;
+      const override = known ? { geoLat: known.lat, geoLng: known.lng, locationLabel: known.label } : undefined;
+      if (kind === "inset") {
+        const inset = buildOpportunityLocatorInsetSvg(opportunity, override);
+        return inset
+          ? svg(inset, LOCATOR_CACHE, "inset")
+          : new Response(null, { headers: { "cache-control": cacheControl(LOCATOR_CACHE) }, status: 404 });
+      }
+      return svg(buildOpportunityLocatorPlaceholderSvg(opportunity, override), LOCATOR_CACHE, "placeholder");
+    }
 
     if (preview?.image) {
       // Immutable only when the URL carries the current revision AND the asset was produced by

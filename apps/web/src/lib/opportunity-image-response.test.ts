@@ -10,11 +10,22 @@ import { createFilesystemSource } from "@arch-competition/previews/serve/fs";
 import {
   ASSET_CACHE,
   IMMUTABLE_CACHE,
+  LOCATOR_CACHE,
   MISSING_CACHE,
   PLACEHOLDER_CACHE,
   createOpportunityImageHandler,
   type OpportunityImageDeps,
 } from "./opportunity-image-response";
+
+type Opportunity = {
+  authorityName: string;
+  geoLat: number | null;
+  geoLng: number | null;
+  jurisdictionKey: string;
+  jurisdictionLabel: string;
+  locationLabel: string;
+  title: string;
+};
 
 const REVISION = "v7";
 const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0xff, 0xd9]);
@@ -56,7 +67,7 @@ before(async () => {
 
 after(() => rm(directory, { force: true, recursive: true }));
 
-const opportunity = {
+const opportunity: Opportunity = {
   authorityName: "Gemeinde Maur",
   geoLat: null,
   geoLng: null,
@@ -69,7 +80,7 @@ const opportunity = {
 const call = (
   slug: string,
   query = "",
-  overrides: Partial<OpportunityImageDeps> & { opportunities?: Record<string, typeof opportunity> } = {},
+  overrides: Partial<OpportunityImageDeps> & { opportunities?: Record<string, Opportunity> } = {},
 ) => {
   const source = createFilesystemSource(() => directory);
   const lookedUp: string[] = [];
@@ -178,3 +189,35 @@ test("the route and its handler stay free of everything forbidden in the request
     }
   }
 });
+
+test("kind=locator answers the drawn locator even when a satellite image exists", async () => {
+  const { response } = await call("current", `?kind=locator&rev=${REVISION}`, { opportunities: { current: opportunity } });
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("content-type"), "image/svg+xml; charset=utf-8");
+  assert.equal(response.headers.get("x-arch-image-source"), "placeholder");
+  assert.equal(response.headers.get("cache-control"), LOCATOR_CACHE);
+  assert.match(await response.text(), /prefers-color-scheme: dark/);
+});
+
+test("kind=inset is the corner map only when the position is really known", async () => {
+  const located = { ...opportunity, geoLat: 47.3407, geoLng: 8.671 };
+  const known = await call("current", "?kind=inset", { opportunities: { current: located } });
+  assert.equal(known.response.status, 200);
+  assert.equal(known.response.headers.get("x-arch-image-source"), "inset");
+  const svg = await known.response.text();
+  assert.match(svg, /<svg /);
+  assert.doesNotMatch(svg, /locator-grid/);
+
+  // No coordinates: a country centroid would claim a place the notice never gave.
+  const unknown = await call("current", "?kind=inset", { opportunities: { current: opportunity } });
+  assert.equal(unknown.response.status, 404);
+
+  // The generator's own locator fills in a position the record lacks.
+  const viaManifest = await call("locator only", "?kind=inset", { opportunities: { "locator only": opportunity } });
+  assert.equal(viaManifest.response.status, 200);
+
+  const missing = await call("nobody", "?kind=inset");
+  assert.equal(missing.response.status, 404);
+});
+

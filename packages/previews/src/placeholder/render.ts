@@ -140,9 +140,9 @@ const resolveLocationAnchor = (
   };
 };
 
-export const buildOpportunityLocatorPlaceholderSvg = (
-  opportunity?: OpportunityPlaceholderInput | null,
-  override?: OpportunityPlaceholderOverride | null,
+const resolveLocator = (
+  opportunity: OpportunityPlaceholderInput | null | undefined,
+  override: OpportunityPlaceholderOverride | null | undefined,
 ) => {
   const placeholderOpportunity =
     opportunity && override
@@ -154,8 +154,46 @@ export const buildOpportunityLocatorPlaceholderSvg = (
         }
       : opportunity;
   const outline = resolveOutline(placeholderOpportunity);
-  const jurisdictionKey = normalizeKey(placeholderOpportunity?.jurisdictionKey) ?? "unknown";
-  const anchor = resolveLocationAnchor(outline, placeholderOpportunity);
+  return {
+    anchor: resolveLocationAnchor(outline, placeholderOpportunity),
+    jurisdictionKey: normalizeKey(placeholderOpportunity?.jurisdictionKey) ?? "unknown",
+    outline,
+  };
+};
+
+/**
+ * The small inset map shown in a corner of a card while its satellite image is up: the country
+ * outline and one dot where the project is. Only drawn when the position is really known (a
+ * coordinate inside the outline); a country centroid would claim a place the notice never gave,
+ * so then there is no inset (null) and the card simply shows no corner map.
+ */
+export const buildOpportunityLocatorInsetSvg = (
+  opportunity?: OpportunityPlaceholderInput | null,
+  override?: OpportunityPlaceholderOverride | null,
+) => {
+  const { anchor, outline } = resolveLocator(opportunity, override);
+  if (!outline || !anchor.isProjected) {
+    return null;
+  }
+  return `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="52 52 ${PANEL_SIZE} ${PANEL_SIZE}" role="img" aria-label="Project location">
+  <defs>
+    <style>${PLACEHOLDER_STYLE}
+    </style>
+  </defs>
+  <rect x="${PANEL_START}" y="${PANEL_START}" width="${PANEL_SIZE}" height="${PANEL_SIZE}" class="paper" />
+  <path d="${outline.pathData}" class="ink-fill ink" fill-opacity="0.12" stroke-opacity="0.8" stroke-width="5" stroke-linejoin="round" stroke-linecap="round" />
+  <circle cx="${anchor.x}" cy="${anchor.y}" r="30" class="paper" />
+  <circle cx="${anchor.x}" cy="${anchor.y}" r="22" class="mark-fill" />
+</svg>
+`.trim();
+};
+
+export const buildOpportunityLocatorPlaceholderSvg = (
+  opportunity?: OpportunityPlaceholderInput | null,
+  override?: OpportunityPlaceholderOverride | null,
+) => {
+  const { anchor, jurisdictionKey, outline } = resolveLocator(opportunity, override);
   const anchorX = anchor.x;
   const anchorY = anchor.y;
   // Without an outline the grid has to carry the texture on its own.

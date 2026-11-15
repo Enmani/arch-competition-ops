@@ -57,6 +57,50 @@
   object-fit: cover;
 }
 
+/* Hover transition (see opportunity-media.tsx): a canvas over the resting locator carries the
+   mosaic and the satellite image; the inset map settles into the corner once it is sharp. */
+.opportunity-media-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.opportunity-media-canvas.is-active {
+  opacity: 1;
+}
+
+.opportunity-media-inset {
+  position: absolute;
+  bottom: var(--space-md);
+  left: var(--space-md);
+  width: 28%;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(2.4);
+  transform-origin: bottom left;
+  transition:
+    opacity 260ms var(--ease-out-quart),
+    transform 420ms var(--ease-out-quart);
+}
+
+.opportunity-media-inset.is-revealed {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .opportunity-media-inset {
+    transform: none;
+    transition: opacity 120ms linear;
+  }
+}
+
 .opportunity-tile-copy {
   display: grid;
   grid-row: span 2;

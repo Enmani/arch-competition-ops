@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildOpportunityLocatorPlaceholderSvg } from "./render";
+import { buildOpportunityLocatorInsetSvg, buildOpportunityLocatorPlaceholderSvg } from "./render";
 
 test("buildOpportunityLocatorPlaceholderSvg fills the frame with the outline and no labels", () => {
   const svg = buildOpportunityLocatorPlaceholderSvg({
@@ -117,5 +117,25 @@ test("the placeholder carries a dark palette so it follows the page's colour sch
   assert.doesNotMatch(svg, /stroke="#21201b"/);
   // Dark paper is the lightest surface of the dark page, not a black hole.
   assert.match(svg, /@media \(prefers-color-scheme: dark\) \{[^}]*\.paper \{ fill: #24231e; \}/);
+});
+
+test("the inset map is the outline and one dot, and exists only for a position that is really known", () => {
+  const base = {
+    authorityName: "Commune de Maur",
+    jurisdictionKey: "switzerland",
+    jurisdictionLabel: "Switzerland",
+    locationLabel: "Maur",
+    title: "Extension du complexe sportif",
+  };
+  const inset = buildOpportunityLocatorInsetSvg({ ...base, geoLat: 47.3407, geoLng: 8.671 });
+  assert.ok(inset);
+  assert.match(inset, /class="mark-fill"/);
+  assert.equal((inset.match(/class="mark-fill"/g) ?? []).length, 1);
+  assert.doesNotMatch(inset, /locator-grid|<text/);
+  assert.match(inset, /@media \(prefers-color-scheme: dark\)/);
+
+  assert.equal(buildOpportunityLocatorInsetSvg(base), null, "no coordinates, no dot");
+  assert.equal(buildOpportunityLocatorInsetSvg({ ...base, jurisdictionKey: "atlantis", geoLat: 1, geoLng: 1 }), null);
+  assert.equal(buildOpportunityLocatorInsetSvg(null), null);
 });
 

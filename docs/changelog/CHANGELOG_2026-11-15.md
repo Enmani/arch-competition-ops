@@ -201,3 +201,24 @@ Sign-in used a full-page POST, a 303 redirect and a full reload of the next page
 
 - `packages/previews/src/placeholder/{render.ts,render.test.ts}`, `apps/web/src/app/styles/auth.css`, `apps/web/src/lib/opportunity-display.ts`, `apps/web/src/components/opportunity-detail-body.tsx`
 
+## Cards rest as the drawn locator; hover reveals the satellite
+
+### Changed
+
+- Every card now shows the drawn locator (country outline and marker) by default, including records that have a satellite image. Pointing at a card (mouse hover, or keyboard focus-visible) turns the locator into a coarse mosaic that sharpens into the satellite image, then the locator settles into the bottom-left corner as a small map with one dot at the project. Leaving plays it back. About 90 ms of hover intent avoids fetching while the pointer only passes over; the transition holds at the coarsest step until the image has arrived; a card without a satellite image does nothing; touch screens keep the locator (the detail sheet shows the satellite); with reduced motion the swap is immediate.
+- The list no longer downloads satellite JPEGs: on load only the small locator SVGs are requested (12 SVGs and 0 JPEGs in the check), and a JPEG is fetched on the first hover of a card.
+- `GET /api/opportunities/[slug]/image` gains `?kind=locator` (always the drawn locator, `x-arch-image-source: placeholder`) and `?kind=inset` (the corner map, 404 unless the record has a real position: a country centroid would claim a place the notice never gave). Both are cached for an hour in the browser and a day at the edge. Without `kind` the route is unchanged and its `x-arch-image-source` header tells the card whether a satellite exists.
+- The mosaic is drawn on a canvas (`lib/mosaic.ts`), the decoded bitmap is created per hover and released, and only the small JPEG blob is kept per visit.
+
+### Validation
+
+- `npm run test:previews` (inset builder), `test:web` (handler kinds), typecheck, lint. Checked in Edge: frames at start, mosaic, turn, sharp and final show locator, coarse squares, coarse satellite, sharp satellite with the corner map; leaving restores the locator; a card without a satellite stays still; no console errors.
+
+### Risks
+
+- Every card now requests its locator SVG, and each such request reads the record and the preview manifest. Browsers cache it for an hour; Workers do not cache dynamic responses at the edge by themselves, so production load should be watched after deploy. A cheaper variant would carry the locator inputs in the URL.
+
+### Modified Files
+
+- `packages/previews/src/placeholder/{render.ts,render.test.ts}`, `apps/web/src/lib/{opportunity-image-response.ts,opportunity-image-response.test.ts,mosaic.ts,opportunity-satellite.ts}`, `apps/web/src/components/{opportunity-media.tsx,opportunity-stream-item.tsx}`, `apps/web/src/app/styles/tiles.css`
+
