@@ -3,8 +3,6 @@
 
 .section-grid,
 .content-grid,
-.detail-grid,
-.detail-grid > section,
 .panel,
 .table-panel {
   display: grid;
@@ -16,8 +14,7 @@
 }
 
 .hero,
-.content-grid,
-.detail-layout {
+.content-grid {
   padding-top: var(--space-xl);
 }
 
@@ -25,13 +22,11 @@
   gap: var(--space-xl);
 }
 
-.content-grid,
-.detail-grid {
+.content-grid {
   gap: var(--space-xl);
 }
 
-.content-grid,
-.detail-grid {
+.content-grid {
   grid-template-columns: minmax(0, 1.15fr) minmax(18rem, 0.85fr);
 }
 

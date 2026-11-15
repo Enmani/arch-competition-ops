@@ -23,6 +23,7 @@ export type {
   StoredDesignScope,
   StoredDiscoverSurfaceData,
   StoredFilterOptions,
+  StoredAiAssessment,
   StoredOpportunityFeedItem,
   StoredOpportunityQuery,
   StoredProjectMode,

@@ -1,26 +1,85 @@
-/* Opportunity detail page: a title, one summary strip, then hairline-ruled fact lists. */
+/* Opportunity detail: one body, shown as a side sheet over the list (.detail-drawer) or as a
+   standalone page (.detail-page). Image, title, four decisive facts, actions, then the reading:
+   overview, how to take part, conditions, what is still unknown. Source bookkeeping is folded.
+   Flat paper, hairline rules, square image, one accent. */
 
-.detail-layout {
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-3xl);
-  padding-top: var(--space-2xl);
+.detail-page {
+  width: min(100%, 56rem);
+  margin: 0 auto;
+  padding: var(--space-xl) var(--page-gutter) var(--space-3xl);
 }
 
-.detail-hero {
+.detail-back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-height: var(--control-h);
+  margin-bottom: var(--space-lg);
+  color: var(--ink-soft);
+  font-size: var(--fs-sm);
+}
+
+.detail-back:hover {
+  color: var(--ink);
+}
+
+.detail-back:focus-visible,
+.detail-source summary:focus-visible,
+.detail-drawer-close:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.detail-body {
   display: grid;
-  justify-items: start;
-  gap: var(--space-lg);
-  max-width: 64rem;
+  gap: var(--space-2xl);
+  min-width: 0;
 }
 
-.detail-hero h1 {
+/* Head: wide image band, then kicker and title. */
+.detail-head {
+  display: grid;
+  gap: var(--space-xl);
+}
+
+.detail-media {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 12 / 5;
+  background: var(--surface-strong);
+}
+
+.detail-media img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.detail-head-copy {
+  display: grid;
+  gap: var(--space-md);
+  justify-items: start;
+}
+
+.detail-kicker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm) var(--space-md);
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: var(--fs-sm);
+}
+
+.detail-head h1 {
   margin: 0;
   font-size: var(--fs-xl);
   font-weight: 600;
   line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
-/* Authority, location, deadline and value: the four things a screening decision needs first. */
 .detail-original-title {
   margin: 0;
   color: var(--ink-soft);
@@ -28,43 +87,56 @@
   overflow-wrap: anywhere;
 }
 
-.detail-summary {
+/* Deadline, value, location, issuer: what a screening decision needs first. */
+.detail-facts {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
   gap: var(--space-lg) var(--space-xl);
-  width: 100%;
   margin: 0;
   padding: var(--space-lg) 0;
   border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
 }
 
-.detail-summary-item {
+.detail-fact {
   display: grid;
   gap: var(--space-xs);
   min-width: 0;
 }
 
-.detail-summary-item dd {
+/* Issuer names are long; they get the full row instead of a narrow column. */
+.detail-fact:last-child {
+  grid-column: 1 / -1;
+}
+
+.detail-fact dd {
   margin: 0;
-  overflow-wrap: anywhere;
+  font-weight: 600;
+  overflow-wrap: break-word;
 }
 
-.detail-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: var(--space-3xl);
-  align-items: start;
+.detail-countdown {
+  display: block;
+  color: var(--accent);
+  font-size: var(--fs-sm);
+  font-weight: 400;
 }
 
-.detail-stack {
-  display: grid;
-  gap: var(--space-2xl);
+.detail-countdown.is-closed {
+  color: var(--danger-ink);
+}
+
+.detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-md);
 }
 
 .detail-section {
   display: grid;
   gap: var(--space-md);
+  min-width: 0;
 }
 
 .detail-section h2 {
@@ -74,14 +146,39 @@
   line-height: 1.25;
 }
 
-.detail-list {
+.detail-section-note {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: var(--fs-sm);
+}
+
+.detail-summary-text {
+  max-width: 44rem;
+  margin: 0;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+
+.detail-subheading {
+  margin: var(--space-sm) 0 0;
+  font-size: var(--fs-md);
+  font-weight: 600;
+}
+
+.detail-reasons {
   display: grid;
+  gap: var(--space-sm);
+  max-width: 44rem;
+  margin: 0;
+  padding-left: 1.25rem;
+  line-height: 1.7;
+}
+
+.detail-list {
   margin: 0;
 }
 
 .detail-item {
-  display: grid;
-  gap: var(--space-xs);
   padding: var(--space-md) 0;
   border-top: 1px solid var(--line);
 }
@@ -91,40 +188,119 @@
   overflow-wrap: anywhere;
 }
 
-.detail-note {
-  display: grid;
-  gap: var(--space-xs);
-}
-
-.detail-note-text {
-  margin: 0;
-  color: var(--ink-soft);
-  overflow-wrap: anywhere;
-}
-
-.detail-links {
-  margin-top: var(--space-sm);
-}
-
-.detail-missing {
+.detail-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-xs) var(--space-lg);
+  gap: var(--space-sm);
   margin: 0;
-  padding-top: var(--space-lg);
+  padding: 0;
+  list-style: none;
+}
+
+.detail-chips li {
+  padding: var(--space-xs) var(--space-md);
+  border: 1px solid var(--line);
+  background: var(--surface-alt);
+  color: var(--ink-soft);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
+
+/* Source bookkeeping: present, but folded until asked for. */
+.detail-source {
   border-top: 1px solid var(--line);
-  color: var(--ink-faint);
+  padding-top: var(--space-lg);
+}
+
+.detail-source summary {
+  display: list-item;
+  width: fit-content;
+  cursor: pointer;
+  color: var(--ink-soft);
   font-size: var(--fs-sm);
 }
 
-.detail-missing .detail-label {
-  color: var(--ink-soft);
-  font-weight: 600;
+.detail-source[open] summary {
+  margin-bottom: var(--space-md);
 }
 
-@media (max-width: 960px) {
-  .detail-grid {
-    grid-template-columns: 1fr;
-    gap: var(--space-2xl);
+/* Side sheet. The native dialog gives the focus trap and Esc; this file only places it. */
+.detail-drawer {
+  position: fixed;
+  inset: 0 0 0 auto;
+  display: none;
+  flex-direction: column;
+  width: min(56rem, 100vw);
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-left: 1px solid var(--line-strong);
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.detail-drawer[open] {
+  display: flex;
+  animation: detail-drawer-in 260ms var(--ease-out-quart);
+}
+
+.detail-drawer::backdrop {
+  background: color-mix(in oklch, var(--ink) 40%, transparent);
+  animation: detail-scrim-in 260ms var(--ease-out-quart);
+}
+
+.detail-drawer-bar {
+  display: flex;
+  flex: none;
+  justify-content: flex-end;
+  padding: var(--space-sm) var(--space-lg);
+  padding-top: max(var(--space-sm), env(safe-area-inset-top));
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+}
+
+.detail-drawer-close {
+  display: inline-grid;
+  place-items: center;
+  width: var(--control-h);
+  height: var(--control-h);
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--ink);
+}
+
+.detail-drawer-close:hover {
+  background: var(--surface-strong);
+}
+
+.detail-drawer-scroll {
+  flex: 1;
+  min-height: 0;
+  padding: var(--space-xl) clamp(1.25rem, 3vw, 2.5rem) var(--space-3xl);
+  padding-bottom: max(var(--space-3xl), env(safe-area-inset-bottom));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+@keyframes detail-drawer-in {
+  from {
+    opacity: 0;
+    transform: translateX(2rem);
+  }
+}
+
+@keyframes detail-scrim-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .detail-drawer[open],
+  .detail-drawer::backdrop {
+    animation: none;
   }
 }

@@ -47,3 +47,38 @@ test("participation excerpts use current advice only and reject malformed or uns
     cleanup();
   }
 });
+
+test("the AI assessment reaches the detail read model for the current revision only", async () => {
+  const { raw, storage, cleanup } = createTestStorage();
+  try {
+    seedOpportunity(raw, { id: "assessed" });
+    const { updated_at } = raw.prepare("SELECT updated_at FROM competitions WHERE id = 'assessed'").get() as { updated_at: string };
+    const result = {
+      decision: "recommend",
+      summary_zh: "值得跟进的住宅翻新设计服务。",
+      summary_en: "A housing renovation design service worth following.",
+      reasons_zh: ["范围含建筑设计", ""],
+      reasons_en: ["Scope includes building design"],
+      missing_information: ["registration_fee", ""],
+    };
+    raw.prepare(`INSERT INTO ai_screening_results
+      (competition_id, source_updated_at, model, decision, relevance_score, result_json, updated_at)
+      VALUES ('assessed', ?, 'gpt-6-luna', 'recommend', 80, ?, ?)`)
+      .run(updated_at, JSON.stringify(result), updated_at);
+    assert.deepEqual((await storage.opportunities.getBySlug("assessed"))?.aiAssessment, {
+      decision: "recommend",
+      missingInformation: ["registration_fee"],
+      reasonsEn: ["Scope includes building design"],
+      reasonsZh: ["范围含建筑设计"],
+      summaryEn: "A housing renovation design service worth following.",
+      summaryZh: "值得跟进的住宅翻新设计服务。",
+    });
+    raw.prepare("UPDATE competitions SET updated_at = 'new-revision' WHERE id = 'assessed'").run();
+    assert.equal((await storage.opportunities.getBySlug("assessed"))?.aiAssessment, undefined);
+    raw.prepare("UPDATE ai_screening_results SET source_updated_at = 'new-revision', result_json = '{\"decision\":\"maybe\"}' WHERE competition_id = 'assessed'").run();
+    assert.equal((await storage.opportunities.getBySlug("assessed"))?.aiAssessment, undefined);
+  } finally {
+    cleanup();
+  }
+});
+

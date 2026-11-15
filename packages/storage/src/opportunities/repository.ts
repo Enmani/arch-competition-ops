@@ -1,4 +1,4 @@
-import { noticeDetailSchema, type DiscoverFilters } from "@arch-competition/core";
+import { aiAssessmentSchema, noticeDetailSchema, type DiscoverFilters } from "@arch-competition/core";
 
 import type { StorageContext } from "../context";
 import { MAX_BOUND_PARAMETERS, chunk, placeholders, readBatch, readRows } from "../driver/sql";
@@ -84,6 +84,18 @@ export const getOpportunityBySlug = async (
             const parsed = noticeDetailSchema.safeParse(detail);
             return parsed.success && parsed.data.quote.includes(parsed.data.text) ? [parsed.data] : [];
           });
+        }
+        const assessment = aiAssessmentSchema.safeParse(result);
+        if (assessment.success) {
+          const nonBlank = (values: string[]) => values.filter((value) => value !== "");
+          item.aiAssessment = {
+            decision: assessment.data.decision,
+            missingInformation: nonBlank(assessment.data.missing_information),
+            reasonsEn: nonBlank(assessment.data.reasons_en),
+            reasonsZh: nonBlank(assessment.data.reasons_zh),
+            summaryEn: assessment.data.summary_en,
+            summaryZh: assessment.data.summary_zh,
+          };
         }
       } catch {
         // A corrupt advisory projection must not hide the canonical opportunity.

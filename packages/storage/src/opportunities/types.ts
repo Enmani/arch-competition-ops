@@ -96,7 +96,18 @@ export type StoredFilterOptions = {
  * - NULL fees stay null; use core's `describeParticipationFee` to word them.
  * The `*Label` fields are English fallbacks, see ../presentation.ts.
  */
+/** Detail-only, current revision only: the screening model's own words for a reader. */
+export type StoredAiAssessment = {
+  decision: "recommend" | "exclude" | "needs_review";
+  missingInformation: string[];
+  reasonsEn: string[];
+  reasonsZh: string[];
+  summaryEn: string;
+  summaryZh: string;
+};
+
 export type StoredOpportunityFeedItem = {
+  aiAssessment?: StoredAiAssessment;
   noticeDetails?: NoticeDetail[];
   audience: string[];
   authorityName: string;

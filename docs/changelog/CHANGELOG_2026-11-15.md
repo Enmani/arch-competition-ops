@@ -129,3 +129,23 @@ The Windows scheduled task only runs while the owner's PC is on. The ledger and 
 
 - `apps/worker/src/arch_competition_ops/screening/triage.py`, `apps/worker/tests/test_ai_triage.py`, `.github/workflows/daily-ingest.yml`
 
+## Opportunity detail as a side sheet
+
+### Changed
+
+- Opening an opportunity from the list now slides a wide side sheet in from the right instead of navigating to a new page. Esc, the close button, a click on the scrim and the browser back button all close it and return to the same place in the list; the address still changes, so the link can be shared. A direct visit or a shared link opens the standalone page, which now has a back link.
+- The detail content is reorganised for a reader: image, title, deadline (with days left), value, location and issuer, then the official-notice, documents, map and watch actions, the AI overview with reasons to look, the participation excerpts, conditions, what the notice does not state, and the project type. Source bookkeeping (notice number, source kind, procurement method, classification codes, language, location precision) is folded into one section.
+- The AI summary, reasons and missing-information list were already stored with every screening result but never shown; they now reach the page through `aiAssessment`. The free-form missing-information entries are sorted into twelve plain topics and the model's processing remarks are dropped.
+- Removed from the page: the qualification score (an internal completeness count, not a judgement), extraction confidence, the discovery trail, the regions and competition-tag lists, and the machine-written source note. Raw field dumps in excerpts (`"sluitingsDatum": "2026-12-02T12:00:00"`) now show only a readable date; stated amounts such as `3000000.0 NOK` get digit grouping.
+- Section titles and labels in both languages avoid jargon in a formal register (for example "Costs and remuneration" for "Commercial", "后续委托方式" for "落地路径", "采购分类代码" for "CPV").
+
+### Validation
+
+- `npm run lint:web`, `npm run typecheck`, `npm run test:web` (103 tests, including the new detail-model tests; an amount pattern that read `300.000 EUR` as 300 was caught and fixed), `npm run test:storage` (93 tests).
+- Checked in Edge: click opens the sheet and changes the address, Esc closes it and restores the list, no console errors, no horizontal overflow at 390 px, light and dark, zh and en.
+
+### Modified Files
+
+- `apps/web/src/app/[locale]/{layout.tsx,@modal/**}`, `apps/web/src/components/{opportunity-detail-body.tsx,opportunity-drawer.tsx,opportunity-detail-surface.tsx}`, `apps/web/src/lib/opportunity-detail-model*.ts`, `apps/web/src/app/styles/{detail,layout,surfaces,tiles}.css`, `apps/web/src/i18n/dictionaries/*/detail.ts`
+- `packages/core/src/{ai-assessment.ts,index.ts}`, `packages/storage/src/opportunities/{repository.ts,types.ts}`, `packages/storage/src/{index.ts,ai-screening.test.ts}`
+- `docs/ARCHITECTURE.md`, `docs/DATA_CONTRACT.md`

@@ -9,7 +9,7 @@ export type CommonCopy = Pick<AppDictionary, "common">;
 
 const normalizeLookupKey = (value: string) => value.trim().toLowerCase().replace(/\s+/g, "_");
 
-const getIntlLocale = (locale: AppLocale) => intlLocaleTags[locale];
+export const getIntlLocale = (locale: AppLocale) => intlLocaleTags[locale];
 
 /** Replaces `{name}` placeholders; an unknown placeholder is left visible rather than dropped. */
 export const fillTemplate = (template: string, values: Record<string, string | number>) =>

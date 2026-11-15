@@ -116,13 +116,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-.detail-hero-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-md);
-}
-
 /* The card's watch control is a bare + in the image corner: no box, no plate. It appears on hover
    or keyboard focus, stays visible once the record is watched, and is always shown where there is
    no hover. The glyph is dark with a pale halo so it reads on a pale placeholder and on a photo. */
