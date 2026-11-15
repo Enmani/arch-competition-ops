@@ -112,11 +112,24 @@ test("the placeholder carries a dark palette so it follows the page's colour sch
   });
   // Colours come from classes, not from attributes, so the dark rules can replace them.
   assert.match(svg, /@media \(prefers-color-scheme: dark\)/);
-  assert.match(svg, /class="paper"/);
+  // No backing square: the card's own background shows through.
+  assert.doesNotMatch(svg, /class="paper"/);
   assert.doesNotMatch(svg, /fill="#f4f2ea"/);
   assert.doesNotMatch(svg, /stroke="#21201b"/);
-  // Dark paper is the lightest surface of the dark page, not a black hole.
-  assert.match(svg, /@media \(prefers-color-scheme: dark\) \{[^}]*\.paper \{ fill: #24231e; \}/);
+  // The inset keeps a paper square for legibility over a photograph; in the dark palette it is the
+  // lightest surface of the dark page, not a black hole.
+  const inset = buildOpportunityLocatorInsetSvg({
+    authorityName: "Commune de Maur",
+    geoLat: 47.3407,
+    geoLng: 8.671,
+    jurisdictionKey: "switzerland",
+    jurisdictionLabel: "Switzerland",
+    locationLabel: "Maur",
+    title: "Extension du complexe sportif",
+  });
+  assert.ok(inset);
+  assert.match(inset, /class="paper"/);
+  assert.match(inset, /@media \(prefers-color-scheme: dark\) \{[^}]*\.paper \{ fill: #24231e; \}/);
 });
 
 test("the inset map is the outline and one dot, and exists only for a position that is really known", () => {

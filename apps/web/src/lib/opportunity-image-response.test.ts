@@ -105,6 +105,7 @@ test("a prebuilt image is served without touching the database", async () => {
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("content-type"), "image/jpeg");
   assert.equal(response.headers.get("x-arch-image-source"), "asset");
+  assert.equal(response.headers.get("x-arch-image-attribution"), encodeURIComponent("Imagery (c) test"));
   assert.deepEqual(Buffer.from(await response.arrayBuffer()), jpeg);
   assert.deepEqual(lookedUp, []);
 });

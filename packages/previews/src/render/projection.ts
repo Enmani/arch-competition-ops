@@ -1,4 +1,4 @@
-// Web-Mercator projection and per-precision zoom and ring sizes.
+// Web-Mercator projection and per-precision zoom.
 import {
   satelliteTileSize,
   satelliteZoomWithLocality,
@@ -48,21 +48,4 @@ export const getPrecisionZoom = (
   return hasStreetNumber(candidate.address)
     ? satelliteZoomWithStreetNumber
     : satelliteZoomWithoutStreetNumber;
-};
-
-export const getPrecisionCircleRadiusPx = (precision: SatellitePreviewPrecision) => {
-  switch (precision) {
-    case "city":
-      return 118;
-    case "locality":
-      return 92;
-    case "square":
-      return 58;
-    case "site":
-      return 52;
-    case "street":
-      return 40;
-    default:
-      return 28;
-  }
 };

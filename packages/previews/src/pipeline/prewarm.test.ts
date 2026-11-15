@@ -12,6 +12,7 @@ import sharp from "sharp";
 import { loadPreviewConfig } from "../config";
 import { parsePreviewManifest } from "../manifest";
 import { createPipelineServices, type PipelineServices } from "./context";
+import { PREVIEW_ALGORITHM_VERSION } from "../version";
 import { runPrewarm } from "./prewarm";
 import { acquireLock, LockHeldError } from "./store";
 
@@ -124,7 +125,7 @@ test("generates a satellite image with attribution, records it, then skips uncha
     const entry = manifest?.entries["road-work"];
     assert.ok(entry);
     assert.equal(entry.kind, "satellite");
-    assert.equal(entry.algorithmVersion, "v2");
+    assert.equal(entry.algorithmVersion, PREVIEW_ALGORITHM_VERSION);
     assert.equal(entry.generatedAt, FIXED_NOW.toISOString());
     assert.match(entry.attribution ?? "", /Esri/);
     assert.ok(entry.locator && Math.abs(entry.locator.lat - 41.1005) < 1e-9);
@@ -132,7 +133,8 @@ test("generates a satellite image with attribution, records it, then skips uncha
     assert.equal(manifest?.entries["no-clue"].kind, "none");
     assert.equal(manifest?.entries["no-clue"].file, null);
 
-    // The image is a real 720x720 JPEG whose credit strip is darkened (the attribution bar).
+    // The image is a real 720x720 JPEG with nothing drawn on it: no credit bar, ring or label. The
+    // credit lives in the manifest (asserted above) and the site prints it as text.
     const imageFile = path.join(out, "images", entry.file as string);
     const metadata = await sharp(imageFile).metadata();
     assert.deepEqual([metadata.format, metadata.width, metadata.height], ["jpeg", 720, 720]);
@@ -143,7 +145,9 @@ test("generates a satellite image with attribution, records it, then skips uncha
     };
     const strip = await meanOf({ height: 20, left: 0, top: 698, width: 400 });
     const body = await meanOf({ height: 100, left: 0, top: 300, width: 400 });
-    assert.ok(strip < body * 0.7, `credit bar darkens the strip (${strip} vs ${body})`);
+    assert.ok(Math.abs(strip - body) < 8, `the bottom strip is plain imagery (${strip} vs ${body})`);
+    const centre = await meanOf({ height: 40, left: 340, top: 340, width: 40 });
+    assert.ok(Math.abs(centre - body) < 8, `no ring or dot is drawn on the picture (${centre} vs ${body})`);
 
     assert.equal(h.calls.nominatim, 1);
     assert.ok(h.calls.tiles >= 6);

@@ -32,6 +32,7 @@ export const OpportunityMedia = ({ slug }: OpportunityMediaProps) => {
   const [insetShown, setInsetShown] = useState(false);
   const [revealed, setRevealed] = useState(false);
   const [active, setActive] = useState(false);
+  const [credit, setCredit] = useState<string | null>(null);
 
   const base = `/api/opportunities/${slug}/image?rev=${opportunityImageRevision}`;
 
@@ -57,8 +58,12 @@ export const OpportunityMedia = ({ slug }: OpportunityMediaProps) => {
       if (!canvas || !locator) {
         return;
       }
-      if (!canvas.width) {
-        const size = Math.round(Math.min(MAX_CANVAS_PX, root.clientWidth * Math.min(window.devicePixelRatio || 1, 2)));
+      // A canvas starts at 300x150; it must be sized to the card (square) or it is stretched.
+      const size = Math.max(
+        1,
+        Math.round(Math.min(MAX_CANVAS_PX, root.clientWidth * Math.min(window.devicePixelRatio || 1, 2))),
+      );
+      if (canvas.width !== size || canvas.height !== size) {
         canvas.width = size;
         canvas.height = size;
       }
@@ -97,8 +102,9 @@ export const OpportunityMedia = ({ slug }: OpportunityMediaProps) => {
         return;
       }
       loading = true;
-      void loadSatellite(base).then(async (blob) => {
+      void loadSatellite(base).then(async (loaded) => {
         loading = false;
+        const blob = loaded?.blob;
         if (!blob) {
           missing = true;
           if (wanted) {
@@ -117,6 +123,7 @@ export const OpportunityMedia = ({ slug }: OpportunityMediaProps) => {
           return;
         }
         satellite = bitmap;
+        setCredit(loaded.attribution);
         setInsetShown(true);
         run();
       });
@@ -171,7 +178,7 @@ export const OpportunityMedia = ({ slug }: OpportunityMediaProps) => {
   }, [base]);
 
   return (
-    <div className="opportunity-media" ref={rootRef}>
+    <div className={`opportunity-media${active ? " is-active" : ""}`} ref={rootRef}>
       <Image
         alt=""
         className="opportunity-media-locator"
@@ -181,7 +188,8 @@ export const OpportunityMedia = ({ slug }: OpportunityMediaProps) => {
         src={`${base}&kind=locator`}
         unoptimized
       />
-      <canvas aria-hidden="true" className={`opportunity-media-canvas${active ? " is-active" : ""}`} ref={canvasRef} />
+      <canvas aria-hidden="true" className="opportunity-media-canvas" ref={canvasRef} />
+      {credit ? <p className={`imagery-credit${revealed ? " is-revealed" : ""}`}>{credit}</p> : null}
       {insetShown ? (
         <div className={`opportunity-media-inset${revealed ? " is-revealed" : ""}`}>
           <Image alt="" fill onError={() => setInsetShown(false)} sizes="10vw" src={`${base}&kind=inset`} unoptimized />

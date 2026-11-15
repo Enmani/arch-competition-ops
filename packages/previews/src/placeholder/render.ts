@@ -4,6 +4,9 @@
 // Outlines are precomputed by scripts/build-country-outlines.mjs into data/country-outlines.json,
 // fitted to the panel with a 40px inset.
 //
+// The full drawing has no backing (the card shows whatever is behind it); only the small inset map
+// keeps a paper square, because it sits over a photograph and must stay legible.
+//
 // Colours live in a <style> block, with a dark palette under prefers-color-scheme. An SVG shown
 // through <img> follows the embedding page's `color-scheme` (the site sets it from its theme
 // button), so the placeholder darkens with the page and needs no second URL. The dark paper is a
@@ -215,7 +218,6 @@ export const buildOpportunityLocatorPlaceholderSvg = (
     </pattern>
   </defs>
 
-  <rect x="${PANEL_START}" y="${PANEL_START}" width="${PANEL_SIZE}" height="${PANEL_SIZE}" class="paper" />
   <rect x="${PANEL_START}" y="${PANEL_START}" width="${PANEL_SIZE}" height="${PANEL_SIZE}" fill="url(#locator-grid)" />
   <path d="M${PANEL_START} 243H${PANEL_END} M${PANEL_START} 404H${PANEL_END} M221 ${PANEL_START}V${PANEL_END} M499 ${PANEL_START}V${PANEL_END}" class="ink" fill="none" stroke-opacity="${guideOpacity}" stroke-width="1.2" />
 

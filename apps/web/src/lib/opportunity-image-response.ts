@@ -95,13 +95,16 @@ export const createOpportunityImageHandler = (deps: OpportunityImageDeps) => {
       const versioned =
         new URL(request.url).searchParams.get("rev") === deps.revision &&
         preview.entry.algorithmVersion === deps.revision;
-      return new Response(new Uint8Array(preview.image).buffer, {
-        headers: {
-          "cache-control": cacheControl(versioned ? IMMUTABLE_CACHE : ASSET_CACHE),
-          "content-type": "image/jpeg",
-          "x-arch-image-source": "asset",
-        },
-      });
+      const headers: Record<string, string> = {
+        "cache-control": cacheControl(versioned ? IMMUTABLE_CACHE : ASSET_CACHE),
+        "content-type": "image/jpeg",
+        "x-arch-image-source": "asset",
+      };
+      // The credit is no longer drawn into the picture; the site prints it as text beside the image.
+      if (preview.entry.attribution) {
+        headers["x-arch-image-attribution"] = encodeURIComponent(preview.entry.attribution);
+      }
+      return new Response(new Uint8Array(preview.image).buffer, { headers });
     }
 
     const opportunity = await deps.getOpportunity(slug);

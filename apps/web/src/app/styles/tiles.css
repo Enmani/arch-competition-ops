@@ -47,7 +47,6 @@
   overflow: hidden;
   aspect-ratio: 1 / 1;
   margin-bottom: var(--space-lg);
-  background: var(--surface-strong);
 }
 
 .opportunity-media img {
@@ -58,7 +57,38 @@
 }
 
 /* Hover transition (see opportunity-media.tsx): a canvas over the resting locator carries the
-   mosaic and the satellite image; the inset map settles into the corner once it is sharp. */
+   mosaic and the satellite image; the inset map settles into the corner once it is sharp. The
+   locator is drawn without a backing, so while the canvas is active the resting picture is hidden. */
+.opportunity-media.is-active .opportunity-media-locator {
+  visibility: hidden;
+}
+
+/* Imagery credit (a licence condition of the tile provider): text in the bottom-right corner,
+   clear of the inset map, never part of the picture. Cards show it once the satellite is sharp. */
+.imagery-credit {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  max-width: 66%;
+  margin: 0;
+  padding: 2px var(--space-sm);
+  text-align: right;
+  background: oklch(15% 0.005 103 / 0.55);
+  color: oklch(96% 0.01 103);
+  font-size: 0.6875rem;
+  line-height: 1.35;
+  pointer-events: none;
+}
+
+.opportunity-media .imagery-credit {
+  opacity: 0;
+  transition: opacity 240ms var(--ease-out-quart);
+}
+
+.opportunity-media .imagery-credit.is-revealed {
+  opacity: 1;
+}
+
 .opportunity-media-canvas {
   position: absolute;
   inset: 0;
@@ -68,7 +98,7 @@
   pointer-events: none;
 }
 
-.opportunity-media-canvas.is-active {
+.opportunity-media.is-active .opportunity-media-canvas {
   opacity: 1;
 }
 

@@ -2,6 +2,7 @@ import Image from "next/image";
 
 import type { StoredOpportunityFeedItem } from "@arch-competition/storage";
 
+import { ImageryCredit } from "@/components/imagery-credit";
 import WatchToggleButton from "@/components/watch-toggle-button";
 import type { AppLocale } from "@/i18n/config";
 import { fillTemplate, formatLocalizedDate, getIntlLocale } from "@/i18n/format";
@@ -198,6 +199,7 @@ export const OpportunityDetailBody = ({
             src={`/api/opportunities/${opportunity.slug}/image?rev=${opportunityImageRevision}`}
             unoptimized
           />
+          <ImageryCredit url={`/api/opportunities/${opportunity.slug}/image?rev=${opportunityImageRevision}`} />
         </div>
         <div className="detail-head-copy">
           <p className="detail-kicker">

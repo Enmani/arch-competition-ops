@@ -222,3 +222,20 @@ Sign-in used a full-page POST, a 303 redirect and a full reload of the next page
 
 - `packages/previews/src/placeholder/{render.ts,render.test.ts}`, `apps/web/src/lib/{opportunity-image-response.ts,opportunity-image-response.test.ts,mosaic.ts,opportunity-satellite.ts}`, `apps/web/src/components/{opportunity-media.tsx,opportunity-stream-item.tsx}`, `apps/web/src/app/styles/tiles.css`
 
+## Hover transition fixes: stretched satellite, backing, clean image
+
+### Changed
+
+- Fixed the satellite image looking stretched: the canvas was never given a pixel size, so it stayed at the browser default of 300 x 150 and was stretched to the square card (about 2.3 times taller). It is now sized to the card on every frame (up to 720 px, device pixel ratio capped at 2).
+- The drawn locator has no backing square any more: the card shows whatever is behind it (the page, in both themes). The corner inset map keeps its paper square because it sits over a photograph. In the dark palette the country fill is a step lighter than the page.
+- The satellite images are now plain imagery: no white ring, dashed ring, centre dot, "LOCALITY"-style label or credit bar is drawn into them (`render/overlay.ts` and `render/attribution.ts` removed, `PREVIEW_ALGORITHM_VERSION` v2 to v3 so every image is regenerated). The imagery credit, which the tile provider requires, stays in the manifest, travels in the `x-arch-image-attribution` response header and is printed as text in the bottom-right corner of the revealed card and of the detail image (`components/imagery-credit.tsx`).
+- Regenerated locally with `prewarm:previews --publish`: 80 satellite images and 52 records without one, all v3. Production serves the old images until the next preview publish and deploy.
+
+### Validation
+
+- `npm run test:previews` (the prewarm test now asserts a clean picture: bottom strip and centre match the imagery), `test:web` (credit header), typecheck, lint. Checked in Edge, light and dark: rest, mosaic, sharp satellite and final frames; canvas 350 x 350 on a 350 px card.
+
+### Modified Files
+
+- `packages/previews/src/{render/satellite.ts,render/projection.ts,version.ts,config.ts,placeholder/render.ts,placeholder/render.test.ts,pipeline/prewarm.test.ts}`, `apps/web/src/lib/{opportunity-image-response.ts,opportunity-image-response.test.ts,opportunity-satellite.ts}`, `apps/web/src/components/{opportunity-media.tsx,imagery-credit.tsx,opportunity-detail-body.tsx}`, `apps/web/src/app/styles/tiles.css`
+

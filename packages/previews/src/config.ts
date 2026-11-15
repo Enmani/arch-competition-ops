@@ -16,7 +16,7 @@ export type PreviewConfig = {
   amapUrl: string;
   amapKey: string;
   tileUrlTemplate: string;
-  /** Text rendered onto every satellite image and stored in the manifest. */
+  /** Imagery credit stored in the manifest; the site prints it as text beside the image (it is not drawn into it). */
   tileAttribution: string;
   debug: boolean;
 };

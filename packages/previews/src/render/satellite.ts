@@ -1,10 +1,9 @@
-// Compose one satellite preview: tiles, precision ring and the imagery credit line.
+// Compose one satellite preview: the tiles and nothing else. The imagery credit is not drawn into
+// the picture; it travels in the manifest and the site prints it next to the image as text.
 import sharp from "sharp";
 
 import type { AddressCandidate, SatellitePreviewPrecision } from "../types";
 import { satelliteImageSize } from "./constants";
-import { buildAttributionOverlay } from "./attribution";
-import { buildPrecisionCircleOverlay } from "./overlay";
 import { getPrecisionZoom } from "./projection";
 import { fetchTiles, planTiles, type TileContext } from "./tiles";
 
@@ -34,10 +33,6 @@ export const renderSatellitePreview = async (
 
   return sharp(base)
     .modulate({ brightness: 1.02, saturation: 1.04 })
-    .composite([
-      { input: buildPrecisionCircleOverlay(precision), left: 0, top: 0 },
-      { input: buildAttributionOverlay(context.config.tileAttribution), left: 0, top: 0 },
-    ])
     .sharpen()
     .jpeg({ mozjpeg: true, quality: 84 })
     .toBuffer();
