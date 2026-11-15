@@ -1,0 +1,25 @@
+# AI maintenance note:
+# Keep all Turkiye source definitions in this file.
+# Put long portal lists or buyer lists in config/source_lists/ and reference them by path.
+# Do not add speculative enabled sources without verifying the official entry point first.
+# Checked 2026-11-15: the Chamber of Architects (mimarlarodasi.org.tr, mo.org.tr) resets the
+# connection from the worker host. The trade magazine arkitera.com has a WordPress feed with a
+# competition category, but its items are news and results, not a notice register.
+sources:
+  - source_id: tr_ekap_tenders
+    name: EKAP Public Procurement Platform
+    kind: official_procurement
+    jurisdiction: turkiye
+    base_url: https://ekapv2.kik.gov.tr/ekap/search
+    collector: disabled_scaffold
+    scan_method: api
+    extractor: generic_listing_html
+    source_tier: primary
+    priority: 0.7
+    enabled: false
+    regions:
+      - middle_east
+      - turkiye
+    languages:
+      - tr
+    notes: "Not integrable (checked 2026-11-15). The tender search API (b_ihalearama) answers HTTP 428 HUMAN_VERIFICATION_REQUIRED to a plain request: a human-verification gate that the worker must not get past."

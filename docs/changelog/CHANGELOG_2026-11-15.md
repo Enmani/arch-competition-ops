@@ -38,3 +38,25 @@ Fixed per-run caps silently sampled the newest notices (TED: 100 of about 1,200 
 - `apps/worker/src/arch_competition_ops/collectors/*` (new: `design_scope.py`, `oeffentlichevergabe.py`, `find_a_tender.py`, `uk_ocds.py`, `world_bank.py`, `anac_cpv_labels.py`)
 - `config/automation.yml`, `config/source_packs/**`, `config/skills/screen-architecture-opportunities/SKILL.md`, `.env.example`
 - `docs/ARCHITECTURE.md`, `docs/DATA_CONTRACT.md`, `docs/SETUP.md`
+
+## Middle East coverage
+
+### Changed
+
+- New region `middle_east` and jurisdictions United Arab Emirates, Saudi Arabia, Qatar, Oman, Bahrain, Kuwait, Jordan, Türkiye and Egypt (taxonomy, targeting filters, zh/en labels, country codes, preview outlines); language labels `ar` and `tr`.
+- Enabled: Abu Dhabi Government Procurement Gate and the UAE Ministry of Finance opportunities list; Qatar Monaqasat (own TLS context, verification on) and Ashghal; Bahrain Tender Board; Jordan JONEPS; the Islamic Development Bank tender list.
+- Shipped disabled: Saudi Etimad (its visitor list answers an image CAPTCHA unless the client sends browser-style headers, which is a decision for the owner), UNGM (its terms bar storing notices without written permission), Oman, Kuwait, Türkiye and Egypt scaffolds with the reason in each source's notes.
+- Not integrable under the repository rules: Dubai eSupply (`robots.txt` disallows `/esop`), Dubai Municipality, RTA, DEWA, ADNOC, EBRD ECEPP (terms ban automated reading), Kuwait CAPT and Türkiye EKAP (human-verification challenges).
+
+### Why
+
+Gulf national procurement is mostly behind registration; the sources above are the ones a script can read without a login, a CAPTCHA or a terms breach. Their notices run through the same triage, assessment and ledger as every other source.
+
+### Validation
+
+- `npm run check`; worker suite 762 tests; `npm run test:web`; live 7-day smoke per enabled collector (UAE 52, Qatar 72, Jordan 16, Bahrain 1, IsDB 35 documents).
+
+### Modified Files
+
+- `config/taxonomy.yml`, `config/filters.yml`, `config/source_packs/**`, `apps/web/src/i18n/dictionaries/*/taxonomy.ts`, `apps/worker/src/arch_competition_ops/location.py`, `packages/previews/data/*`
+- `apps/worker/src/arch_competition_ops/collectors/{adgpg,uae_mof,monaqasat,ashghal,bahrain_tender_board,joneps,etimad,ungm,isdb,mideast_common}.py`

@@ -4,17 +4,26 @@ import inspect
 from collections.abc import Callable
 from pathlib import Path
 
+from arch_competition_ops.collectors.adgpg import collect_adgpg_documents
 from arch_competition_ops.collectors.anac import collect_anac_documents
+from arch_competition_ops.collectors.ashghal import collect_ashghal_documents
+from arch_competition_ops.collectors.bahrain_tender_board import (
+    collect_bahrain_tender_board_documents,
+)
 from arch_competition_ops.collectors.base import CollectedSourceDocument
 from arch_competition_ops.collectors.boamp import collect_boamp_documents
 from arch_competition_ops.collectors.canadabuys import collect_canadabuys_documents
 from arch_competition_ops.collectors.competitions_archi import collect_competitions_archi_documents
 from arch_competition_ops.collectors.contracts_finder import collect_contracts_finder_documents
 from arch_competition_ops.collectors.doffin import collect_doffin_documents
+from arch_competition_ops.collectors.etimad import collect_etimad_documents
 from arch_competition_ops.collectors.find_a_tender import collect_find_a_tender_documents
 from arch_competition_ops.collectors.generic_pages import collect_generic_notice_pages
 from arch_competition_ops.collectors.generic_rss import collect_generic_rss_documents
 from arch_competition_ops.collectors.ggzy import collect_ggzy_documents
+from arch_competition_ops.collectors.isdb import collect_isdb_documents
+from arch_competition_ops.collectors.joneps import collect_joneps_documents
+from arch_competition_ops.collectors.monaqasat import collect_monaqasat_documents
 from arch_competition_ops.collectors.municipal import collect_municipal_buyer_profile_documents
 from arch_competition_ops.collectors.oeffentlichevergabe import (
     collect_oeffentlichevergabe_documents,
@@ -25,6 +34,8 @@ from arch_competition_ops.collectors.scp import collect_scp_documents
 from arch_competition_ops.collectors.simap import collect_simap_documents
 from arch_competition_ops.collectors.ted import collect_ted_documents
 from arch_competition_ops.collectors.tenderned import collect_tenderned_documents
+from arch_competition_ops.collectors.uae_mof import collect_uae_mof_documents
+from arch_competition_ops.collectors.ungm import collect_ungm_documents
 from arch_competition_ops.collectors.world_bank import collect_world_bank_documents
 from arch_competition_ops.models import SourceDefinition
 
@@ -54,6 +65,15 @@ COLLECTORS: dict[str, Collector] = {
     "disabled_scaffold": collect_scaffold_only_documents,
     "tenderned_publications_api": collect_tenderned_documents,
     "world_bank_procnotices": collect_world_bank_documents,
+    "ungm_notice_search": collect_ungm_documents,
+    "isdb_tender_list": collect_isdb_documents,
+    "adgpg_public_tenders": collect_adgpg_documents,
+    "mof_dpp_ajax_list": collect_uae_mof_documents,
+    "etimad_visitor_tenders": collect_etimad_documents,
+    "monaqasat_available_tenders": collect_monaqasat_documents,
+    "ashghal_open_tenders": collect_ashghal_documents,
+    "bahrain_tender_board_published": collect_bahrain_tender_board_documents,
+    "joneps_tender_invitations": collect_joneps_documents,
 }
 
 

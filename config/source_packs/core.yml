@@ -40,6 +40,45 @@ sources:
       - pt
     notes: World Bank-financed consulting-services invitations (requests for expressions of interest) from the procnotices API; awards and goods/works bids are skipped. Many are open to international firms; the market approach (national or international) is in the raw notice.
 
+  - source_id: ungm_public_notices
+    name: UN Global Marketplace Procurement Notices
+    kind: official_procurement
+    jurisdiction: global
+    base_url: https://www.ungm.org/Public/Notice
+    collector: ungm_notice_search
+    scan_method: html
+    extractor: generic_listing_html
+    source_tier: primary
+    priority: 0.8
+    enabled: false
+    regions:
+      - global
+    languages:
+      - en
+      - fr
+      - es
+      - ar
+    notes: Open notices of 32 UN organisations (UNOPS, UNDP, UN-Habitat, UNRWA, UNHCR, UNICEF...) read from the public notice list, no login, filtered server side to UNSPSC engineering, building and facility construction, and urban development codes. Kept disabled because the UNGM terms (section 5) bar storing or republishing its material in another retrieval system without written permission from registry@ungm.org; set enabled to true once that is granted.
+
+  - source_id: isdb_project_tenders
+    name: Islamic Development Bank Project Tenders
+    kind: official_procurement
+    jurisdiction: global
+    base_url: https://www.isdb.org/project-procurement/tenders
+    collector: isdb_tender_list
+    scan_method: html
+    extractor: generic_listing_html
+    source_tier: primary
+    priority: 0.7
+    enabled: true
+    regions:
+      - global
+    languages:
+      - en
+      - fr
+      - ar
+    notes: Open tenders, prequalifications, expressions of interest and general procurement notices of IsDB-financed projects in its member countries, from the public tender list (about 35 open, a few design-related); awards are skipped. The list has no publication date, so the whole open list is read each run.
+
   - source_id: competitions_archi
     name: Competitions.archi
     kind: aggregator

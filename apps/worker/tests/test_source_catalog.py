@@ -310,6 +310,15 @@ def test_catalog_loads_recent_non_eu_and_additional_europe_sources() -> None:
         "tenderned_contract_notices",
         "doffin_notices",
         "pcsp_syndicated_notices",
+        "ungm_public_notices",
+        "isdb_project_tenders",
+        "uae_adgpg_public_tenders",
+        "uae_mof_federal_tenders",
+        "sa_etimad_visitor_tenders",
+        "qa_monaqasat_available_tenders",
+        "qa_ashghal_open_tenders",
+        "bh_tender_board_published_tenders",
+        "jo_joneps_tender_invitations",
     }.issubset(source_ids)
 
 

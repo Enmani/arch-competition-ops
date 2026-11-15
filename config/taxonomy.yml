@@ -23,6 +23,16 @@ regions:
   - austria
   - iberia
   - nordics
+  - middle_east
+  - united_arab_emirates
+  - saudi_arabia
+  - qatar
+  - oman
+  - bahrain
+  - kuwait
+  - jordan
+  - turkiye
+  - egypt
 
 languages:
   - en
@@ -39,6 +49,8 @@ languages:
   - gl
   - eu
   - zh
+  - ar
+  - tr
 
 source_kinds:
   - official_procurement

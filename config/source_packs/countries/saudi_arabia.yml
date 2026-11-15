@@ -1,0 +1,27 @@
+# AI maintenance note:
+# Keep all Saudi Arabia source definitions in this file.
+# Put long portal lists or buyer lists in config/source_lists/ and reference them by path.
+# Do not add speculative enabled sources without verifying the official entry point first.
+# Checked 2026-11-15 and not integrable: Etimad's main portal (login redirect; only the visitor
+# list below is public), NEOM and Diriyah (no public RFP list; diriyah.sa answers 403), ROSHN
+# (marketing site; the 2026 MUSAHAMA design competition closed on 2026-03-05). Not reachable
+# from the worker host: the Ministry of Culture Architecture and Design Commission and the
+# Saudi Architects site.
+sources:
+  - source_id: sa_etimad_visitor_tenders
+    name: Etimad Visitor Tender List
+    kind: official_procurement
+    jurisdiction: saudi_arabia
+    base_url: https://tenders.etimad.sa/Tender/AllTendersForVisitor
+    collector: etimad_visitor_tenders
+    scan_method: api
+    extractor: generic_listing_html
+    source_tier: primary
+    priority: 0.8
+    enabled: false
+    regions:
+      - middle_east
+      - saudi_arabia
+    languages:
+      - ar
+    notes: "Saudi national tender platform, public visitor list (consulting professions, all sub-activities; contracting only when design-and-build; about 15 open design-relevant tenders a week). The collector reads the visitor page's own JSON endpoint and each tender's server-rendered detail page, and skips the portal's newer RFx tenders (no public page). DISABLED on purpose: the portal sits behind F5 bot protection that answers a bot-style User-Agent with an image CAPTCHA and serves the page to the browser-style headers every collector in this repository sends. The collector never solves or retries a challenge (it raises), but whether reading the list this way is acceptable is the owner's decision; enable it only after that. robots.txt is 404; no terms against automated reading were found."

@@ -1,0 +1,24 @@
+# AI maintenance note:
+# Keep all Jordan source definitions in this file.
+# Put long portal lists or buyer lists in config/source_lists/ and reference them by path.
+# Do not add speculative enabled sources without verifying the official entry point first.
+# Checked 2026-11-15 and not integrable: the Greater Amman Municipality site (does not resolve from
+# the worker host; its tenders run through JONEPS).
+sources:
+  - source_id: jo_joneps_tender_invitations
+    name: JONEPS Tender Invitations
+    kind: official_procurement
+    jurisdiction: jordan
+    base_url: https://www.joneps.gov.jo/ep/invt/selectListTendInvitAL.do?menuId=EP03000000&upperMenuId=EP03010000&subMenuId=EP03010100&noneMn=Y
+    collector: joneps_tender_invitations
+    scan_method: api
+    extractor: generic_listing_html
+    source_tier: primary
+    priority: 0.82
+    enabled: true
+    regions:
+      - middle_east
+      - jordan
+    languages:
+      - ar
+    notes: "Official Jordan Online E-Procurement System tender invitations, public search without login: technical services (the portal's own design and supervision type), services of the consulting-and-studies sub-type, and design-and-build works, about 20 open design tenders a month. The collector reads the search form (session cookie plus CSRF token) with server-side publication and deadline ranges. The notice address is the stateless detail page, which fills most of its fields by script, so the list row is the evidence. No robots.txt. The pilot OCDS data on the site is a static download, not a live feed."

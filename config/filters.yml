@@ -11,6 +11,16 @@ targeting:
     - sweden
     - norway
     - united_kingdom
+    - middle_east
+    - united_arab_emirates
+    - saudi_arabia
+    - qatar
+    - oman
+    - bahrain
+    - kuwait
+    - jordan
+    - turkiye
+    - egypt
   languages:
     - en
     - it

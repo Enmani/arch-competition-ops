@@ -1,0 +1,41 @@
+# AI maintenance note:
+# Keep all Qatar source definitions in this file.
+# Put long portal lists or buyer lists in config/source_lists/ and reference them by path.
+# Do not add speculative enabled sources without verifying the official entry point first.
+# Checked 2026-11-15: Qatar Foundation and Msheireb publish no tender list on their public sites.
+# The Public Works Authority also lists its tenders on monaqasat.mof.gov.qa (one-line subjects).
+sources:
+  - source_id: qa_monaqasat_available_tenders
+    name: Qatar Monaqasat Available Tenders
+    kind: official_procurement
+    jurisdiction: qatar
+    base_url: https://monaqasat.mof.gov.qa/TendersOnlineServices/AvailableMinistriesTenders/1
+    collector: monaqasat_available_tenders
+    scan_method: api
+    extractor: generic_listing_html
+    source_tier: primary
+    priority: 0.8
+    enabled: true
+    regions:
+      - middle_east
+      - qatar
+    languages:
+      - ar
+    notes: "Official Qatari state procurement site (Ministry of Finance): about 230 tenders open for bids from ministries and state bodies, public list and per-tender pages, no login. Suppliers-and-service-providers tenders are kept (consultancy has no sector of its own); contracting tenders only when design-and-build. The server sends its TLS certificate without the intermediate and resets TLS 1.2 handshakes from current OpenSSL, so the collector uses its own client with certificate verification on, the one missing DigiCert intermediate added, and TLS 1.3. robots.txt allows everything; the terms of use forbid republishing the site content without consent."
+  - source_id: qa_ashghal_open_tenders
+    name: Ashghal (Public Works Authority) Open Tenders
+    kind: official_procurement
+    jurisdiction: qatar
+    base_url: https://www.ashghal.gov.qa/en/Tenders/pages/erPTenders.aspx
+    collector: ashghal_open_tenders
+    scan_method: api
+    extractor: generic_listing_html
+    source_tier: primary
+    priority: 0.82
+    enabled: true
+    regions:
+      - middle_east
+      - qatar
+    languages:
+      - en
+    notes: "Official Public Works Authority list of open tenders, expressions of interest and prequalifications, in English (about 36 open tenders, mostly roads and infrastructure plus consultancy and design-and-build). The category column is empty, so every open row is kept in AI mode. The EOI and prequalification lists were empty on 2026-11-15 and their row layout is unconfirmed. Documents sit in the Oracle e-tendering system behind a supplier login."

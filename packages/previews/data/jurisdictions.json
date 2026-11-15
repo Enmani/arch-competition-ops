@@ -7,6 +7,15 @@
     ],
     "geocoderCountryCode": "at"
   },
+  "bahrain": {
+    "code": "BH",
+    "comparisonNames": [
+      "bahrain",
+      "manama"
+    ],
+    "geocoderCountryCode": "bh",
+    "atlasName": "Bahrain"
+  },
   "belgium": {
     "code": "BE",
     "comparisonNames": [
@@ -67,6 +76,15 @@
       "danmark"
     ],
     "geocoderCountryCode": "dk"
+  },
+  "egypt": {
+    "code": "EG",
+    "comparisonNames": [
+      "egypt",
+      "cairo"
+    ],
+    "geocoderCountryCode": "eg",
+    "atlasName": "Egypt"
   },
   "estonia": {
     "code": "EE",
@@ -136,6 +154,23 @@
     "atlasName": "Italy",
     "polygonCount": 3
   },
+  "jordan": {
+    "code": "JO",
+    "comparisonNames": [
+      "jordan",
+      "amman"
+    ],
+    "geocoderCountryCode": "jo",
+    "atlasName": "Jordan"
+  },
+  "kuwait": {
+    "code": "KW",
+    "comparisonNames": [
+      "kuwait"
+    ],
+    "geocoderCountryCode": "kw",
+    "atlasName": "Kuwait"
+  },
   "latvia": {
     "code": "LV",
     "comparisonNames": [
@@ -187,6 +222,15 @@
     "geocoderCountryCode": "no",
     "atlasName": "Norway"
   },
+  "oman": {
+    "code": "OM",
+    "comparisonNames": [
+      "oman",
+      "muscat"
+    ],
+    "geocoderCountryCode": "om",
+    "atlasName": "Oman"
+  },
   "poland": {
     "code": "PL",
     "comparisonNames": [
@@ -202,12 +246,32 @@
     ],
     "geocoderCountryCode": "pt"
   },
+  "qatar": {
+    "code": "QA",
+    "comparisonNames": [
+      "qatar",
+      "doha"
+    ],
+    "geocoderCountryCode": "qa",
+    "atlasName": "Qatar"
+  },
   "romania": {
     "code": "RO",
     "comparisonNames": [
       "romania"
     ],
     "geocoderCountryCode": "ro"
+  },
+  "saudi_arabia": {
+    "code": "SA",
+    "comparisonNames": [
+      "saudi arabia",
+      "ksa",
+      "riyadh",
+      "jeddah"
+    ],
+    "geocoderCountryCode": "sa",
+    "atlasName": "Saudi Arabia"
   },
   "serbia": {
     "code": "RS",
@@ -261,6 +325,29 @@
     ],
     "geocoderCountryCode": "ch",
     "atlasName": "Switzerland"
+  },
+  "turkiye": {
+    "code": "TR",
+    "comparisonNames": [
+      "turkiye",
+      "turkey",
+      "istanbul",
+      "ankara"
+    ],
+    "geocoderCountryCode": "tr",
+    "atlasName": "Turkey"
+  },
+  "united_arab_emirates": {
+    "code": "AE",
+    "comparisonNames": [
+      "united arab emirates",
+      "uae",
+      "dubai",
+      "abu dhabi",
+      "sharjah"
+    ],
+    "geocoderCountryCode": "ae",
+    "atlasName": "United Arab Emirates"
   },
   "united_kingdom": {
     "code": "UK",

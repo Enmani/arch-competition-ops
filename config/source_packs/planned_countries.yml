@@ -9,6 +9,7 @@ countries:
   - australia
   - austria
   - azerbaijan
+  - bahrain
   - belarus
   - belgium
   - bosnia_and_herzegovina
@@ -19,6 +20,7 @@ countries:
   - cyprus
   - czechia
   - denmark
+  - egypt
   - estonia
   - finland
   - france
@@ -29,7 +31,9 @@ countries:
   - iceland
   - ireland
   - italy
+  - jordan
   - kosovo
+  - kuwait
   - latvia
   - liechtenstein
   - lithuania
@@ -42,11 +46,14 @@ countries:
   - new_zealand
   - north_macedonia
   - norway
+  - oman
   - poland
   - portugal
+  - qatar
   - romania
   - russia
   - san_marino
+  - saudi_arabia
   - serbia
   - slovakia
   - slovenia
@@ -55,5 +62,6 @@ countries:
   - switzerland
   - turkiye
   - ukraine
+  - united_arab_emirates
   - united_kingdom
   - vatican_city

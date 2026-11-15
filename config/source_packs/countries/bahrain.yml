@@ -1,0 +1,23 @@
+# AI maintenance note:
+# Keep all Bahrain source definitions in this file.
+# Put long portal lists or buyer lists in config/source_lists/ and reference them by path.
+# Do not add speculative enabled sources without verifying the official entry point first.
+sources:
+  - source_id: bh_tender_board_published_tenders
+    name: Bahrain Tender Board Published Tenders
+    kind: official_procurement
+    jurisdiction: bahrain
+    base_url: https://www.tenderboard.gov.bh/Tenders/PublicTenders/
+    collector: bahrain_tender_board_published
+    scan_method: api
+    extractor: generic_listing_html
+    source_tier: primary
+    priority: 0.8
+    enabled: true
+    regions:
+      - middle_east
+      - bahrain
+    languages:
+      - en
+      - ar
+    notes: "Official Tender Board list of open public tenders and auctions (about 460 open, about 45 a week) with a public English detail page per tender that carries CPV codes. The collector keeps CPV 71 and 7993, tenders without a CPV code, and design-and-build works, and reads the list through the page's own JSON page methods. No robots.txt; the terms of use only bar republishing the content. Tender documents sit behind the eTendering login."

@@ -1,0 +1,46 @@
+# AI maintenance note:
+# Keep all United Arab Emirates source definitions in this file.
+# Put long portal lists or buyer lists in config/source_lists/ and reference them by path.
+# Do not add speculative enabled sources without verifying the official entry point first.
+# Checked 2026-11-15 and not integrable (login, robots.txt or no list): Dubai eSupply
+# (robots.txt disallows /esop; the guest list needs a session), Dubai Municipality and RTA
+# (tenders run through eSupply; their own bid pages are empty), Sharjah Municipality
+# (robots.txt disallows everything), DEWA, ADNOC and Meraas (403), the ADGPG supplier portal
+# (login), Aldar, Nakheel, Emaar, Masdar and the free zones (supplier registration only).
+sources:
+  - source_id: uae_adgpg_public_tenders
+    name: Abu Dhabi Government Procurement Gate Public Tenders
+    kind: official_procurement
+    jurisdiction: united_arab_emirates
+    base_url: https://supplier.adgpg.gov.ae/pages/tender-list.html
+    collector: adgpg_public_tenders
+    scan_method: api
+    extractor: generic_listing_html
+    source_tier: primary
+    priority: 0.8
+    enabled: true
+    regions:
+      - middle_east
+      - united_arab_emirates
+    languages:
+      - en
+      - ar
+    notes: Official public tender list of the Abu Dhabi Government Procurement Gate (about 100 open RFQs and RFIs of Abu Dhabi government entities such as DMT, ADPIC, DCT and the Department of Health). Collector reads the open list through the gate's own no-login JSON endpoints and each tender's detail for its UNSPSC category and opening date; product categories are dropped, works-only tenders stay only when they are design-and-build, and tenders without a category stay. Tender documents sit behind the supplier login.
+  - source_id: uae_mof_federal_tenders
+    name: UAE Ministry of Finance Federal Tenders
+    kind: official_procurement
+    jurisdiction: united_arab_emirates
+    base_url: https://mof.gov.ae/en/public-finance/government-procurement/current-business-opportunities/
+    collector: mof_dpp_ajax_list
+    scan_method: api
+    extractor: generic_listing_html
+    source_tier: primary
+    priority: 0.6
+    enabled: true
+    regions:
+      - middle_east
+      - united_arab_emirates
+    languages:
+      - en
+      - ar
+    notes: Official Ministry of Finance list of open federal RFQs (about 60 at a time, mostly facilities management, IT and supplies; few design commissions). Each row links to its own page on procurement.gov.ae, which robots.txt disallows and which is script-rendered, so that page is never fetched; the list row carries title, entity, open date and close date.
