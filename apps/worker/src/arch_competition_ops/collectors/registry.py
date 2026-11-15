@@ -11,16 +11,21 @@ from arch_competition_ops.collectors.canadabuys import collect_canadabuys_docume
 from arch_competition_ops.collectors.competitions_archi import collect_competitions_archi_documents
 from arch_competition_ops.collectors.contracts_finder import collect_contracts_finder_documents
 from arch_competition_ops.collectors.doffin import collect_doffin_documents
+from arch_competition_ops.collectors.find_a_tender import collect_find_a_tender_documents
 from arch_competition_ops.collectors.generic_pages import collect_generic_notice_pages
 from arch_competition_ops.collectors.generic_rss import collect_generic_rss_documents
 from arch_competition_ops.collectors.ggzy import collect_ggzy_documents
 from arch_competition_ops.collectors.municipal import collect_municipal_buyer_profile_documents
+from arch_competition_ops.collectors.oeffentlichevergabe import (
+    collect_oeffentlichevergabe_documents,
+)
 from arch_competition_ops.collectors.pcsp import collect_pcsp_documents
 from arch_competition_ops.collectors.scaffold import collect_scaffold_only_documents
 from arch_competition_ops.collectors.scp import collect_scp_documents
 from arch_competition_ops.collectors.simap import collect_simap_documents
 from arch_competition_ops.collectors.ted import collect_ted_documents
 from arch_competition_ops.collectors.tenderned import collect_tenderned_documents
+from arch_competition_ops.collectors.world_bank import collect_world_bank_documents
 from arch_competition_ops.models import SourceDefinition
 
 Collector = Callable[..., list[CollectedSourceDocument]]
@@ -41,11 +46,14 @@ COLLECTORS: dict[str, Collector] = {
     "generic_notice_pages": collect_generic_notice_pages,
     "canadabuys_csv": collect_canadabuys_documents,
     "contracts_finder_ocds": collect_contracts_finder_documents,
+    "find_a_tender_ocds": collect_find_a_tender_documents,
     "doffin_search_api": collect_doffin_documents,
     "ggzy_public_notices": collect_ggzy_documents,
     "pcsp_atom_feed": collect_pcsp_documents,
+    "oeffentlichevergabe_ocds": collect_oeffentlichevergabe_documents,
     "disabled_scaffold": collect_scaffold_only_documents,
     "tenderned_publications_api": collect_tenderned_documents,
+    "world_bank_procnotices": collect_world_bank_documents,
 }
 
 

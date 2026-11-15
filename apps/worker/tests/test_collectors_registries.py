@@ -235,6 +235,7 @@ def test_collect_pcsp_documents_transforms_public_design_relevant_entries() -> N
   <body>
     <span id="viewns:test:label_OC">Contracting Party</span><span id="viewns:test:text_OC">Ayuntamiento de Demo</span>
     <span id="viewns:test:label_Expediente">File</span><span id="viewns:test:text_Expediente">BIB-2026-001</span>
+    <span id="viewns:test:label_EnlaceLic">Link to the bidding</span><a id="viewns:test:text_EnlaceLic" href="#">https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&amp;idEvl=design123</a>
     <span id="viewns:test:label_ObjetoContrato">Subject of the contract</span><span id="viewns:test:text_ObjetoContrato">Servicio de redacción del proyecto básico y de ejecución para la biblioteca municipal</span>
     <span id="viewns:test:label_Estado">State of the Tender</span><span id="viewns:test:text_Estado">Publicada</span>
     <span id="viewns:test:label_ValorContrato">Estimated value of the contract</span><span id="viewns:test:text_ValorContrato">2235848.83</span>
@@ -251,6 +252,7 @@ def test_collect_pcsp_documents_transforms_public_design_relevant_entries() -> N
   <body>
     <span id="viewns:test:label_OC">Contracting Party</span><span id="viewns:test:text_OC">Ayuntamiento de Demo</span>
     <span id="viewns:test:label_Expediente">File</span><span id="viewns:test:text_Expediente">CLEAN-2026-001</span>
+    <span id="viewns:test:label_EnlaceLic">Link to the bidding</span><a id="viewns:test:text_EnlaceLic" href="#">https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&amp;idEvl=clean999</a>
     <span id="viewns:test:label_ObjetoContrato">Subject of the contract</span><span id="viewns:test:text_ObjetoContrato">Servicio de limpieza viaria</span>
     <span id="viewns:test:label_CPV">CPV code</span><span id="viewns:test:text_CPV">90910000-9 Cleaning services.</span>
     <span id="viewns:test:label_Procedimiento">Procurement procedure</span><span id="viewns:test:text_Procedimiento">Abierto</span>
@@ -262,6 +264,7 @@ def test_collect_pcsp_documents_transforms_public_design_relevant_entries() -> N
     documents = collect_pcsp_documents(
         source,
         limit=5,
+        publication_date_from="2026-04-19",
         fetch_text=lambda url: {
             source.base_url: feed_xml,
             "https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&idEvl=design123": relevant_detail_html,
@@ -283,6 +286,23 @@ def test_collect_pcsp_documents_transforms_public_design_relevant_entries() -> N
     assert payload["cpv"] == ["71221000"]
     assert payload["officialUrl"].endswith("design123")
     assert payload["procedureType"] == "Abierto"
+
+    # The portal can answer one deeplink with another tender held in its session. That page
+    # must not supply this notice's facts: the Atom entry stays the evidence.
+    other_tender = relevant_detail_html.replace("idEvl=design123", "idEvl=other777")
+    documents = collect_pcsp_documents(
+        source,
+        limit=5,
+        publication_date_from="2026-04-19",
+        include_unclassified=True,
+        fetch_text=lambda url: feed_xml if url == source.base_url else other_tender,
+    )
+    payload = json.loads(documents[0].payload)
+    assert payload["title"] == (
+        "Servicio de redaccion del proyecto basico y de ejecucion para la biblioteca municipal"
+    )
+    assert payload["deadline"] is None
+    assert payload["rawNoticeHtml"] == ""
 
 
 def test_collect_ted_documents_transforms_search_results_into_parser_payloads() -> None:
@@ -335,6 +355,174 @@ def test_collect_ted_documents_transforms_search_results_into_parser_payloads() 
     assert payload["officialUrl"] == "https://ted.europa.eu/en/notice/261998-2026/html"
 
 
+def test_ted_collector_reads_every_page_of_the_window() -> None:
+    source = _build_source(
+        "ted_design_notices",
+        collector="ted_search_api",
+        name="TED Design and Procurement Notices",
+        jurisdiction="eu",
+        base_url="https://ted.europa.eu/",
+        scan_method="api",
+        extractor="ted_notice_parser",
+    )
+
+    def notice(number: int) -> dict:
+        return {
+            "notice-identifier": f"id-{number}",
+            "classification-cpv": ["71200000"],
+            "notice-title": {"eng": f"Design services {number}"},
+            "links": {"htmlDirect": {"ENG": f"https://ted.europa.eu/en/notice/{number}-2026/html"}},
+        }
+
+    # Iteration paging: each response hands over the token for the next one.
+    pages = {
+        None: ([notice(n) for n in range(250)], "t2"),
+        "t2": ([notice(n) for n in range(250, 300)], "t3"),
+        "t3": ([], None),
+    }
+    seen_tokens = []
+
+    def fetch(_url, body):
+        if "FT ~" in body["query"]:
+            return {"notices": []}  # the design-and-build pass
+        assert body["paginationMode"] == "ITERATION" and body["limit"] == 250
+        assert "SORT BY" not in body["query"]  # a sorted iteration stops early (live check)
+        token = body.get("iterationNextToken")
+        seen_tokens.append(token)
+        notices, next_token = pages[token]
+        return {"notices": notices, "iterationNextToken": next_token}
+
+    documents = collect_ted_documents(
+        source, limit=2000, include_unclassified=True, fetch_json=fetch
+    )
+
+    # An empty page ends the window; nothing beyond it is requested.
+    assert seen_tokens == [None, "t2", "t3"]
+    assert len(documents) == 300
+    assert len({d.source_url for d in documents}) == 300
+
+
+def test_ted_ai_query_asks_only_for_notices_that_open_participation() -> None:
+    source = _build_source(
+        "ted_design_notices",
+        collector="ted_search_api",
+        name="TED Design and Procurement Notices",
+        jurisdiction="eu",
+        base_url="https://ted.europa.eu/",
+        scan_method="api",
+        extractor="ted_notice_parser",
+    )
+    queries = []
+    collect_ted_documents(
+        source,
+        publication_date_from="2026-01-01",
+        include_unclassified=True,
+        fetch_json=lambda _url, body: queries.append(body["query"]) or {"notices": []},
+    )
+    # Award results would otherwise take most of the newest-first candidate window.
+    open_types = "notice-type IN (cn-standard cn-social cn-desg pin-cfc-standard pin-cfc-social)"
+    assert queries[0] == (
+        f"(classification-cpv = 71* OR classification-cpv = 7993*) AND {open_types} "
+        "AND publication-date >= 20260101"
+    )
+    # One more query: open works notices whose full text names a design-and-build model.
+    assert len(queries) == 2
+    assert queries[1].startswith(f"classification-cpv = 45* AND {open_types} AND (FT ~ ")
+    assert 'FT ~ "conception réalisation"' in queries[1]
+    assert queries[1].endswith("AND publication-date >= 20260101")
+
+
+def test_ted_ai_mode_merges_confirmed_design_and_build_works_notices_newest_first() -> None:
+    source = _build_source(
+        "ted_design_notices",
+        collector="ted_search_api",
+        name="TED Design and Procurement Notices",
+        jurisdiction="eu",
+        base_url="https://ted.europa.eu/",
+        scan_method="api",
+        extractor="ted_notice_parser",
+    )
+
+    def notice(number: str, published: str, title: str, cpv: str, description: str = "") -> dict:
+        return {
+            "publication-number": number,
+            "publication-date": f"{published}+01:00",
+            "classification-cpv": [cpv],
+            "notice-title": {"eng": title},
+            "description-proc": {"fra": description} if description else {},
+            "links": {"htmlDirect": {"ENG": f"https://ted.europa.eu/en/notice/{number}/html"}},
+        }
+
+    scoped = [
+        notice(
+            "3-2026",
+            "2026-11-13",
+            "France – Architectural services – Maîtrise d'oeuvre",
+            "71200000",
+        ),
+        notice(
+            "1-2026", "2026-11-10", "Spain – Engineering services – Asistencia técnica", "71300000"
+        ),
+    ]
+    works = [
+        notice(
+            "4-2026",
+            "2026-11-14",
+            "France – Construction work – Hôpital Jean Verdier",
+            "45000000",
+            "Marché public global sectoriel de conception-réalisation du Nouvel Hôpital.",
+        ),
+        # A full-text hit deeper in the notice, not confirmed on the title and description.
+        notice(
+            "2-2026",
+            "2026-11-12",
+            "Spain – Construction work – Ejecución de las obras del Proyecto Básico y de Ejecución",
+            "45000000",
+        ),
+        # Also in the design scope: kept once.
+        notice(
+            "3-2026",
+            "2026-11-13",
+            "France – Architectural services – Maîtrise d'oeuvre et appalto integrato",
+            "71200000",
+        ),
+    ]
+
+    def fetch(_url, body):
+        return {"notices": works if "FT ~" in body["query"] else scoped}
+
+    documents = collect_ted_documents(
+        source,
+        limit=2000,
+        publication_date_from="2026-11-08",
+        include_unclassified=True,
+        fetch_json=fetch,
+    )
+
+    assert [d.source_url.rsplit("/", 2)[-2] for d in documents] == ["4-2026", "3-2026", "1-2026"]
+    assert json.loads(documents[1].payload)["title"].endswith("Maîtrise d'oeuvre")
+
+
+def test_ted_source_search_query_skips_the_design_and_build_pass() -> None:
+    source = _build_source(
+        "ted_custom",
+        collector="ted_search_api",
+        name="TED custom scope",
+        jurisdiction="eu",
+        base_url="https://ted.europa.eu/",
+        scan_method="api",
+        extractor="ted_notice_parser",
+    ).model_copy(update={"search_query": "classification-cpv = 71220000"})
+    queries = []
+    collect_ted_documents(
+        source,
+        publication_date_from="2026-01-01",
+        include_unclassified=True,
+        fetch_json=lambda _url, body: queries.append(body["query"]) or {"notices": []},
+    )
+    assert queries == ["(classification-cpv = 71220000) AND publication-date >= 20260101"]
+
+
 def test_collect_boamp_documents_transforms_records_into_parser_payloads() -> None:
     from arch_competition_ops.collectors.boamp import collect_boamp_documents
 
@@ -353,6 +541,7 @@ def test_collect_boamp_documents_transforms_records_into_parser_payloads() -> No
             {
                 "idweb": "26-38966",
                 "id": "26_38966",
+                "url_avis": "https://www.boamp.fr/pages/avis/?q=idweb:26-38966",
                 "objet": (
                     "MISSION DE MAITRISE D'OEUVRE RELATIVE A LA RESTRUCTURATION LOURDE D'UN COLLEGE"
                 ),
@@ -396,11 +585,13 @@ def test_collect_boamp_documents_transforms_records_into_parser_payloads() -> No
     documents = collect_boamp_documents(
         source,
         limit=1,
+        publication_date_from="2026-04-01",
         fetch_json=lambda _url: response,
     )
 
     assert len(documents) == 1
-    assert documents[0].source_url == "https://www.boamp.fr/"
+    # Each record links to its own notice page, never the shared site root.
+    assert documents[0].source_url == "https://www.boamp.fr/pages/avis/?q=idweb:26-38966"
 
     payload = json.loads(documents[0].payload)
     assert payload["title"].startswith("MISSION DE MAITRISE D'OEUVRE")
@@ -410,9 +601,10 @@ def test_collect_boamp_documents_transforms_records_into_parser_payloads() -> No
     assert payload["cpv"] == ["71241000"]
     assert payload["estimatedValueEur"] == 380000
     assert payload["estimatedValueText"] == "EUR 380,000"
+    assert payload["officialUrl"] == documents[0].source_url
 
 
-def test_collect_boamp_documents_caps_live_query_limit_to_100() -> None:
+def test_collect_boamp_documents_requests_pages_of_100() -> None:
     from arch_competition_ops.collectors.boamp import collect_boamp_documents
 
     source = _build_source(

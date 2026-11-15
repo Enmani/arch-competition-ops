@@ -127,7 +127,10 @@ def validate_evidence(decision: ScreeningDecision, evidence_fields: dict[str, st
     decision.evidence = supported
     if not supported:
         warnings.append("No source-grounded decision evidence")
-    if warnings:
+    # An exclusion that keeps at least one verified quote stays hidden: a single paraphrased
+    # quote must not turn a clear "not a design commission" into a visible review item.
+    # A recommendation is shown to the reader, so any unsupported claim still downgrades it.
+    if not supported or (warnings and decision.decision == "recommend"):
         decision.decision = "needs_review"
     details: list[NoticeDetail] = []
     for detail in decision.notice_details:

@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import json
 from contextlib import nullcontext
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from openai import APIError, APIStatusError, OpenAI
 
-from arch_competition_ops import clock
 from arch_competition_ops.bootstrap import initialize_database
 from arch_competition_ops.collectors.base import CollectedSourceDocument
 from arch_competition_ops.config_loader import load_targeting_preferences
@@ -17,6 +16,7 @@ from arch_competition_ops.locking import exclusive_lock
 from arch_competition_ops.normalizers.text import strip_html
 from arch_competition_ops.screening.catalog import get_model
 from arch_competition_ops.screening.client import ScreeningError, create_client
+from arch_competition_ops.screening.inputs import with_today
 from arch_competition_ops.screening.models import canonical_json
 from arch_competition_ops.screening.preferences import load_screening_instructions
 from arch_competition_ops.screening.source_evidence import notice_evidence
@@ -27,6 +27,10 @@ from arch_competition_ops.storage.screening import (
     reserve_screening,
 )
 
+# One Decisions call answers one question per candidate; larger lists are split into batches
+# instead of being cut, so no candidate is dropped unread.
+TRIAGE_BATCH_SIZE = 100
+
 
 @dataclass
 class TriageResult:
@@ -35,6 +39,7 @@ class TriageResult:
     deferred: int
     cost_usd: float
     cached: bool
+    excluded_documents: list[CollectedSourceDocument] = field(default_factory=list)
 
 
 def triage_documents(
@@ -46,9 +51,48 @@ def triage_documents(
 ) -> TriageResult:
     if not documents:
         return TriageResult([], 0, 0, 0, False)
-    candidates = documents[:100]
     preferences = load_targeting_preferences(settings).model_dump(mode="json")
     prose = load_screening_instructions(settings)
+    retained: list[int] = []
+    excluded: list[int] = []
+    priorities: dict[int, float] = {}
+    cost = 0.0
+    all_cached = True
+    for start in range(0, len(documents), TRIAGE_BATCH_SIZE):
+        batch = documents[start : start + TRIAGE_BATCH_SIZE]
+        answers, batch_cost, cached = _triage_batch(
+            settings, batch, preferences=preferences, prose=prose, client=client
+        )
+        cost += batch_cost
+        all_cached = all_cached and cached
+        # Missing/refused/unrecognized answers are retained as uncertain.
+        for offset in range(len(batch)):
+            index = start + offset
+            choice, confidence = answers.get(f"candidate_{offset}", ("uncertain", 0))
+            if choice == "exclude" and confidence >= settings.ai_triage_exclude_threshold:
+                excluded.append(index)
+                continue
+            retained.append(index)
+            priorities[index] = 2 + confidence if choice == "keep" else 1
+    retained.sort(key=lambda i: (-priorities[i], i))
+    return TriageResult(
+        [documents[i] for i in retained[:limit]],
+        len(excluded),
+        max(0, len(retained) - limit),
+        cost,
+        all_cached,
+        [documents[i] for i in excluded],
+    )
+
+
+def _triage_batch(
+    settings: Settings,
+    candidates: list[CollectedSourceDocument],
+    *,
+    preferences: dict[str, Any],
+    prose: str,
+    client: OpenAI | None,
+) -> tuple[dict[str, tuple[str, float]], float, bool]:
     previews = []
     for index, document in enumerate(candidates):
         text = strip_html(notice_evidence(document.payload)) or ""
@@ -57,7 +101,6 @@ def triage_documents(
         previews.append({"id": index, "source_url": document.source_url, "preview": preview})
     input_text = canonical_json(
         {
-            "date": clock.today().isoformat(),
             "preferences": preferences,
             "instructions": prose,
             "candidates": previews,
@@ -100,7 +143,7 @@ def triage_documents(
     body = {"model": "gpt-6-luna", "input": input_text, "questions": questions}
     input_json = canonical_json({"endpoint": "decisions", **body})
     if len(input_json.encode("utf-8")) > 200_000:
-        raise ValueError("Candidate triage input exceeds 200 KB; reduce the candidate multiplier")
+        raise ValueError("Candidate triage batch exceeds 200 KB; lower TRIAGE_BATCH_SIZE")
     model = get_model("gpt-6-luna")
     db = initialize_database(settings)
     source_url = candidates[0].source_url
@@ -127,7 +170,9 @@ def triage_documents(
                 with nullcontext(client) if client is not None else create_client(settings) as api:
                     # The pinned official SDK has no decisions resource yet. Its documented
                     # generic endpoint method retains the SDK's authentication/timeouts.
-                    response = api.post("/decisions", body=body, cast_to=dict[str, Any])
+                    # The cache identity excludes today's date; only the request carries it.
+                    sent = {**body, "input": with_today(input_text)}
+                    response = api.post("/decisions", body=sent, cast_to=dict[str, Any])
             except APIError as exc:
                 status = exc.status_code if isinstance(exc, APIStatusError) else None
                 rejected = status is not None and 400 <= status < 500
@@ -163,7 +208,6 @@ def triage_documents(
                 output_tokens=0,
                 cost_usd=cost,
             )
-    # Missing/refused/unrecognized answers are retained as uncertain.
     answers: dict[str, tuple[str, float]] = {}
     for answer in response["answers"]:
         if not isinstance(answer, dict) or answer.get("type") != "choice":
@@ -176,19 +220,4 @@ def triage_documents(
             and 0 <= confidence <= 1
         ):
             answers[str(answer.get("name"))] = (choice, confidence)
-    retained = []
-    priorities: dict[int, float] = {}
-    for index in range(len(candidates)):
-        choice, confidence = answers.get(f"candidate_{index}", ("uncertain", 0))
-        if choice == "exclude" and confidence >= settings.ai_triage_exclude_threshold:
-            continue
-        retained.append(index)
-        priorities[index] = 2 + confidence if choice == "keep" else 1
-    retained.sort(key=lambda i: (-priorities[i], i))
-    return TriageResult(
-        [candidates[i] for i in retained[:limit]],
-        len(candidates) - len(retained),
-        max(0, len(retained) - limit) + max(0, len(documents) - len(candidates)),
-        cost,
-        bool(cached),
-    )
+    return answers, cost, bool(cached)

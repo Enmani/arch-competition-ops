@@ -1,24 +1,65 @@
+"""Spain's public sector procurement platform (PCSP), Atom syndication feed.
+
+Checked against the live feed in 2026-11:
+
+* The feed is a chain of files. The first holds the latest few dozen entries; each file's
+  ``<link rel="next">`` names an archive file (``..._YYYYMMDD_HHMMSS[_n].atom``) of about 500
+  entries and 13-17 MB, newest first. A 7-day window (2026-11-08 to 2026-11-14) was 31 files,
+  14,787 entries and 12,754 distinct tenders; the server does not compress them.
+* An entry is one update of a tender: the same tender reappears each time its state changes, so
+  the newest entry in the window is its current state.
+* Each entry embeds the CODICE ``ContractFolderStatus``: ``ContractFolderStatusCode`` (PRE prior
+  notice, PUB open for bids, EV under evaluation, ADJ awarded, RES resolved, ANUL cancelled),
+  ``TenderingProcess/ProcedureCode`` (``8`` = design contest, "concurso de proyectos") and the
+  CPV codes of the project and its lots (``ItemClassificationCode``). Of the 2,960 open tenders
+  in that window, 249 had a CPV code under 71 or 7993, 22 had none (all property leases and
+  sales) and 2 more were design contests outside that CPV scope.
+
+The AI design scope is defined in ``collectors.design_scope`` and applied locally to each entry,
+including design-and-build contracts ("redacción del proyecto y ejecución de las obras") whose
+title names the model whatever their CPV codes.
+"""
+
 from __future__ import annotations
 
 import json
+import logging
 import re
 import xml.etree.ElementTree as ET
+from collections.abc import Callable, Iterator
+from datetime import date, timedelta
+from urllib.parse import parse_qs, urlsplit
 
+from arch_competition_ops import clock
 from arch_competition_ops.collectors.base import CollectedSourceDocument
 from arch_competition_ops.collectors.common import (
-    fetch_text_get,
+    DEFAULT_HEADERS,
     parse_money_value,
 )
+from arch_competition_ops.collectors.design_scope import has_design_cpv, is_design_and_build
 from arch_competition_ops.collectors.relevance import (
     has_built_environment_context,
     is_design_relevant,
 )
+from arch_competition_ops.http import get_default_client
 from arch_competition_ops.models import SourceDefinition
 from arch_competition_ops.normalizers.dates import parse_date_string, slash_order_for_jurisdiction
 from arch_competition_ops.normalizers.money import format_money_text
 from arch_competition_ops.normalizers.text import extract_cpv_codes, normalize_text, strip_html
 
+logger = logging.getLogger(__name__)
+
 ATOM_NS = {"atom": "http://www.w3.org/2005/Atom"}
+DEFAULT_LOOKBACK_DAYS = 7
+# A 2026-11 week was 31 feed files; the cap leaves room for a longer window and stops a loop.
+FEED_MAX_FILES = 80
+# Archive files are 13-17 MB; the cap only stops a runaway response.
+FEED_MAX_BYTES = 50 * 1024 * 1024
+FEED_TIMEOUT_SECONDS = 120.0
+# AI scope (``collectors.design_scope``), or a design contest whatever its CPV code; only tenders
+# still open for bids.
+DESIGN_CONTEST_PROCEDURE_CODE = "8"
+OPEN_FOLDER_STATES = frozenset({"PUB"})
 SUMMARY_FIELD_PATTERN = re.compile(r"\s*([^:;]+):\s*(.*?)(?=(?:;\s*[^:;]+:)|$)")
 LABEL_PATTERN = re.compile(
     r'<span[^>]*id="[^"]*:label_([^"]+)"[^>]*>(.*?)</span>',
@@ -83,13 +124,98 @@ PCSP_NEGATIVE_MARKERS = (
 )
 
 
+FetchText = Callable[[str], str]
+
+
 def _default_fetch_text(url: str) -> str:
-    return fetch_text_get(
+    # Feed files and detail pages share one fetcher; the larger cap and timeout are for the feed.
+    return get_default_client().get_text(
         url,
         headers={
+            **DEFAULT_HEADERS,
             "Accept": "application/atom+xml, application/xml;q=0.9, text/html;q=0.8, */*;q=0.5",
         },
+        max_bytes=FEED_MAX_BYTES,
+        timeout=FEED_TIMEOUT_SECONDS,
     )
+
+
+def _window_start(publication_date_from: str | None) -> str:
+    if publication_date_from:
+        return date.fromisoformat(publication_date_from).isoformat()
+    return (clock.today() - timedelta(days=DEFAULT_LOOKBACK_DAYS)).isoformat()
+
+
+def _feed_link(root: ET.Element, rel: str) -> str | None:
+    for link in root.findall("atom:link", ATOM_NS):
+        href = (link.get("href") or "").strip()
+        if href and (link.get("rel") or "").strip() == rel:
+            return href
+    return None
+
+
+def _feed_entries(fetcher: FetchText, first_url: str, window_start: str) -> Iterator[ET.Element]:
+    """Entries updated inside the window, newest first, following the feed's ``next`` links.
+
+    Files are read one at a time and only as long as the caller keeps asking. Reading stops
+    after the first file that reaches entries older than the window.
+    """
+    url: str | None = first_url
+    visited: set[str] = set()
+    for _ in range(FEED_MAX_FILES):
+        if url is None or url in visited:
+            return
+        visited.add(url)
+        root = ET.fromstring(fetcher(url))
+        reached_older = False
+        for entry in root.findall("atom:entry", ATOM_NS):
+            updated = parse_date_string(
+                entry.findtext("atom:updated", default="", namespaces=ATOM_NS) or ""
+            )
+            if updated and updated < window_start:
+                reached_older = True
+                continue
+            yield entry
+        if reached_older:
+            return
+        url = _feed_link(root, "next")
+    if url is not None and url not in visited:
+        logger.warning(
+            "PCSP feed paging stopped after %d files; older entries were not read", FEED_MAX_FILES
+        )
+
+
+def _local_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
+
+
+def _entry_codes(entry: ET.Element) -> tuple[str | None, str | None, list[str]]:
+    """``(folder status, procedure code, CPV codes)`` from the entry's CODICE block."""
+    status = procedure = None
+    cpv_codes: list[str] = []
+    for element in entry.iter():
+        name = _local_name(element.tag)
+        text = (element.text or "").strip()
+        if name == "ContractFolderStatusCode" and status is None:
+            status = text.upper() or None
+        elif name == "ProcedureCode" and procedure is None:
+            procedure = text or None
+        elif name == "ItemClassificationCode":
+            code = text[:8]
+            if len(code) == 8 and code.isdigit() and code not in cpv_codes:
+                cpv_codes.append(code)
+    return status, procedure, cpv_codes
+
+
+def _in_ai_scope(
+    status: str | None, procedure: str | None, cpv_codes: list[str], title: str
+) -> bool:
+    # A missing state or CPV code cannot rule a tender out; only stated facts exclude it.
+    if status is not None and status not in OPEN_FOLDER_STATES:
+        return False
+    if procedure == DESIGN_CONTEST_PROCEDURE_CODE or not cpv_codes:
+        return True
+    return has_design_cpv(cpv_codes) or is_design_and_build(title)
 
 
 def _parse_summary_fields(summary: str) -> dict[str, str]:
@@ -136,6 +262,19 @@ def _extract_detail_fields(detail_html: str) -> dict[str, str]:
         if normalized_label:
             fields[normalized_label] = value
     return fields
+
+
+def _detail_belongs_to(detail_fields: dict[str, str], detail_url: str) -> bool:
+    """The portal can answer a deeplink with a shell or with another tender held in its session.
+
+    The page states its own deeplink; anything else must not supply this notice's facts.
+    """
+    link = _pick_value(detail_fields, "EnlaceLic", "link_to_the_bidding")
+    if not link:
+        return False
+    page_id = parse_qs(urlsplit(link).query).get("idEvl")
+    requested_id = parse_qs(urlsplit(detail_url).query).get("idEvl")
+    return page_id == requested_id if requested_id else link == detail_url
 
 
 def _pick_value(mapping: dict[str, str], *keys: str) -> str | None:
@@ -197,43 +336,48 @@ def collect_pcsp_documents(
     *,
     limit: int = 20,
     publication_date_from: str | None = None,
-    fetch_text: callable | None = None,
+    fetch_text: FetchText | None = None,
     include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
     fetcher = fetch_text or _default_fetch_text
-    feed_xml = fetcher(source.base_url)
-    root = ET.fromstring(feed_xml)
-
     documents: list[CollectedSourceDocument] = []
     max_candidates = max(limit * 10, 40)
     inspected = 0
+    # Tenders already decided by a newer entry in the window (emitted or skipped).
     seen_urls: set[str] = set()
     seen_notice_ids: set[str] = set()
 
-    for entry in root.findall("atom:entry", ATOM_NS):
+    for entry in _feed_entries(fetcher, source.base_url, _window_start(publication_date_from)):
         title = (entry.findtext("atom:title", default="", namespaces=ATOM_NS) or "").strip()
         summary = entry.findtext("atom:summary", default="", namespaces=ATOM_NS) or ""
         updated = parse_date_string(
             entry.findtext("atom:updated", default="", namespaces=ATOM_NS) or ""
         )
         summary_fields = _parse_summary_fields(summary)
-        state = (summary_fields.get("estado") or "").strip().upper()
         detail_url = _extract_entry_link(entry)
 
-        if publication_date_from and updated and updated < publication_date_from:
+        if not title or not detail_url or detail_url in seen_urls:
             continue
-        if not title or not detail_url or (not include_unclassified and state not in LIVE_STATES):
-            continue
-        if detail_url in seen_urls:
-            continue
-        if not include_unclassified and not _is_candidate_pcsp_notice(title, summary):
+        seen_urls.add(detail_url)
+        status, procedure, entry_cpv_codes = _entry_codes(entry)
+        state = status or (summary_fields.get("estado") or "").strip().upper()
+        if include_unclassified:
+            # Scope on the entry's structured codes before any detail page is fetched.
+            if not _in_ai_scope(state or None, procedure, entry_cpv_codes, title):
+                continue
+        elif state not in LIVE_STATES or not _is_candidate_pcsp_notice(title, summary):
             continue
 
         inspected += 1
         detail_html = fetcher(detail_url)
         detail_fields = _extract_detail_fields(detail_html)
+        if not _detail_belongs_to(detail_fields, detail_url):
+            # Keep the Atom entry as the evidence; an empty page tells enrichment not to refetch.
+            detail_html, detail_fields = "", {}
         detail_text = " ".join(detail_fields.values())
-        cpv_codes = extract_cpv_codes(_pick_value(detail_fields, "CPV", "cpv_code"))
+        cpv_codes = (
+            extract_cpv_codes(_pick_value(detail_fields, "CPV", "cpv_code")) or entry_cpv_codes
+        )
         if not include_unclassified and (
             not _is_relevant_pcsp_notice(title, summary, detail_text, cpv_codes)
         ):
@@ -291,7 +435,6 @@ def collect_pcsp_documents(
             },
             ensure_ascii=False,
         )
-        seen_urls.add(detail_url)
         if notice_id:
             seen_notice_ids.add(notice_id)
         documents.append(CollectedSourceDocument(source_url=detail_url, payload=payload))

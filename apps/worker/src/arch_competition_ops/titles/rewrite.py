@@ -1,4 +1,4 @@
-"""AI stage of display-title derivation: condense long titles into one uniform short form.
+"""AI stage of display-title derivation: one uniform short Chinese and English title per notice.
 
 One request carries many titles, so the instructions are paid for once per batch. The request is
 cached and budgeted through the same ledger as screening (``ai_screening_runs``), so the daily and
@@ -86,14 +86,18 @@ class TitleInput:
 
 @dataclass(frozen=True)
 class CondensedTitle:
-    title_en: str
-    title_zh: str
+    """Each language is checked on its own; a failed one is ``None`` and falls back to the rules."""
+
+    title_en: str | None
+    title_zh: str | None
 
 
 @dataclass
 class BatchResult:
+    # Every title the model answered, including ones whose languages were all rejected: an
+    # answered title is final for this model and is not sent again (a retry would be paid).
     titles: dict[str, CondensedTitle]
-    rejected: int
+    rejected: int  # rejected language versions
     cost_usd: float
     cached: bool
 
@@ -111,21 +115,26 @@ def _tidy(title: str) -> str:
     return re.sub(r"\s+", " ", title).strip().rstrip(".,;:–-— ").strip()
 
 
-def accept_condensed(source_title: str, pair: TitlePair) -> CondensedTitle | None:
-    """The pair if it is usable, otherwise ``None``. Mechanical checks only; no model is trusted."""
-    title_en, title_zh = _tidy(pair.title_en), space_cjk_latin(_tidy(pair.title_zh))
-    if not title_en or not title_zh:
-        return None
-    if _CJK.search(title_en) or not _CJK.search(title_zh):
-        return None
-    if display_width(title_en) > MAX_EN_WIDTH or display_width(title_zh) > MAX_ZH_WIDTH:
-        return None
+def accept_condensed(source_title: str, pair: TitlePair) -> CondensedTitle:
+    """The usable language versions of ``pair``. Mechanical checks only; no model is trusted.
+
+    The languages are judged separately, so an over-long English title does not also discard a
+    good Chinese translation.
+    """
     # No invented figures: every number in a display title must occur in the source title.
     source_numbers = set(_NUMBER.findall(source_title))
-    for candidate in (title_en, title_zh):
-        if not set(_NUMBER.findall(candidate)) <= source_numbers:
+
+    def usable(title: str, *, chinese: bool, max_width: int) -> str | None:
+        if not title or bool(_CJK.search(title)) != chinese or display_width(title) > max_width:
             return None
-    return CondensedTitle(title_en=title_en, title_zh=title_zh)
+        return title if set(_NUMBER.findall(title)) <= source_numbers else None
+
+    return CondensedTitle(
+        title_en=usable(_tidy(pair.title_en), chinese=False, max_width=MAX_EN_WIDTH),
+        title_zh=usable(
+            space_cjk_latin(_tidy(pair.title_zh)), chinese=True, max_width=MAX_ZH_WIDTH
+        ),
+    )
 
 
 def build_request(items: Sequence[TitleInput]) -> str:
@@ -241,13 +250,13 @@ def condense_batch(
     except ValidationError:
         raise ScreeningError("Title output rejected (invalid_schema)", cost_usd=cost) from None
     titles: dict[str, CondensedTitle] = {}
-    seen: set[int] = set()
+    rejected = 0
     for pair in batch.items:
-        if not 0 <= pair.id < len(items) or pair.id in seen:
+        if not 0 <= pair.id < len(items) or items[pair.id].competition_id in titles:
             continue
-        seen.add(pair.id)
         source = items[pair.id]
         accepted = accept_condensed(source.source_title, pair)
-        if accepted is not None:
-            titles[source.competition_id] = accepted
-    return BatchResult(titles, len(items) - len(titles), cost, bool(cached))
+        rejected += (accepted.title_en is None) + (accepted.title_zh is None)
+        titles[source.competition_id] = accepted
+    # A title the model skipped is not in ``titles`` and stays pending for a later run.
+    return BatchResult(titles, rejected, cost, bool(cached))

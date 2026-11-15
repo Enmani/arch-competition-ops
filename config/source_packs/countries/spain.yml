@@ -22,4 +22,4 @@ sources:
       - ca
       - gl
       - eu
-    notes: Official Plataforma de Contratacion del Sector Publico syndication Atom feed. Enabled through a bounded Atom-plus-detail collector that filters for architecture-relevant procurement and preserves the public detail URL as the official trace.
+    notes: Official Plataforma de Contratacion del Sector Publico syndication Atom feed. The collector follows the feed archive through the whole window, keeps open tenders in the design scope of collectors/design_scope.py before fetching details, and preserves the public detail URL as the official trace.

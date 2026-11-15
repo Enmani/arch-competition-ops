@@ -47,7 +47,9 @@ class Settings(BaseSettings):
     ai_reasoning_effort: Literal["low", "medium", "high", "xhigh", "max"] = "high"
     ai_fetch_details: bool = True
     ai_triage_enabled: bool = True
-    ai_candidate_multiplier: int = Field(default=5, ge=1, le=10)
+    # Most candidates read per source run before triage; the notice ledger skips those already
+    # screened, so this bounds only a first run or a criteria change, not daily cost.
+    ai_candidate_cap: int = Field(default=2000, ge=1, le=10000)
     ai_triage_exclude_threshold: float = Field(default=0.98, ge=0.8, le=1)
     ai_daily_budget_usd: float = Field(default=1, ge=0, allow_inf_nan=False)
     ai_preferences: Path = DEFAULT_AI_SKILL

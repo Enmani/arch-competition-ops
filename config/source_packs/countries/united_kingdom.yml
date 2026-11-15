@@ -20,3 +20,19 @@ sources:
     languages:
       - en
     notes: Official UK Contracts Finder OCDS search endpoint for live tender notices. Current collector keeps only built-environment and design-relevant tenders.
+  - source_id: uk_find_a_tender_notices
+    name: UK Find a Tender Notices
+    kind: official_procurement
+    jurisdiction: united_kingdom
+    base_url: https://www.find-tender.service.gov.uk/api/1.0/ocdsReleasePackages
+    collector: find_a_tender_ocds
+    scan_method: api
+    extractor: generic_listing_html
+    source_tier: primary
+    enabled: true
+    regions:
+      - europe
+      - united_kingdom
+    languages:
+      - en
+    notes: Official UK Find a Tender OCDS release packages (UK notices no longer go to TED since Brexit). Collector keeps open tender-stage notices with CPV 71* or 7993*, or design contests, one per ocid.

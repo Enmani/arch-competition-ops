@@ -14,7 +14,7 @@ from support import write_minimal_config
 from arch_competition_ops.models import CompetitionRecord
 from arch_competition_ops.settings import Settings
 from arch_competition_ops.storage import upsert_competition
-from arch_competition_ops.titles.clean import clean_title, needs_condensing
+from arch_competition_ops.titles.clean import clean_title
 from arch_competition_ops.titles.rewrite import TitlePair, accept_condensed, space_cjk_latin
 from arch_competition_ops.titles.service import ai_source_token, polish_titles
 
@@ -85,18 +85,6 @@ def test_clean_title_never_returns_an_empty_title():
     assert clean_title("   ") == ""
 
 
-def test_long_and_all_caps_titles_go_to_the_ai_stage():
-    short = "Haus 1 Neubau Schule Ost"
-    assert not needs_condensing(short, clean_title(short))
-    long_title = "Sanierung und Erweiterung der Kindertagesstätte Haus der Kinder in Musterstadt"
-    assert needs_condensing(long_title, clean_title(long_title))
-    shouting = "CONCOURS DE MAITRISE D'OEUVRE"
-    assert needs_condensing(shouting, clean_title(shouting))
-    # A CJK character is as wide as two Latin letters.
-    assert needs_condensing("文" * 31, "文" * 31)
-    assert not needs_condensing("文" * 30, "文" * 30)
-
-
 def _pair(**overrides) -> TitlePair:
     values = {
         "id": 0,
@@ -109,19 +97,27 @@ def _pair(**overrides) -> TitlePair:
 
 def test_ai_titles_must_not_invent_numbers():
     source = "Sanierung Kindertagesstätte Haus der Kinder, HOAI 2021, Lph 1 bis 9"
-    assert accept_condensed(source, _pair()) is not None
-    assert accept_condensed(source, _pair(title_en="Haus der Kinder daycare, phases 1–12")) is None
-    assert (
-        accept_condensed(source, _pair(title_zh="Haus der Kinder 幼儿园改扩建（15 个月）")) is None
+    assert accept_condensed(source, _pair()).title_en is not None
+    invented_en = accept_condensed(source, _pair(title_en="Haus der Kinder daycare, phases 1–12"))
+    # Each language is judged on its own: the good Chinese title survives a bad English one.
+    assert invented_en.title_en is None and invented_en.title_zh is not None
+    invented_zh = accept_condensed(
+        source, _pair(title_zh="Haus der Kinder 幼儿园改扩建（15 个月）")
     )
+    assert invented_zh.title_zh is None
 
 
 def test_ai_titles_must_be_the_right_language_and_length():
     source = "Sanierung Kindertagesstätte Haus der Kinder"
-    assert accept_condensed(source, _pair(title_en="幼儿园改扩建")) is None
-    assert accept_condensed(source, _pair(title_zh="Haus der Kinder refurbishment")) is None
-    assert accept_condensed(source, _pair(title_en="x" * 90)) is None
-    assert accept_condensed(source, _pair(title_en="  ", title_zh="幼儿园")) is None
+    assert accept_condensed(source, _pair(title_en="幼儿园改扩建")).title_en is None
+    assert (
+        accept_condensed(source, _pair(title_zh="Haus der Kinder refurbishment")).title_zh is None
+    )
+    long_en = accept_condensed(
+        source, _pair(title_en="x" * 90, title_zh="Haus der Kinder 幼儿园改扩建")
+    )
+    assert long_en.title_en is None and long_en.title_zh is not None
+    assert accept_condensed(source, _pair(title_en="  ", title_zh="幼儿园")).title_en is None
 
 
 def test_ai_titles_drop_trailing_punctuation():
@@ -129,7 +125,6 @@ def test_ai_titles_drop_trailing_punctuation():
         "Haus der Kinder",
         _pair(title_en="Haus der Kinder refurbishment.", title_zh="Haus der Kinder 幼儿园改扩建 –"),
     )
-    assert accepted is not None
     assert accepted.title_en == "Haus der Kinder refurbishment"
     assert accepted.title_zh == "Haus der Kinder 幼儿园改扩建"
 
@@ -222,7 +217,8 @@ def test_rules_stage_stores_a_cleaned_title_without_any_network(title_workspace)
 
     summary = polish_titles(title_workspace, use_ai=False)
 
-    assert (summary.cleaned, summary.pending_ai, summary.batches) == (1, 0, 0)
+    # The title still awaits its bilingual AI pass, but no request is made without AI.
+    assert (summary.cleaned, summary.pending_ai, summary.batches) == (1, 1, 0)
     row = _row(title_workspace, competition_id)
     assert row["title"] == "323443 - Proposed UniRec New Build Project"
     assert row["display_title"] == "Proposed UniRec New Build Project"
@@ -231,7 +227,7 @@ def test_rules_stage_stores_a_cleaned_title_without_any_network(title_workspace)
     assert polish_titles(title_workspace, use_ai=False).cleaned == 0
 
 
-def test_ai_stage_condenses_only_long_titles_in_one_batched_request(title_workspace):
+def test_ai_stage_gives_every_title_both_languages_in_one_batched_request(title_workspace):
     short_id, long_id = _store(
         title_workspace, "Taihape Grandstand Restoration Project", LONG_TITLE
     )
@@ -240,20 +236,28 @@ def test_ai_stage_condenses_only_long_titles_in_one_batched_request(title_worksp
     payload = {
         "items": [
             {
+                "id": 1,
+                "title_en": "Taihape grandstand restoration",
+                "title_zh": "Taihape 看台修复",
+            },
+            {
                 "id": 0,
                 "title_en": "Haus der Kinder daycare: refurbishment and extension",
                 "title_zh": "Haus der Kinder 幼儿园改扩建（HOAI 1–9 阶段）",
-            }
+            },
         ]
     }
 
     summary = polish_titles(title_workspace, use_ai=True, client=_client(calls, payload))
 
+    # Short titles are translated too, in the same request as the long ones.
     assert len(calls) == 1
     sent = json.loads(calls[0]["input"])["titles"]
-    assert [item["title"] for item in sent] == [clean_title(LONG_TITLE)]
+    assert sorted(item["title"] for item in sent) == sorted(
+        ["Taihape Grandstand Restoration Project", clean_title(LONG_TITLE)]
+    )
     assert calls[0]["reasoning"] == {"effort": "low"}
-    assert (summary.batches, summary.condensed, summary.rejected) == (1, 1, 0)
+    assert (summary.batches, summary.condensed, summary.rejected) == (1, 2, 0)
     assert summary.cost_usd > 0
 
     long_row = _row(title_workspace, long_id)
@@ -262,7 +266,7 @@ def test_ai_stage_condenses_only_long_titles_in_one_batched_request(title_worksp
     assert long_row["display_title_source"] == ai_source_token(title_workspace.ai_model)
     assert long_row["title"] == LONG_TITLE
     short_row = _row(title_workspace, short_id)
-    assert short_row["display_title_en"] is None
+    assert short_row["display_title_zh"] == "Taihape 看台修复"
     assert short_row["display_title"] == "Taihape Grandstand Restoration Project"
 
     # Up to date: no further request.
@@ -270,21 +274,26 @@ def test_ai_stage_condenses_only_long_titles_in_one_batched_request(title_worksp
     assert len(calls) == 1
 
 
-def test_rejected_ai_titles_fall_back_to_the_cleaned_title(title_workspace):
+def test_rejected_ai_titles_fall_back_and_are_not_retried(title_workspace):
     (competition_id,) = _store(title_workspace, LONG_TITLE)
+    calls: list[dict] = []
     payload = {
         "items": [
             {"id": 0, "title_en": "Daycare refurbishment, phases 1–12", "title_zh": "幼儿园改扩建"}
         ]
     }
 
-    summary = polish_titles(title_workspace, use_ai=True, client=_client([], payload))
+    summary = polish_titles(title_workspace, use_ai=True, client=_client(calls, payload))
 
-    assert (summary.condensed, summary.rejected) == (0, 1)
+    assert (summary.condensed, summary.rejected) == (1, 1)
     row = _row(title_workspace, competition_id)
     assert row["display_title"] == clean_title(LONG_TITLE)
-    assert row["display_title_en"] is None
-    assert row["display_title_source"] == "rules-1"
+    assert row["display_title_en"] is None  # invented "12": English falls back to the rules
+    assert row["display_title_zh"] == "幼儿园改扩建"
+    assert row["display_title_source"] == ai_source_token(title_workspace.ai_model)
+    # The model's answer is final for this title: no paid retry on the next run.
+    assert polish_titles(title_workspace, use_ai=True, client=_client(calls, payload)).batches == 0
+    assert len(calls) == 1
 
 
 def test_identical_requests_are_served_from_the_ledger(title_workspace):

@@ -18,3 +18,20 @@ sources:
       - de
       - en
     notes: Germany seed for official municipal procurement pages, currently sourced from Berlin, Frankfurt, Stuttgart, Hamburg, Munich, Cologne, and Dusseldorf municipal publishing surfaces.
+  - source_id: de_oeffentlichevergabe_notices
+    name: Datenservice Öffentlicher Einkauf (oeffentlichevergabe.de)
+    kind: official_procurement
+    jurisdiction: germany
+    base_url: https://oeffentlichevergabe.de/api/notice-exports
+    collector: oeffentlichevergabe_ocds
+    scan_method: api
+    extractor: generic_listing_html
+    source_tier: primary
+    priority: 0.86
+    enabled: true
+    regions:
+      - europe
+      - germany
+    languages:
+      - de
+    notes: Germany's national notice data service. Daily OCDS exports (ocds.zip joined with ocds2.zip) cover every German platform, including below-EU-threshold notices. The collector keeps open contract notices with CPV 71* or 7993* and skips notices issued under an EU directive, which TED already publishes.

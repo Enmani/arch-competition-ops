@@ -1,4 +1,9 @@
-"""Derive display titles for stored opportunities: rules for everything, AI only where needed."""
+"""Derive display titles for stored opportunities: rules for everything, then one bilingual AI pass.
+
+Every title gets a Chinese and an English display title once (a translation for short titles, a
+condensed form for long ones). A row already derived by the current model is skipped, and a changed
+source title clears the derived columns (storage/merge.py), so only new or changed titles are paid.
+"""
 
 from __future__ import annotations
 
@@ -17,7 +22,7 @@ from arch_competition_ops.screening.client import ScreeningError, create_client
 from arch_competition_ops.settings import Settings
 from arch_competition_ops.storage.screening import ScreeningBudgetExceeded
 from arch_competition_ops.storage.titles import list_title_candidates, write_display_titles
-from arch_competition_ops.titles.clean import CLEANER_VERSION, clean_title, needs_condensing
+from arch_competition_ops.titles.clean import CLEANER_VERSION, clean_title
 from arch_competition_ops.titles.rewrite import (
     AI_VERSION,
     BATCH_SIZE,
@@ -66,7 +71,7 @@ def polish_titles(
     dry_run: bool = False,
     client: OpenAI | None = None,
 ) -> TitleBatchSummary:
-    """Clean every stale title, then condense long ones with at most ``max_batches`` requests."""
+    """Clean stale titles, then translate/condense new ones in at most ``max_batches`` requests."""
     summary = TitleBatchSummary()
     model = get_model(settings.ai_model)
     ai_token = ai_source_token(model.id)
@@ -83,7 +88,7 @@ def polish_titles(
             current = source is not None and source.startswith(CLEANER_VERSION)
             if current and not force:
                 cleaned = row["display_title"] or clean_title(row["title"])
-                if source != ai_token and needs_condensing(row["title"], cleaned):
+                if source != ai_token:
                     pending.append(_title_input(row, cleaned))
                 continue
             cleaned = clean_title(row["title"])
@@ -95,8 +100,7 @@ def polish_titles(
                     "display_title_source": CLEANER_VERSION,
                 }
             )
-            if needs_condensing(row["title"], cleaned):
-                pending.append(_title_input(row, cleaned))
+            pending.append(_title_input(row, cleaned))
         summary.cleaned = len(updates)
         summary.pending_ai = len(pending)
         if dry_run:
@@ -105,7 +109,7 @@ def polish_titles(
         if not use_ai or not pending or max_batches < 1:
             return summary
 
-        # Stage 2: AI, only for what the rules could not shorten.
+        # Stage 2: AI, for every title not yet derived by this model.
         if client is None and not settings.openai_api_key.get_secret_value().strip():
             summary.errors.append("OPENAI_API_KEY is not set; kept rule-cleaned titles")
             return summary
@@ -124,7 +128,11 @@ def polish_titles(
                 summary.cost_usd += result.cost_usd
                 summary.rejected += result.rejected
                 cleaned_by_id = {item.competition_id: item.cleaned_title for item in chunk}
-                summary.condensed += write_display_titles(
+                summary.condensed += sum(
+                    pair.title_en is not None or pair.title_zh is not None
+                    for pair in result.titles.values()
+                )
+                write_display_titles(
                     db_path,
                     [
                         {

@@ -6,8 +6,10 @@ size caps, SSRF guards). This module only adds collector-specific headers and de
 
 from __future__ import annotations
 
+import heapq
+from collections.abc import Callable, Iterable, Iterator
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 from urllib import parse
 
 from arch_competition_ops.http import get_default_client
@@ -104,3 +106,26 @@ def pick_localized_text(
 
 def parse_money_value(raw_value: Any) -> float | None:
     return parse_money_number(raw_value)
+
+
+_Item = TypeVar("_Item")
+
+
+def merge_newest_first(
+    *streams: Iterable[_Item],
+    date_of: Callable[[_Item], str],
+    key_of: Callable[[_Item], str],
+) -> Iterator[_Item]:
+    """Merge newest-first streams into one, newest first, one item per key.
+
+    Lazy: a stream is read only as far as the merged output is consumed, so a caller that stops
+    early stops paging every stream. Items of the same date keep the order of the streams, and
+    the first item seen for a key wins.
+    """
+    seen: set[str] = set()
+    for item in heapq.merge(*streams, key=date_of, reverse=True):
+        key = key_of(item)
+        if key in seen:
+            continue
+        seen.add(key)
+        yield item

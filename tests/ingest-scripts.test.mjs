@@ -251,10 +251,11 @@ for (const exe of HOSTS) {
       const install = runPs(exe, [REGISTER_SCRIPT, '-Action', 'Install', '-WhatIf', '-TaskPrefix', prefix]);
       assert.equal(install.status, 0, `${install.stdout}\n${install.stderr}`);
       const lines = install.stdout.split(/\r?\n/).filter((line) => line.includes('logon='));
-      assert.equal(lines.length, 3, `expected the original 3-task schedule:\n${install.stdout}`);
+      assert.equal(lines.length, 1, `expected one daily all_enabled task:\n${install.stdout}`);
+      assert.match(lines[0], /-all_enabled-0330 :: /);
       for (const line of lines) {
         assert.match(line, /logon=S4U/);
-        assert.match(line, /limit=PT2H/);
+        assert.match(line, /limit=PT8H/);
         assert.match(line, /multiple=IgnoreNew/);
         assert.match(line, /startWhenAvailable=True/);
         assert.match(line, /networkOnly=True/);
@@ -276,7 +277,7 @@ for (const exe of HOSTS) {
       );
       const show = runPs(exe, [REGISTER_SCRIPT, '-Action', 'Show', '-TaskPrefix', prefix, '-ArtifactsDir', sandbox.artifacts]);
       assert.equal(show.status, 0, `${show.stdout}\n${show.stderr}`);
-      assert.equal((show.stdout.match(/:: missing/g) || []).length, 3);
+      assert.equal((show.stdout.match(/:: missing/g) || []).length, 1);
       assert.match(show.stdout, /\[FAIL\] last-failure: batch=secondary_nightly exit=3/);
       assert.match(show.stdout, /boom line/);
     } finally {

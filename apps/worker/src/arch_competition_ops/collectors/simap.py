@@ -1,43 +1,86 @@
+"""simap.ch, the Swiss public procurement platform (public publication API).
+
+The search API is described by https://www.simap.ch/api/specifications/simap.yaml
+(``/publications/v2/project/project-search``). Checked against the live service in 2026-11:
+
+* Each search entry is a project with its newest publication (``publicationId``, ``pubType``,
+  ``publicationDate``); in 39 of 39 sampled projects that id was the project header's
+  ``latestPublication.id``, so the header is not fetched.
+* Paging is rolling: ``pagination.lastItem`` (``<date>|<projectNumber>``) asks for the next
+  20 projects, newest publication first.
+* ``newestPublicationFrom`` bounds the window and ``newestPubTypes`` the newest publication's
+  type, both server-side.
+* ``cpvCodes`` matches the whole CPV subtree in the main or any additional code: for a 7-day
+  window, ``71000000`` + ``79930000`` returned exactly the 30 of 260 open notices whose main or
+  additional CPV codes start with 71 or 7993, 4 of them only through an additional code. Every
+  one of the 260 carried a CPV code (simap validates it on every publication), so the CPV
+  filter drops no unclassified notice.
+* Search entries carry the project ``title`` in every language the buyer filled in, but no
+  description.
+
+The AI design scope is defined in ``collectors.design_scope``. Design-and-build works contracts
+(``Totalunternehmer``, ``Gesamtleistungssubmission``, ``entreprise totale``) carry only ``45*``
+codes, so AI mode also searches the open ``45000000`` orders of the window (178 projects, ten
+requests, in a 2026-11 week) and fetches the detail only of those whose title names a
+design-and-build model.
+"""
+
 from __future__ import annotations
 
 import json
+import logging
 import re
-from datetime import date
+from collections.abc import Callable, Iterable, Iterator
+from datetime import date, timedelta
 from typing import Any
 
+from arch_competition_ops import clock
 from arch_competition_ops.collectors.base import CollectedSourceDocument
 from arch_competition_ops.collectors.common import (
     build_url,
     fetch_json_get,
+    merge_newest_first,
     pick_localized_text,
+)
+from arch_competition_ops.collectors.design_scope import (
+    SCOPE_CPV_ROOT_CODES,
+    WORKS_CPV_ROOT_CODE,
+    is_design_and_build,
 )
 from arch_competition_ops.collectors.relevance import has_built_environment_context
 from arch_competition_ops.models import SourceDefinition
 from arch_competition_ops.normalizers.dates import parse_date_string
 from arch_competition_ops.normalizers.text import extract_cpv_codes, normalize_text, strip_html
 
+logger = logging.getLogger(__name__)
+
 SIMAP_PROJECT_SEARCH_URL = "https://www.simap.ch/api/publications/v2/project/project-search"
-SIMAP_PROJECT_HEADER_URL = (
-    "https://www.simap.ch/api/publications/v2/project/{project_id}/project-header"
-)
 SIMAP_PUBLICATION_DETAIL_URL = "https://www.simap.ch/api/publications/v1/project/{project_id}/publication-details/{publication_id}"
 SIMAP_PROJECT_DETAIL_URL = "https://www.simap.ch/de/project-detail/{project_id}"
+DEFAULT_LOOKBACK_DAYS = 7
+# Pages hold 20 projects. A 2026-11 week had 537 projects of every type and 33 in the AI scope.
+SIMAP_MAX_PAGES = 100
 ALLOWED_PROJECT_SUBTYPES = (
     "project_competition",
     "overall_performance_competition",
 )
-# The public search API rejects a query containing only lang. Use every subtype exposed
-# by its public search UI in AI mode; these are protocol values, not relevance judgments.
-ALL_PROJECT_SUBTYPES = (
-    "construction",
-    "service",
-    "supply",
+# Design contests and study commissions (SIA 142/143) are read whatever their CPV code.
+DESIGN_CONTEST_SUBTYPES = (
     *ALLOWED_PROJECT_SUBTYPES,
     "idea_competition",
     "project_study",
     "idea_study",
     "overall_performance_study",
 )
+# Ordinary orders are read only inside the design CPV scope (``collectors.design_scope``), or
+# among works orders when their title names a design-and-build model.
+ORDER_SUBTYPES = ("construction", "service", "supply")
+# Newest publication types that still invite participation. Awards, direct awards,
+# abandonments, revocations, advance notices, participant selections and the offering phase of
+# a selective procedure (open only to the preselected) are left out.
+OPEN_PUB_TYPES = ("tender", "competition", "study_contract")
+
+FetchJson = Callable[[str], Any]
 
 
 def _default_fetch_json(url: str) -> Any:
@@ -143,163 +186,212 @@ def _pick_simap_estimated_value_text(detail: dict[str, Any]) -> str | None:
     return None
 
 
+def _window_start(publication_date_from: str | None) -> date:
+    if publication_date_from:
+        return date.fromisoformat(publication_date_from)
+    return clock.today() - timedelta(days=DEFAULT_LOOKBACK_DAYS)
+
+
+def _searches(include_unclassified: bool, window_start: date) -> list[dict[str, Any]]:
+    """Search parameters, one dict per search; projects are deduplicated across them."""
+    base: dict[str, Any] = {"lang": ["en"], "newestPublicationFrom": window_start.isoformat()}
+    if not include_unclassified:
+        return [{**base, "projectSubTypes": list(ALLOWED_PROJECT_SUBTYPES)}]
+    scoped = {**base, "newestPubTypes": list(OPEN_PUB_TYPES)}
+    return [
+        {**scoped, "projectSubTypes": list(DESIGN_CONTEST_SUBTYPES)},
+        {**scoped, "projectSubTypes": list(ORDER_SUBTYPES), "cpvCodes": list(SCOPE_CPV_ROOT_CODES)},
+    ]
+
+
+def _design_and_build_search(window_start: date) -> dict[str, Any]:
+    """Open works orders; only titles naming a design-and-build model are kept from it."""
+    return {
+        "lang": ["en"],
+        "newestPublicationFrom": window_start.isoformat(),
+        "newestPubTypes": list(OPEN_PUB_TYPES),
+        "projectSubTypes": list(ORDER_SUBTYPES),
+        "cpvCodes": [WORKS_CPV_ROOT_CODE],
+    }
+
+
+def _listing_title(project: dict[str, Any]) -> str:
+    """Every language of the search entry's title (buyers often fill in only one)."""
+    title = project.get("title")
+    if isinstance(title, dict):
+        return " ".join(str(value) for value in title.values() if value)
+    return str(title or "")
+
+
+def _search_projects(
+    get_json: FetchJson, params: dict[str, Any], window_start: date
+) -> Iterator[dict[str, Any]]:
+    """Every project of one search, newest publication first, until the window ends."""
+    last_item: str | None = None
+    for _ in range(SIMAP_MAX_PAGES):
+        query = {**params, **({"lastItem": last_item} if last_item else {})}
+        response = get_json(build_url(SIMAP_PROJECT_SEARCH_URL, query))
+        projects = response.get("projects") if isinstance(response, dict) else None
+        if not isinstance(projects, list) or not projects:
+            return
+        for project in projects:
+            if not isinstance(project, dict):
+                continue
+            published = parse_date_string(str(project.get("publicationDate") or ""))
+            # Results are sorted by newest publication date; the server already bounds the
+            # window, so an older entry only means the rest of the search is older too.
+            if published and date.fromisoformat(published) < window_start:
+                return
+            yield project
+        pagination = response.get("pagination")
+        last_item = pagination.get("lastItem") if isinstance(pagination, dict) else None
+        if not last_item:
+            return
+    logger.warning(
+        "simap paging stopped after %d pages; later projects were not read", SIMAP_MAX_PAGES
+    )
+
+
+def _ai_candidate_projects(get_json: FetchJson, window_start: date) -> Iterator[dict[str, Any]]:
+    """Design contests, design-scope orders and design-and-build works orders, one entry per
+    project, newest publication first."""
+    scoped = [
+        _search_projects(get_json, params, window_start) for params in _searches(True, window_start)
+    ]
+    works = (
+        project
+        for project in _search_projects(
+            get_json, _design_and_build_search(window_start), window_start
+        )
+        if is_design_and_build(_listing_title(project))
+    )
+    return merge_newest_first(
+        *scoped,
+        works,
+        date_of=lambda project: parse_date_string(str(project.get("publicationDate") or "")) or "",
+        key_of=lambda project: str(project.get("id") or "").strip(),
+    )
+
+
+def _build_document(
+    project: dict[str, Any],
+    project_id: str,
+    detail_url: str,
+    detail: Any,
+    *,
+    include_unclassified: bool,
+) -> CollectedSourceDocument | None:
+    detail_project_info = detail.get("project-info", {}) if isinstance(detail, dict) else {}
+    detail_procurement = detail.get("procurement", {}) if isinstance(detail, dict) else {}
+    detail_dates = detail.get("dates", {}) if isinstance(detail, dict) else {}
+    detail_base = detail.get("base", {}) if isinstance(detail, dict) else {}
+    proc_office_address = detail_project_info.get("procOfficeAddress", {})
+    if not isinstance(proc_office_address, dict):
+        proc_office_address = {}
+
+    title = pick_localized_text(detail_project_info.get("title")) or pick_localized_text(
+        project.get("title")
+    )
+    if not title:
+        return None
+    normalized_title = normalize_text(title)
+    if not include_unclassified and (
+        not has_built_environment_context(title)
+        and not any(
+            marker in normalized_title
+            for marker in ("architett", "architecture", "maitre d oeuvre", "planification")
+        )
+    ):
+        return None
+
+    payload = json.dumps(
+        {
+            "officialNoticeId": detail_base.get("publicationNumber")
+            or project.get("publicationNumber")
+            or project.get("projectNumber"),
+            "title": title,
+            **(
+                {"rawNotice": {"listing": project, "detail": detail}}
+                if include_unclassified
+                else {}
+            ),
+            "buyer": pick_localized_text(proc_office_address.get("name"))
+            or pick_localized_text(project.get("procOfficeName")),
+            "location": pick_localized_text(proc_office_address.get("city"))
+            or pick_localized_text(proc_office_address.get("locality"))
+            or pick_localized_text(proc_office_address.get("place")),
+            "procedureType": detail_base.get("processType") or project.get("processType"),
+            "projectSubType": detail_base.get("projectSubType") or project.get("projectSubType"),
+            "deadline": parse_date_string(str(detail_dates.get("offerDeadline") or "")),
+            "publicationDate": parse_date_string(str(project.get("publicationDate") or "")),
+            "cpv": extract_cpv_codes(detail) if isinstance(detail, dict) else [],
+            "description": strip_html(
+                pick_localized_text(detail_procurement.get("orderDescription"))
+            ),
+            "estimatedValueText": _pick_simap_estimated_value_text(detail)
+            if isinstance(detail, dict)
+            else None,
+            "officialUrl": (
+                _pick_simap_official_url(detail) or _build_simap_project_detail_url(project_id)
+                if isinstance(detail, dict)
+                else _build_simap_project_detail_url(project_id)
+            ),
+            "documentsPortalUrl": _pick_simap_documents_portal_url(detail)
+            if isinstance(detail, dict)
+            else None,
+            "prizeSummary": _pick_simap_prize_summary(detail) if isinstance(detail, dict) else None,
+            "authorityEmail": pick_localized_text(proc_office_address.get("email")),
+            "url": detail_url,
+        },
+        ensure_ascii=False,
+    )
+    return CollectedSourceDocument(source_url=detail_url, payload=payload)
+
+
 def collect_simap_documents(
     source: SourceDefinition,
     *,
     limit: int = 20,
     publication_date_from: str | None = None,
-    fetch_json: callable | None = None,
+    fetch_json: FetchJson | None = None,
     include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
     get_json = fetch_json or _default_fetch_json
-    min_publication_date = (
-        date.fromisoformat(publication_date_from) if publication_date_from else None
-    )
-    last_item: str | None = None
+    window_start = _window_start(publication_date_from)
     documents: list[CollectedSourceDocument] = []
+    seen_projects: set[str] = set()
 
-    while len(documents) < limit:
-        params: dict[str, Any] = {
-            "lang": ["en"],
-            "projectSubTypes": list(
-                ALL_PROJECT_SUBTYPES if include_unclassified else ALLOWED_PROJECT_SUBTYPES
-            ),
-        }
-        if last_item:
-            params["lastItem"] = last_item
-
-        response = get_json(build_url(SIMAP_PROJECT_SEARCH_URL, params))
-        if not isinstance(response, dict):
-            break
-
-        projects = response.get("projects", [])
-        if not isinstance(projects, list) or not projects:
-            break
-
-        for project in projects:
-            if not isinstance(project, dict):
-                continue
-
-            publication_date = parse_date_string(str(project.get("publicationDate") or ""))
-            if min_publication_date and publication_date:
-                if date.fromisoformat(publication_date) < min_publication_date:
-                    continue
-            if (
-                not include_unclassified
-                and str(project.get("pubType") or "").lower() != "competition"
-            ):
-                continue
-
-            project_id = str(project.get("id") or "").strip()
-            if not project_id:
-                continue
-
-            header_url = SIMAP_PROJECT_HEADER_URL.format(project_id=project_id)
-            header = get_json(header_url)
-            latest_publication = (
-                header.get("latestPublication", {}) if isinstance(header, dict) else {}
-            )
-            if not isinstance(latest_publication, dict):
-                latest_publication = {}
-            publication_id = str(
-                latest_publication.get("id") or project.get("publicationId") or ""
-            ).strip()
-            if not publication_id:
-                continue
-            detail_url = (
-                SIMAP_PUBLICATION_DETAIL_URL.format(
-                    project_id=project_id, publication_id=publication_id
-                )
-                if publication_id
-                else None
-            )
-            detail = get_json(detail_url) if detail_url else None
-            detail_project_info = detail.get("project-info", {}) if isinstance(detail, dict) else {}
-            detail_procurement = detail.get("procurement", {}) if isinstance(detail, dict) else {}
-            detail_dates = detail.get("dates", {}) if isinstance(detail, dict) else {}
-            detail_base = detail.get("base", {}) if isinstance(detail, dict) else {}
-            proc_office_address = detail_project_info.get("procOfficeAddress", {})
-            if not isinstance(proc_office_address, dict):
-                proc_office_address = {}
-
-            title = (
-                pick_localized_text(detail_project_info.get("title"))
-                or pick_localized_text(latest_publication.get("title"))
-                or pick_localized_text(project.get("title"))
-            )
-            if not title:
-                continue
-            normalized_title = normalize_text(title)
-            if not include_unclassified and (
-                not has_built_environment_context(title)
-                and not any(
-                    marker in normalized_title
-                    for marker in ("architett", "architecture", "maitre d oeuvre", "planification")
-                )
-            ):
-                continue
-
-            payload = json.dumps(
-                {
-                    "officialNoticeId": detail_base.get("publicationNumber")
-                    or latest_publication.get("publicationNumber")
-                    or project.get("publicationNumber")
-                    or project.get("projectNumber"),
-                    "title": title,
-                    **(
-                        {"rawNotice": {"listing": project, "detail": detail}}
-                        if include_unclassified
-                        else {}
-                    ),
-                    "buyer": pick_localized_text(proc_office_address.get("name"))
-                    or pick_localized_text(project.get("procOfficeName")),
-                    "location": pick_localized_text(proc_office_address.get("city"))
-                    or pick_localized_text(proc_office_address.get("locality"))
-                    or pick_localized_text(proc_office_address.get("place")),
-                    "procedureType": detail_base.get("processType") or project.get("processType"),
-                    "projectSubType": detail_base.get("projectSubType")
-                    or project.get("projectSubType"),
-                    "deadline": parse_date_string(
-                        str(
-                            detail_dates.get("offerDeadline")
-                            or latest_publication.get("dates", {}).get("offerDeadline")
-                            or ""
-                        )
-                    ),
-                    "publicationDate": publication_date,
-                    "cpv": extract_cpv_codes(detail) if isinstance(detail, dict) else [],
-                    "description": strip_html(
-                        pick_localized_text(detail_procurement.get("orderDescription"))
-                    ),
-                    "estimatedValueText": _pick_simap_estimated_value_text(detail)
-                    if isinstance(detail, dict)
-                    else None,
-                    "officialUrl": (
-                        _pick_simap_official_url(detail)
-                        or _build_simap_project_detail_url(project_id)
-                        if isinstance(detail, dict)
-                        else _build_simap_project_detail_url(project_id)
-                    ),
-                    "documentsPortalUrl": _pick_simap_documents_portal_url(detail)
-                    if isinstance(detail, dict)
-                    else None,
-                    "prizeSummary": _pick_simap_prize_summary(detail)
-                    if isinstance(detail, dict)
-                    else None,
-                    "authorityEmail": pick_localized_text(proc_office_address.get("email")),
-                    "url": detail_url or header_url,
-                },
-                ensure_ascii=False,
-            )
-            documents.append(
-                CollectedSourceDocument(source_url=detail_url or header_url, payload=payload)
-            )
+    projects: Iterable[dict[str, Any]] = (
+        _ai_candidate_projects(get_json, window_start)
+        if include_unclassified
+        else (
+            project
+            for params in _searches(include_unclassified, window_start)
+            for project in _search_projects(get_json, params, window_start)
+        )
+    )
+    for project in projects:
+        if not include_unclassified and str(project.get("pubType") or "").lower() != "competition":
+            continue
+        project_id = str(project.get("id") or "").strip()
+        # The search entry carries the project's newest publication.
+        publication_id = str(project.get("publicationId") or "").strip()
+        if not project_id or not publication_id or project_id in seen_projects:
+            continue
+        seen_projects.add(project_id)
+        detail_url = SIMAP_PUBLICATION_DETAIL_URL.format(
+            project_id=project_id, publication_id=publication_id
+        )
+        document = _build_document(
+            project,
+            project_id,
+            detail_url,
+            get_json(detail_url),
+            include_unclassified=include_unclassified,
+        )
+        if document is not None:
+            documents.append(document)
             if len(documents) >= limit:
-                break
-
-        pagination = response.get("pagination", {}) if isinstance(response, dict) else {}
-        last_item = pagination.get("lastItem") if isinstance(pagination, dict) else None
-        if not last_item:
-            break
+                return documents
 
     return documents

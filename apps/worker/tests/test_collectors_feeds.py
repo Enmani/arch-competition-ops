@@ -169,6 +169,35 @@ W0100-266428 Accommodation Services,W0100-266428 Services Des Locaux,WS564936500
     assert documents == []
 
 
+def test_collect_canadabuys_documents_links_canadabuys_rows_to_their_notice_page() -> None:
+    source = _build_source(
+        "canadabuys_tender_notices",
+        name="CanadaBuys Tender Notices",
+        jurisdiction="canada",
+        base_url="https://canadabuys.canada.ca/opendata/pub/openTenderNotice-ouvertAvisAppelOffres.csv",
+        scan_method="csv",
+        extractor="generic_listing_html",
+        collector="canadabuys_csv",
+        regions=["north_america", "canada"],
+        languages=["en", "fr"],
+    )
+    csv_text = """
+title-titre-eng,title-titre-fra,referenceNumber-numeroReference,solicitationNumber-numeroSollicitation,publicationDate-datePublication,tenderClosingDate-appelOffresDateCloture,procurementCategory-categorieApprovisionnement,unspscDescription-eng,noticeURL-URLavis-eng
+School Renovation Design,Conception,cb-654-30369994,,2026-04-10,2026-05-04T14:00:00,*CNST,"*Architectural services",
+Library Design,Conception,WS1-Doc2,WS1,2026-04-09,2026-05-04T14:00:00,*CNST,"*Architectural services",
+""".strip()
+
+    documents = collect_canadabuys_documents(
+        source, limit=5, fetch_text=lambda _url: csv_text, include_unclassified=True
+    )
+
+    # The dataset URL is shared by every row; a cb-… row has its own public page.
+    assert [d.source_url for d in documents] == [
+        "https://canadabuys.canada.ca/en/tender-opportunities/tender-notice/cb-654-30369994",
+        source.base_url,
+    ]
+
+
 def test_collect_contracts_finder_documents_excludes_non_design_building_works() -> None:
     source = _build_source(
         "uk_contracts_finder_tenders",
@@ -228,7 +257,8 @@ def test_collect_contracts_finder_documents_includes_estimated_value_text_from_o
     api_response = {
         "releases": [
             {
-                "ocid": "ocds-b5fd17-f76102bd",
+                "ocid": "ocds-b5fd17-0c2a9e51-77aa-4d1e-9b0f-5a8f3c2d1e00",
+                "id": "f76102bd-3540-4b82-9256-cdc20e19bd42-921001",
                 "date": "2026-04-17T17:27:10+01:00",
                 "tender": {
                     "title": "Marden Parish Council Pavilion Refurbishment",
@@ -241,7 +271,7 @@ def test_collect_contracts_finder_documents_includes_estimated_value_text_from_o
                     "tenderPeriod": {"endDate": "2026-05-09T12:00:00+01:00"},
                     "documents": [
                         {
-                            "url": "https://www.contractsfinder.service.gov.uk/Notice/f76102bd-3540-4b82-9256-cdc20e19bd42"
+                            "url": "https://www.contractsfinder.service.gov.uk/Notice/Attachment/a1b2c3d4-0000-4000-8000-000000000001"
                         }
                     ],
                     "value": {"amount": 1000000, "currency": "GBP"},
@@ -258,12 +288,29 @@ def test_collect_contracts_finder_documents_includes_estimated_value_text_from_o
     )
 
     assert len(documents) == 1
+    # The notice's own page comes from the release id (notice uuid + sequence), not from the
+    # first document (here an attachment) and never from the shared search URL.
+    assert documents[0].source_url == (
+        "https://www.contractsfinder.service.gov.uk/Notice/f76102bd-3540-4b82-9256-cdc20e19bd42"
+    )
     payload = json.loads(documents[0].payload)
+    assert payload["officialUrl"] == documents[0].source_url
     assert payload["estimatedValueEur"] is None
     assert payload["estimatedValueText"] == "GBP 1,000,000"
 
 
-def test_collect_contracts_finder_documents_caps_live_query_limit_to_100() -> None:
+def _contracts_finder_release(index: int) -> dict:
+    notice = f"00000000-0000-4000-8000-{index:012d}"
+    return {
+        "ocid": f"ocds-b5fd17-{notice}",
+        "id": f"{notice}-9{index:05d}",
+        "date": "2026-04-17T17:27:10+01:00",
+        "tag": ["tender"],
+        "tender": {"title": f"Notice {index}", "status": "active"},
+    }
+
+
+def test_collect_contracts_finder_documents_follows_pages_of_100_until_exhausted() -> None:
     source = _build_source(
         "uk_contracts_finder_tenders",
         name="UK Contracts Finder Tenders",
@@ -274,17 +321,33 @@ def test_collect_contracts_finder_documents_caps_live_query_limit_to_100() -> No
         collector="contracts_finder_ocds",
         regions=["europe", "united_kingdom"],
     )
-    captured: dict[str, str] = {}
+    next_url = f"{source.base_url}?limit=100&cursor=Mg=="
+    pages = {
+        "first": {"releases": [_contracts_finder_release(1)], "links": {"next": next_url}},
+        next_url: {"releases": [_contracts_finder_release(2)]},
+    }
+    requested: list[str] = []
 
     def fake_fetch_json(url: str) -> dict:
-        captured["url"] = url
-        return {"releases": []}
+        requested.append(url)
+        return pages["first" if len(requested) == 1 else url]
 
     documents = collect_contracts_finder_documents(
-        source,
-        limit=20,
-        fetch_json=fake_fetch_json,
+        source, limit=500, fetch_json=fake_fetch_json, include_unclassified=True
     )
 
-    assert documents == []
-    assert "limit=100" in captured["url"]
+    # Page size stays at the API maximum of 100 and the cursor link is followed to the end.
+    assert "limit=100" in requested[0]
+    assert requested[1:] == [next_url]
+    assert [d.source_url.rsplit("/", 1)[1] for d in documents] == [
+        "00000000-0000-4000-8000-000000000001",
+        "00000000-0000-4000-8000-000000000002",
+    ]
+
+    requested.clear()
+    limited = collect_contracts_finder_documents(
+        source, limit=1, fetch_json=fake_fetch_json, include_unclassified=True
+    )
+    # Once `limit` documents are kept no further page is requested.
+    assert len(limited) == 1
+    assert len(requested) == 1

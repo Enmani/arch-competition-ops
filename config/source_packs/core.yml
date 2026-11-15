@@ -20,6 +20,26 @@ sources:
       - es
     notes: Primary source for EU-level design contests and design service procurement notices.
 
+  - source_id: world_bank_procurement_notices
+    name: World Bank Procurement Notices
+    kind: official_procurement
+    jurisdiction: global
+    base_url: https://projects.worldbank.org/en/projects-operations/procurement
+    collector: world_bank_procnotices
+    scan_method: api
+    extractor: generic_listing_html
+    source_tier: primary
+    priority: 0.86
+    enabled: true
+    regions:
+      - global
+    languages:
+      - en
+      - fr
+      - es
+      - pt
+    notes: World Bank-financed consulting-services invitations (requests for expressions of interest) from the procnotices API; awards and goods/works bids are skipped. Many are open to international firms; the market approach (national or international) is in the raw notice.
+
   - source_id: competitions_archi
     name: Competitions.archi
     kind: aggregator

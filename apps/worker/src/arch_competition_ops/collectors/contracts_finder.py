@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import re
+from collections.abc import Callable
 
 from arch_competition_ops import clock
 from arch_competition_ops.collectors.base import CollectedSourceDocument
@@ -8,51 +10,32 @@ from arch_competition_ops.collectors.common import (
     build_url,
     fetch_json_get,
 )
+from arch_competition_ops.collectors.uk_ocds import (
+    OCDS_PAGE_SIZE,
+    is_relevant_uk_design_notice,
+    iter_ocds_releases,
+    pick_buyer_name,
+    pick_delivery_location,
+    pick_estimated_value,
+)
 from arch_competition_ops.models import SourceDefinition
-from arch_competition_ops.normalizers.money import format_money_text
-from arch_competition_ops.normalizers.text import normalize_text
 
-UK_RELEVANT_CPV_PREFIXES = (
-    "712",
-    "7142",
+CONTRACTS_FINDER_NOTICE_URL = "https://www.contractsfinder.service.gov.uk/Notice/{notice_id}"
+# A release id is "<notice uuid>-<release sequence>"; the notice uuid names the public page
+# (checked live 2026-11: all 52 tender releases of a week matched their own /Notice/ document).
+# The ocid uuid is a different value and does not resolve to the notice page.
+_RELEASE_ID_PATTERN = re.compile(
+    r"^(?P<notice>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})-\d+$"
 )
-UK_DESIGN_MARKERS = (
-    "architect",
-    "architecture",
-    "architectural",
-    "landscape architecture",
-    "planning",
-    "urban design",
-    "masterplan",
-    "concept design",
-    "detailed design",
-    "design build",
-    "design and build",
+_NOTICE_URL_PATTERN = re.compile(
+    r"^https://www\.contractsfinder\.service\.gov\.uk/Notice/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$"
 )
-UK_BUILT_MARKERS = (
-    "public realm",
-    "campus",
-    "school",
-    "heritage",
-    "library",
-    "hospital",
-    "housing",
-    "civic",
-    "pavilion",
-    "refurbishment",
-    "extension",
-    "alterations",
-    "car park",
-    "kitchen",
-    "site",
-)
-UK_NEGATIVE_MARKERS = (
-    "digital ai",
-    "skills building",
-    "school uniform",
-    "events management",
-    "training programme",
-)
+
+# Overlap with Find a Tender (checked live for 2026-11-08..15): 12 of 52 Contracts Finder tender
+# releases were also on Find a Tender (same buyer and deadline; the Contracts Finder title is
+# "<FTS tender.id> - <FTS title>", e.g. "CA18682 - RFQ 2026/47 - ..."). No Contracts Finder field
+# references the Find a Tender notice, so the copy is not skipped here; downstream de-duplication
+# has to match on buyer, title and deadline.
 
 
 def _default_fetch_json(url: str) -> dict:
@@ -66,77 +49,15 @@ def _resolve_search_window(publication_date_from: str | None) -> tuple[str, str]
     return f"{published_from}T00:00:00", f"{published_to}T23:59:59"
 
 
-def _is_relevant_contracts_finder_notice(title: str, description: str, cpv_code: str) -> bool:
-    if cpv_code.startswith(UK_RELEVANT_CPV_PREFIXES):
-        return True
-
-    normalized = normalize_text(f"{title} {description}")
-    if any(marker in normalized for marker in UK_NEGATIVE_MARKERS):
-        return False
-    if not any(marker in normalized for marker in UK_DESIGN_MARKERS):
-        return False
-    return any(marker in normalized for marker in UK_BUILT_MARKERS)
-
-
-def _pick_buyer_name(release: dict) -> str | None:
-    buyer = release.get("buyer")
-    if isinstance(buyer, dict):
-        name = buyer.get("name")
-        if isinstance(name, str) and name.strip():
-            return name.strip()
-
-    for party in release.get("parties", []):
-        if not isinstance(party, dict):
-            continue
-        roles = party.get("roles", [])
-        if "buyer" not in roles:
-            continue
-        name = party.get("name")
-        if isinstance(name, str) and name.strip():
-            return name.strip()
-    return None
-
-
-def _pick_notice_url(tender: dict, fallback: str) -> str:
+def _notice_page_url(release: dict, tender: dict) -> str | None:
+    """The notice's own public page, or ``None`` when neither release id nor documents name it."""
+    match = _RELEASE_ID_PATTERN.match(str(release.get("id") or "").strip().lower())
+    if match:
+        return CONTRACTS_FINDER_NOTICE_URL.format(notice_id=match.group("notice"))
     for document in tender.get("documents", []):
-        if not isinstance(document, dict):
-            continue
-        url = document.get("url")
-        if isinstance(url, str) and url.strip():
+        url = document.get("url") if isinstance(document, dict) else None
+        if isinstance(url, str) and _NOTICE_URL_PATTERN.match(url.strip()):
             return url.strip()
-    return fallback
-
-
-def _pick_estimated_value(tender: dict) -> tuple[float | None, str | None]:
-    for key in ("value", "minValue"):
-        candidate = tender.get(key)
-        if not isinstance(candidate, dict):
-            continue
-
-        amount = candidate.get("amount")
-        currency = str(candidate.get("currency") or "").strip().upper() or None
-        value_text = format_money_text(amount=amount, currency=currency)
-        if currency == "EUR" and amount is not None:
-            return float(amount), value_text
-        if value_text:
-            return None, value_text
-
-    return None, None
-
-
-def _pick_delivery_location(tender: dict) -> str | None:
-    addresses = tender.get("deliveryAddresses")
-    if not isinstance(addresses, list):
-        return None
-
-    for address in addresses:
-        if not isinstance(address, dict):
-            continue
-        for key in ("locality", "region"):
-            value = address.get(key)
-            if isinstance(value, str) and value.strip():
-                return value.strip()
-
     return None
 
 
@@ -145,7 +66,7 @@ def collect_contracts_finder_documents(
     *,
     limit: int = 20,
     publication_date_from: str | None = None,
-    fetch_json: callable | None = None,
+    fetch_json: Callable[[str], dict] | None = None,
     include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
     published_from, published_to = _resolve_search_window(publication_date_from)
@@ -155,16 +76,14 @@ def collect_contracts_finder_documents(
             "publishedFrom": published_from,
             "publishedTo": published_to,
             "stages": "tender",
-            "limit": min(max(limit * 8, 50), 100),
+            "limit": OCDS_PAGE_SIZE,
         },
     )
-    payload = (fetch_json or _default_fetch_json)(search_url)
 
     documents: list[CollectedSourceDocument] = []
-    for release in payload.get("releases", []):
-        if not isinstance(release, dict):
-            continue
-
+    if limit <= 0:
+        return documents
+    for release in iter_ocds_releases(search_url, fetch_json or _default_fetch_json):
         tender = release.get("tender", {})
         if not isinstance(tender, dict):
             continue
@@ -175,22 +94,26 @@ def collect_contracts_finder_documents(
         cpv_code = classification.get("id", "").strip() if isinstance(classification, dict) else ""
 
         if not include_unclassified and (
-            not title or not _is_relevant_contracts_finder_notice(title, description, cpv_code)
+            not title
+            or not is_relevant_uk_design_notice(title, description, [cpv_code] if cpv_code else [])
         ):
             continue
 
-        official_url = _pick_notice_url(tender, source.base_url)
-        estimated_value_eur, estimated_value_text = _pick_estimated_value(tender)
+        official_url = _notice_page_url(release, tender)
+        if official_url is None:
+            # Without its own page the notice cannot be told apart from the other rows.
+            continue
+        estimated_value_eur, estimated_value_text = pick_estimated_value(tender)
         payload_row = json.dumps(
             {
                 "title": title,
                 **({"rawNotice": release} if include_unclassified else {}),
-                "buyer": _pick_buyer_name(release),
+                "buyer": pick_buyer_name(release),
                 "noticeId": release.get("ocid"),
-                "deadline": tender.get("tenderPeriod", {}).get("endDate"),
+                "deadline": (tender.get("tenderPeriod") or {}).get("endDate"),
                 "estimatedValueEur": estimated_value_eur,
                 "estimatedValueText": estimated_value_text,
-                "location": _pick_delivery_location(tender),
+                "location": pick_delivery_location(tender),
                 "summary": description,
                 "officialUrl": official_url,
                 "cpv": [cpv_code] if cpv_code else [],

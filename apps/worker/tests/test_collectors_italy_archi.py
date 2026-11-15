@@ -142,6 +142,7 @@ def test_collect_anac_documents_transforms_public_api_items() -> None:
     documents = collect_anac_documents(
         source,
         limit=1,
+        publication_date_from="2026-04-01",
         fetch_json=lambda _url: response,
     )
 
@@ -224,6 +225,7 @@ def test_collect_anac_documents_maps_direct_awards_to_public_esiti_pages() -> No
     documents = collect_anac_documents(
         source,
         limit=1,
+        publication_date_from="2026-04-01",
         fetch_json=lambda _url: response,
     )
 

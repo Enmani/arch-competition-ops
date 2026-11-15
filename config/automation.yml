@@ -1,14 +1,17 @@
+# limit_per_source bounds paid detail assessments per source run. Notices already screened are
+# skipped by the notice ledger, so the limit only matters for a backlog; a limit below the daily
+# inflow would push notices out of the publication window unread.
 batches:
   - batch_id: all_enabled
-    description: All enabled sources, sharing the same daily AI budget.
-    limit_per_source: 20
-    publication_window_days: 30
+    description: All enabled sources, sharing the same daily AI budget. Run once a day; a 7-day window leaves slack for a missed run without re-downloading a month of the PCSP feed. For a backfill pass --publication-date-from.
+    limit_per_source: 100
+    publication_window_days: 7
 
   - batch_id: official_daytime
     description: Higher-frequency official procurement sources.
     include_kinds:
       - official_procurement
-    limit_per_source: 20
+    limit_per_source: 100
     publication_window_days: 7
 
   - batch_id: secondary_nightly
@@ -16,5 +19,5 @@ batches:
     include_kinds:
       - authority_portal
       - aggregator
-    limit_per_source: 20
+    limit_per_source: 100
     publication_window_days: 30

@@ -26,7 +26,7 @@ from arch_competition_ops.card_previews import (
 )
 from arch_competition_ops.collectors import collect_source_documents
 from arch_competition_ops.collectors.base import CollectedSourceDocument
-from arch_competition_ops.config_loader import load_source_catalog
+from arch_competition_ops.config_loader import load_source_catalog, load_targeting_preferences
 from arch_competition_ops.extractors import parse_source_payload
 from arch_competition_ops.geocoding import NominatimGeocoder, enrich_record_geocode
 from arch_competition_ops.models import CompetitionRecord, SourceDefinition
@@ -36,6 +36,10 @@ from arch_competition_ops.normalizers.competition import (
     configure_procedure_registry,
 )
 from arch_competition_ops.review_queue import refresh_review_queue
+from arch_competition_ops.screening.fingerprints import (
+    notice_content_hash,
+    screening_criteria_hash,
+)
 from arch_competition_ops.screening.service import DocumentAssessment, assess_document
 from arch_competition_ops.screening.triage import triage_documents
 from arch_competition_ops.settings import Settings
@@ -46,11 +50,13 @@ from arch_competition_ops.storage import (
     record_source_run,
     upsert_competitions,
 )
+from arch_competition_ops.storage.notice_ledger import find_screened, record_screened
 from arch_competition_ops.storage.screening import (
     ScreeningBudgetExceeded,
     upsert_screened_competitions,
 )
 from arch_competition_ops.targeting import load_targeting_filter
+from arch_competition_ops.titles.rewrite import BATCH_SIZE as TITLE_BATCH_SIZE
 from arch_competition_ops.titles.service import polish_titles
 from arch_competition_ops.verifiers import verify_record
 
@@ -93,6 +99,9 @@ class IngestResult:
     notes: list[str] = field(default_factory=list)
     preview: CardPreviewPrewarmResult | None = None
     deferred: int = 0
+    # Listed notices skipped because the same content was already screened under the same
+    # criteria (see storage/notice_ledger.py).
+    already_screened: int = 0
 
     @property
     def parse_failure_count(self) -> int:
@@ -184,8 +193,10 @@ def ingest_source(
             if collected_documents is not None
             else collect_source_documents(
                 source,
+                # With triage, read the whole publication window: the ledger drops what was
+                # already screened, so only new or changed notices cost anything.
                 limit=(
-                    min(limit * settings.ai_candidate_multiplier, 100)
+                    settings.ai_candidate_cap
                     if settings.ai_enabled and settings.ai_triage_enabled
                     else limit
                 ),
@@ -198,12 +209,45 @@ def ingest_source(
         record_run("failed", last_error=str(exc))
         raise IngestError(source.source_id, "collection", exc) from exc
     result.document_count = len(documents)
+    content_hashes: dict[int, str] = {}
+    criteria_hash = ""
+    if settings.ai_enabled:
+        criteria_hash = screening_criteria_hash(
+            settings, load_targeting_preferences(settings).model_dump(mode="json")
+        )
+        content_hashes = {id(d): notice_content_hash(d.payload) for d in documents}
+        seen = find_screened(
+            db_path,
+            source_id=source.source_id,
+            criteria_hash=criteria_hash,
+            content_hashes=content_hashes.values(),
+        )
+        fresh = [d for d in documents if content_hashes[id(d)] not in seen]
+        # The same listing can appear twice in one window (pages shifting during paging).
+        fresh = list({content_hashes[id(d)]: d for d in reversed(fresh)}.values())[::-1]
+        result.already_screened = len(documents) - len(fresh)
+        documents = fresh
+        if result.already_screened:
+            result.notes.append(
+                f"Already screened with unchanged content and criteria: {result.already_screened}"
+            )
+
+    def ledger_entries(items: list[CollectedSourceDocument]) -> list[tuple[str, str]]:
+        return [(content_hashes[id(d)], d.source_url) for d in items]
+
     if settings.ai_enabled and settings.ai_triage_enabled:
         try:
             triage = triage_documents(settings, documents, limit=limit)
             documents = triage.documents
             result.filtered_out += triage.excluded
             result.deferred += triage.deferred
+            record_screened(
+                db_path,
+                source_id=source.source_id,
+                criteria_hash=criteria_hash,
+                outcome="triage_excluded",
+                entries=ledger_entries(triage.excluded_documents),
+            )
             result.notes.append(
                 f"AI candidate triage: excluded={triage.excluded}, deferred={triage.deferred}, "
                 f"cached={triage.cached}, estimated_cost_usd={triage.cost_usd:.6f}"
@@ -215,6 +259,9 @@ def ingest_source(
 
     records: list[CompetitionRecord] = []
     assessments: list[DocumentAssessment | None] = []
+    # Documents whose paid assessment finished, including those then dropped as expired; they
+    # enter the ledger only once the records are durably written.
+    screened: list[CollectedSourceDocument] = []
     last_error: str | None = None
     try:
         for document in documents:
@@ -250,6 +297,8 @@ def ingest_source(
                     )
                 if competition_is_stale_expired(record, retention_days=retention_days):
                     result.skipped_expired += 1
+                    if assessment is not None:
+                        screened.append(document)
                     continue
                 stage = "verify"
                 record = verify_record(
@@ -261,6 +310,8 @@ def ingest_source(
                 )
                 if competition_is_stale_expired(record, retention_days=retention_days):
                     result.skipped_expired += 1
+                    if assessment is not None:
+                        screened.append(document)
                     continue
                 if (
                     not settings.ai_enabled
@@ -293,6 +344,8 @@ def ingest_source(
                 continue
             records.append(record)
             assessments.append(assessment)
+            if assessment is not None:
+                screened.append(document)
     finally:
         geocoder.flush()
 
@@ -310,6 +363,13 @@ def ingest_source(
                 if a is not None
             ]
             result.ingested_ids = upsert_screened_competitions(db_path, records, publications)
+            record_screened(
+                db_path,
+                source_id=source.source_id,
+                criteria_hash=criteria_hash,
+                outcome="assessed",
+                entries=ledger_entries(screened),
+            )
         else:
             result.ingested_ids = upsert_competitions(db_path, records)
     except Exception as exc:
@@ -340,7 +400,8 @@ def ingest_source(
                 settings,
                 competition_ids=result.ingested_ids,
                 use_ai=settings.ai_enabled,
-                max_batches=2,
+                # Enough batches for every new record: each title is translated once.
+                max_batches=max(1, -(-len(result.ingested_ids) // TITLE_BATCH_SIZE)),
             )
             result.notes.extend(f"display titles: {error}" for error in titles.errors)
         except Exception as exc:  # noqa: BLE001  derived metadata: never fail the ingest

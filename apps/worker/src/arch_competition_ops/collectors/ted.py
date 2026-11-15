@@ -1,17 +1,37 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Callable
 from datetime import date
 from typing import Any
 
 from arch_competition_ops.collectors.base import CollectedSourceDocument
 from arch_competition_ops.collectors.common import fetch_json_post
+from arch_competition_ops.collectors.design_scope import (
+    DESIGN_AND_BUILD_SEARCH_PHRASES,
+    SCOPE_CPV_PREFIXES,
+    WORKS_CPV_PREFIX,
+    is_design_and_build,
+)
 from arch_competition_ops.models import SourceDefinition
 from arch_competition_ops.normalizers.money import format_money_text
 from arch_competition_ops.normalizers.text import normalize_text
 
+logger = logging.getLogger(__name__)
+
 TED_SEARCH_URL = "https://api.ted.europa.eu/v3/notices/search"
+TED_PAGE_SIZE = 250  # The search API's largest page.
+TED_MAX_PAGES = 40  # 10,000 notices: far above any week of the AI scope (~1,200).
+# eForms notice types that invite participation: contract notices, design contests and
+# prior-information notices used as the call for competition.
+TED_OPEN_NOTICE_TYPES = (
+    "cn-standard",
+    "cn-social",
+    "cn-desg",
+    "pin-cfc-standard",
+    "pin-cfc-social",
+)
 TED_FIELDS = [
     "notice-title",
     "notice-type",
@@ -228,6 +248,108 @@ def _build_notice_payload(notice: dict[str, Any]) -> tuple[str, str]:
     return detail_url, payload
 
 
+def _cpv_clause(prefixes: tuple[str, ...]) -> str:
+    clauses = [f"classification-cpv = {prefix}*" for prefix in prefixes]
+    return clauses[0] if len(clauses) == 1 else f"({' OR '.join(clauses)})"
+
+
+def _open_notices_clause() -> str:
+    return f"notice-type IN ({' '.join(TED_OPEN_NOTICE_TYPES)})"
+
+
+def _design_and_build_query(query_date: str) -> str:
+    """Open works notices whose full text names a design-and-build model.
+
+    ``FT`` is the expert search's full-text field; it folds accents and case. In a 2026-11 week
+    the phrases matched 121 open ``45*`` notices in one request, 74 of them confirmed by
+    ``is_design_and_build`` on the title and procedure description (25 of those had no design
+    CPV, so only this pass finds them); outside ``45*`` they matched 10 notices and none was
+    confirmed, so the pass stays on works codes.
+    """
+    phrases = " OR ".join(f'FT ~ "{phrase}"' for phrase in DESIGN_AND_BUILD_SEARCH_PHRASES)
+    return (
+        f"{_cpv_clause((WORKS_CPV_PREFIX,))} AND {_open_notices_clause()} AND ({phrases})"
+        f" AND publication-date >= {query_date}"
+    )
+
+
+def _search(
+    fetch: Callable[[str, dict[str, Any]], dict[str, Any]],
+    query: str,
+    *,
+    page_size: int,
+    limit: int,
+    keep: Callable[[dict[str, Any]], bool],
+) -> list[dict[str, Any]]:
+    """Every notice of one query that ``keep`` accepts, in no particular order.
+
+    Iteration paging, unsorted: checked live on 2026-11-15 over one week of the AI scope, it
+    returned all 1,188 notices exactly once. Page-number paging under ``SORT BY publication-date``
+    repeated some same-day notices across pages and so skipped others, and iteration combined
+    with a sort stopped early (750, or 500 at page size 100). Callers sort locally.
+    """
+    del limit  # The window is read whole: unsorted pages cannot be cut at "the newest N".
+    kept: list[dict[str, Any]] = []
+    token: str | None = None
+    for _page in range(TED_MAX_PAGES):
+        body: dict[str, Any] = {
+            "query": query,
+            "fields": TED_FIELDS,
+            "limit": page_size,
+            "paginationMode": "ITERATION",
+        }
+        if token:
+            body["iterationNextToken"] = token
+        response = fetch(TED_SEARCH_URL, body)
+        notices = response.get("notices", []) if isinstance(response, dict) else []
+        kept.extend(notice for notice in notices if isinstance(notice, dict) and keep(notice))
+        token = response.get("iterationNextToken") if isinstance(response, dict) else None
+        if not notices or not token:
+            break
+    else:
+        logger.warning(
+            "TED paging stopped after %d pages; later notices were not read", TED_MAX_PAGES
+        )
+    return kept
+
+
+def _is_keyword_relevant(notice: dict[str, Any]) -> bool:
+    title = _pick_localized_value(notice.get("notice-title")) or ""
+    return bool(title) and _is_relevant_design_notice(title, _extract_cpv_codes(notice))
+
+
+def _names_design_and_build(notice: dict[str, Any]) -> bool:
+    return is_design_and_build(
+        _pick_localized_value(notice.get("notice-title")),
+        _pick_localized_value(notice.get("description-proc")),
+    )
+
+
+def _notice_key(notice: dict[str, Any]) -> str | None:
+    return _pick_first_string(notice.get("publication-number")) or _pick_first_string(
+        notice.get("notice-identifier")
+    )
+
+
+def _merge_newest_first(*searches: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """One list per notice (first occurrence wins), newest publication first, stable."""
+    merged: dict[str, dict[str, Any]] = {}
+    unkeyed: list[dict[str, Any]] = []
+    for notices in searches:
+        for notice in notices:
+            key = _notice_key(notice)
+            if key is None:
+                unkeyed.append(notice)
+            else:
+                merged.setdefault(key, notice)
+    ordered = [*merged.values(), *unkeyed]
+    ordered.sort(
+        key=lambda notice: (_pick_first_string(notice.get("publication-date")) or "")[:10],
+        reverse=True,
+    )
+    return ordered
+
+
 def collect_ted_documents(
     source: SourceDefinition,
     *,
@@ -236,33 +358,46 @@ def collect_ted_documents(
     fetch_json: Callable[[str, dict[str, Any]], dict[str, Any]] | None = None,
     include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
+    """TED notices published since ``publication_date_from``, newest first.
+
+    With ``include_unclassified`` (AI screening) the query is the design scope of
+    ``collectors.design_scope`` (CPV ``71*`` or ``7993*``) on open notice types, plus one
+    full-text query for open design-and-build works notices (``45*``). A ``search_query`` on the
+    source replaces the scope and skips the design-and-build pass. Without AI the keyword gates
+    decide over ``712*``.
+    """
     query_date = _normalize_publication_date(publication_date_from)
     scope = source.search_query or (
-        "classification-cpv = 71*" if include_unclassified else "classification-cpv = 712*"
+        # Only notices that still open a way to take part. In a 2026-11 week, 956 of the 2,202
+        # CPV 71* notices were award results, and they filled the newest-100 window first.
+        f"{_cpv_clause(SCOPE_CPV_PREFIXES)} AND {_open_notices_clause()}"
+        if include_unclassified
+        else "classification-cpv = 712*"
     )
     if source.search_query:
         scope = f"({scope})"
-    body = {
-        "query": (f"{scope} AND publication-date >= {query_date} SORT BY publication-date DESC"),
-        "fields": TED_FIELDS,
-        "limit": limit,
-        "page": 1,
-        "paginationMode": "PAGE_NUMBER",
-    }
-    response = (fetch_json or _default_fetch_json)(TED_SEARCH_URL, body)
-    notices = response.get("notices", []) if isinstance(response, dict) else []
+    query = f"{scope} AND publication-date >= {query_date}"
+    fetch = fetch_json or _default_fetch_json
+    page_size = TED_PAGE_SIZE
+
+    if not include_unclassified:
+        notices = _merge_newest_first(
+            _search(fetch, query, page_size=page_size, limit=limit, keep=_is_keyword_relevant)
+        )
+    else:
+        notices = _search(fetch, query, page_size=page_size, limit=limit, keep=lambda _: True)
+        if not source.search_query:
+            design_and_build = _search(
+                fetch,
+                _design_and_build_query(query_date),
+                page_size=page_size,
+                limit=limit,
+                keep=_names_design_and_build,
+            )
+            notices = _merge_newest_first(notices, design_and_build)
 
     documents: list[CollectedSourceDocument] = []
-    for notice in notices:
-        if not isinstance(notice, dict):
-            continue
-        title = _pick_localized_value(notice.get("notice-title")) or ""
-        cpv_codes = _extract_cpv_codes(notice)
-        if not include_unclassified and (
-            not title or not _is_relevant_design_notice(title, cpv_codes)
-        ):
-            continue
+    for notice in notices[:limit]:
         source_url, payload = _build_notice_payload(notice)
         documents.append(CollectedSourceDocument(source_url=source_url, payload=payload))
-
     return documents

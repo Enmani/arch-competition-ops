@@ -305,6 +305,7 @@ def test_catalog_loads_recent_non_eu_and_additional_europe_sources() -> None:
         "canadabuys_tender_notices",
         "gets_open_tenders",
         "uk_contracts_finder_tenders",
+        "uk_find_a_tender_notices",
         "austender_atm_feed",
         "tenderned_contract_notices",
         "doffin_notices",

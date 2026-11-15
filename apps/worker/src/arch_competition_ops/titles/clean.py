@@ -12,9 +12,6 @@ import unicodedata
 
 CLEANER_VERSION = "rules-1"
 
-# A card shows two lines of the 1.25rem face: about 60 Latin letters, or 30 CJK characters.
-MAX_PLAIN_WIDTH = 60
-
 _DASH = " – "
 # TED notices read "<Country> – <service category> – <title>"; both prefixes duplicate card fields.
 _TED_PREFIX = re.compile(r"^[A-Z][A-Za-z.' ]{2,30} – [A-Z][^–]{3,90} – (?=\S)")
@@ -117,11 +114,3 @@ def clean_title(title: str) -> str:
         text = _sentence_case(text)
     text = text.strip()
     return text if len(text) >= 4 else re.sub(r"\s+", " ", title).strip()
-
-
-def needs_condensing(source_title: str, cleaned_title: str) -> bool:
-    """Whether the cleaned title still needs the AI stage.
-
-    Too long for a two-line card, or an all-caps title whose lower-casing lost its proper nouns.
-    """
-    return display_width(cleaned_title) > MAX_PLAIN_WIDTH or _is_all_caps(source_title)

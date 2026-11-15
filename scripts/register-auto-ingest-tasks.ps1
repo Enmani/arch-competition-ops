@@ -15,23 +15,28 @@
     Plain internet access (what the ingest does) is unaffected. If S4U registration is
     refused on a machine, retry with -LogonType Interactive and accept the logged-on limit.
 
-    The three tasks keep their original schedule. They no longer need staggered times to avoid
-    overlapping SQLite writes: the Python CLI takes a batch-level lock, so an overlapping run
-    waits for or yields to the one in progress.
-    Tasks registered by an older version of this script must be re-installed (-Action Install
-    replaces them) to pick up the new settings.
+    One task runs the all_enabled batch once a day. The ingest skips notices it has already
+    screened (ai_notice_ledger), so a daily run pays only for new or changed notices; a second
+    run per day would find almost nothing new. The Python CLI takes a batch-level lock, so an
+    overlapping run (for example a manual one) waits for or yields to the one in progress.
+    Tasks registered by an older version of this script (the official_daytime x2 and
+    secondary_nightly tasks) are removed by -Action Remove -LegacyTasks, then re-install.
 #>
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
     [ValidateSet("Install", "Remove", "Show")]
     [string]$Action = "Show",
-    [string[]]$DayTimes = @("06:30", "14:30"),
-    [string[]]$NightTimes = @("02:30"),
+    [string]$BatchId = "all_enabled",
+    [string]$Time = "03:30",
+    # Remove only: also delete the three tasks older versions of this script registered.
+    [switch]$LegacyTasks,
     [string]$TaskPrefix = "arch-competition-ops",
     [ValidateSet("S4U", "Interactive")]
     [string]$LogonType = "S4U",
     [ValidateRange(1, 24)]
-    [int]$TimeLimitHours = 2,
+    # A steady-state day is about 250 new notices at roughly a minute each; the first run after a
+    # criteria change is longer, and a restart resumes from the cached assessments.
+    [int]$TimeLimitHours = 8,
     [ValidateRange(0, 10)]
     [int]$RestartCount = 2,
     [ValidateRange(1, 1440)]
@@ -81,8 +86,11 @@ function New-BatchTaskSpec {
 
 function Get-AllTaskSpecs {
     $specs = @()
-    $specs += New-BatchTaskSpec -BatchId "official_daytime" -Times $DayTimes
-    $specs += New-BatchTaskSpec -BatchId "secondary_nightly" -Times $NightTimes
+    $specs += New-BatchTaskSpec -BatchId $BatchId -Times @($Time)
+    if ($Action -eq "Remove" -and $LegacyTasks) {
+        $specs += New-BatchTaskSpec -BatchId "official_daytime" -Times @("06:30", "14:30")
+        $specs += New-BatchTaskSpec -BatchId "secondary_nightly" -Times @("02:30")
+    }
     return $specs
 }
 

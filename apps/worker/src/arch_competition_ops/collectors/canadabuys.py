@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import re
 
 from arch_competition_ops.collectors.base import CollectedSourceDocument
 from arch_competition_ops.collectors.common import (
@@ -132,9 +133,16 @@ def collect_canadabuys_documents(
         ):
             continue
 
+        reference = _pick_row_value(row, "referenceNumber-numeroReference") or ""
         official_url = (
             _pick_row_value(row, "noticeURL-URLavis-eng", "noticeURL-URLavis-fra")
-            or source.base_url
+            # Rows published on CanadaBuys itself leave noticeURL empty; their public page is
+            # keyed by the cb-… reference. The dataset URL is shared by every row, not a notice.
+            or (
+                f"https://canadabuys.canada.ca/en/tender-opportunities/tender-notice/{reference}"
+                if re.fullmatch(r"cb-\d+-\d+", reference)
+                else source.base_url
+            )
         )
         payload = json.dumps(
             {

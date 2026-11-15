@@ -66,8 +66,10 @@ def enrich_notice_payload(payload: str, source_url: str, settings: Settings) -> 
     ):
         return payload
     try:
-        if json.loads(payload).get("rawNoticeHtml"):
-            return payload  # The adapter already fetched the full notice page.
+        if "rawNoticeHtml" in json.loads(payload):
+            # The adapter already fetched the notice page, or found it unusable (for example a
+            # portal shell showing another tender); fetching it again would bring the same page.
+            return payload
     except (ValueError, AttributeError):
         pass
     try:
@@ -102,7 +104,9 @@ def prepare_input(
     if source_payload is None and fetch_source:
         try:
             response = get_default_client().get(
-                source_url, archive=settings.resolve_path(settings.html_archive_dir)
+                source_url,
+                archive=settings.resolve_path(settings.html_archive_dir),
+                max_bytes=2 * 1024 * 1024,  # Same bound as enrichment; a dataset is not a notice.
             )
             media = response.headers.get("Content-Type", response.headers.get("content-type", ""))
             if "pdf" in media.lower():
@@ -124,8 +128,9 @@ def prepare_input(
     remaining = settings.ai_max_input_chars
     for key, value in [
         *(row.items()),
-        ("notice_links", "\n".join(dict.fromkeys(links.links))),
+        # Text before links: a page with a long link list must not consume the notice budget.
         ("notice_text", text),
+        ("notice_links", "\n".join(dict.fromkeys(links.links))),
     ]:
         if key in _VOLATILE_FIELDS or value is None or value == "":
             continue
@@ -134,8 +139,10 @@ def prepare_input(
             limitations.append("Input was truncated to the configured character limit")
         fields[key] = rendered[:remaining]
         remaining = max(0, remaining - len(fields[key]))
+    # Today's date is added at request time (request_arguments), not stored here: the stored
+    # input is the cache identity, so unchanged evidence is not re-paid on every daily run.
+    # Reusing a judgment stays safe because expiry is enforced from deadline_at afterwards.
     content = {
-        "date": clock.today().isoformat(),
         "preferences": preferences,
         "evidence_fields": fields,
         "limitations": sorted(set(limitations)),
@@ -163,7 +170,7 @@ def prepare_input(
         }
     # Store the exact prompt/config, so any relevant change invalidates reuse without hashing.
     request = {
-        "version": 2,
+        "version": 3,
         "instructions": INSTRUCTIONS,
         "input": canonical_json(content),
         "max_output_tokens": settings.ai_max_output_tokens,
@@ -178,4 +185,9 @@ def prepare_input(
 def request_arguments(input_json: str) -> dict[str, Any]:
     request = json.loads(input_json)
     request.pop("version")
+    request["input"] = with_today(request["input"])
     return request
+
+
+def with_today(input_text: str) -> str:
+    return canonical_json({**json.loads(input_text), "date": clock.today().isoformat()})

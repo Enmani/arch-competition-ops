@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import timedelta
+from datetime import date, timedelta
 
 import httpx
 import pytest
@@ -12,6 +12,7 @@ from arch_competition_ops import clock
 from arch_competition_ops.cli import main
 from arch_competition_ops.models import CompetitionRecord
 from arch_competition_ops.screening.extraction import extract_record
+from arch_competition_ops.screening.inputs import prepare_input
 from arch_competition_ops.screening.models import ScreeningDecision, validate_evidence
 from arch_competition_ops.screening.service import assess_document
 from arch_competition_ops.settings import Settings
@@ -247,6 +248,93 @@ def test_bad_decision_quote_does_not_discard_valid_source_fields_or_hide_the_rec
     assert row["cost_usd"] > 0
 
 
+def test_unchanged_notice_is_not_paid_again_on_a_later_day(ai_workspace):
+    settings, source = ai_workspace
+    sent = []
+
+    def handler(request):
+        sent.append(json.loads(json.loads(request.content)["input"])["date"])
+        return response(decision_payload())
+
+    try:
+        with mock_client(handler) as client:
+            for day in (date(2026, 11, 2), date(2026, 11, 3)):
+                clock.set_today_provider(lambda d=day: d)
+                assessment = assess_document(
+                    settings,
+                    source=source,
+                    source_url="https://city.example/n/1",
+                    payload=NOTICE,
+                    client=client,
+                )
+    finally:
+        clock.set_today_provider(None)
+    # The model still sees today's date, but the second day reuses the stored assessment.
+    assert sent == ["2026-11-02"]
+    assert assessment.cached
+
+
+def test_notice_text_is_kept_before_a_long_link_list(ai_workspace):
+    settings, _source = ai_workspace
+    links = "".join(f"<a href='https://x.example/{i}'>l</a>" for i in range(5000))
+    _input, fields, _limits = prepare_input(
+        {"source_url": "https://city.example/n/1"},
+        settings,
+        {},
+        source_payload=f"<p>Civic School Design Competition</p>{links}",
+    )
+    assert fields["notice_text"].startswith("Civic School Design Competition")
+
+
+def test_exclusion_keeps_its_decision_when_one_quote_is_unsupported(ai_workspace):
+    settings, source = ai_workspace
+    payload = decision_payload(
+        decision="exclude",
+        relevance_score=3,
+        evidence=[
+            {"field": "notice_text", "quote": "Open to registered architects."},
+            {"field": "notice_text", "quote": "Paraphrased, not in the notice"},
+        ],
+    )
+    with mock_client(lambda _r: response(payload)) as client:
+        assessment = assess_document(
+            settings,
+            source=source,
+            source_url="https://city.example/n/1",
+            payload=NOTICE,
+            client=client,
+        )
+    assert assessment.decision.decision == "exclude"
+    assert len(assessment.decision.evidence) == 1
+    assert any(
+        "Unsupported decision evidence" in m for m in assessment.decision.missing_information
+    )
+
+
+def test_exclusion_without_any_supported_quote_becomes_review_and_recommend_downgrades_on_one(
+    ai_workspace,
+):
+    settings, source = ai_workspace
+    unsupported = {"field": "notice_text", "quote": "Invented evidence"}
+    supported = {"field": "notice_text", "quote": "Open to registered architects."}
+    for decision, evidence, expected in [
+        ("exclude", [unsupported], "needs_review"),
+        ("recommend", [supported, unsupported], "needs_review"),
+        ("recommend", [supported], "recommend"),
+    ]:
+        payload = decision_payload(decision=decision, evidence=evidence)
+        with mock_client(lambda _r, p=payload: response(p)) as client:
+            assessment = assess_document(
+                settings,
+                source=source,
+                source_url="https://city.example/n/2",
+                payload=NOTICE,
+                client=client,
+                force=True,
+            )
+        assert assessment.decision.decision == expected, (decision, evidence)
+
+
 def test_truncated_input_retains_grounded_judgment_and_reports_limitation(ai_workspace):
     settings, source = ai_workspace
     with mock_client(lambda _r: response(decision_payload(decision="recommend"))) as client:
@@ -448,3 +536,68 @@ def test_raw_notice_ingestion_publishes_exclusion_without_changing_human_status(
     assert record["location_label"] == "Via Roma 10, Milano"
     assert advice["decision"] == "exclude"
     assert advice["source_updated_at"] == record["updated_at"]
+
+
+def test_ingest_screens_each_listed_notice_once_until_its_content_changes(
+    ai_workspace,
+    monkeypatch,
+):
+    settings, source = ai_workspace
+    import yaml
+
+    from arch_competition_ops.collectors.base import CollectedSourceDocument
+    from arch_competition_ops.ingest import ingest_source
+    from arch_competition_ops.screening import service, triage
+
+    settings.ai_enabled = True
+    (settings.root / "config" / "sources.yml").write_text(
+        yaml.safe_dump({"sources": [source.model_dump()]}),
+        encoding="utf-8",
+    )
+    listing = [
+        CollectedSourceDocument("https://city.example/n/1", NOTICE),
+        CollectedSourceDocument("https://city.example/n/2", "<p>Stationery supply</p>"),
+    ]
+    monkeypatch.setattr(
+        "arch_competition_ops.ingest.collect_source_documents", lambda *_a, **_kw: list(listing)
+    )
+    monkeypatch.setattr("arch_competition_ops.ingest.enrich_record_geocode", lambda r, **_kw: r)
+    calls = []
+
+    def handler(request):
+        calls.append(request.url.path)
+        if request.url.path.endswith("/decisions"):
+            body = json.loads(request.content)
+            texts = json.loads(body["input"])["candidates"]
+            answers = [
+                {
+                    "type": "choice",
+                    "name": f"candidate_{c['id']}",
+                    "choice": "exclude" if "Stationery" in c["preview"] else "keep",
+                    "confidence": 0.99,
+                }
+                for c in texts
+            ]
+            return httpx.Response(200, json={"answers": answers, "usage": {"input_tokens": 10}})
+        return response(decision_payload())
+
+    # Each stage opens and closes its own client, as create_client does in production.
+    monkeypatch.setattr(service, "create_client", lambda _settings: mock_client(handler))
+    monkeypatch.setattr(triage, "create_client", lambda _settings: mock_client(handler))
+    first = ingest_source(settings, source_id="city")
+    calls_after_first = len(calls)
+    second = ingest_source(settings, source_id="city")
+    calls_after_second = len(calls)
+    # A corrigendum changes the listed content, so that notice alone is screened again.
+    listing[0] = CollectedSourceDocument(
+        "https://city.example/n/1", NOTICE.replace("EUR 50,000", "EUR 60,000")
+    )
+    third = ingest_source(settings, source_id="city")
+
+    assert calls_after_first == 2  # one triage batch, one assessment
+    assert first.filtered_out == 1 and len(first.ingested_ids) == 1
+    # Unchanged notices are neither triaged nor assessed again, the excluded one included.
+    assert calls_after_second == calls_after_first
+    assert second.already_screened == 2
+    assert third.already_screened == 1
+    assert calls[calls_after_second:] == ["/v1/decisions", "/v1/responses"]

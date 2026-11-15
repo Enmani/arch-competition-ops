@@ -70,7 +70,7 @@ def test_italy_plural_templates_and_raw_record_reach_the_model():
     assert payload["rawNotice"] == row
 
 
-def test_swiss_ai_search_keeps_required_protocol_filters_but_includes_services():
+def test_swiss_ai_search_reads_service_orders_in_the_design_cpv_scope():
     from urllib.parse import parse_qs, urlsplit
 
     source = build_source(
@@ -85,7 +85,10 @@ def test_swiss_ai_search_keeps_required_protocol_filters_but_includes_services()
 
     def fetcher(url):
         if "project-search" in url:
-            assert "service" in parse_qs(urlsplit(url).query)["projectSubTypes"]
+            query = parse_qs(urlsplit(url).query)
+            if "service" not in query["projectSubTypes"] or query["cpvCodes"] == ["45000000"]:
+                return {"projects": []}
+            assert query["cpvCodes"] == ["71000000", "79930000"]
             return {
                 "projects": [
                     {
@@ -96,8 +99,6 @@ def test_swiss_ai_search_keeps_required_protocol_filters_but_includes_services()
                     }
                 ]
             }
-        if "project-header" in url:
-            return {"latestPublication": {"id": "n"}}
         return {"project-info": {"title": {"en": "School design"}}}
 
     docs = collect_simap_documents(source, limit=1, include_unclassified=True, fetch_json=fetcher)
