@@ -112,24 +112,13 @@ test("the placeholder carries a dark palette so it follows the page's colour sch
   });
   // Colours come from classes, not from attributes, so the dark rules can replace them.
   assert.match(svg, /@media \(prefers-color-scheme: dark\)/);
-  // No backing square: the card's own background shows through.
-  assert.doesNotMatch(svg, /class="paper"/);
+  // The card's drawing has its paper square (as a class, so the dark rule can replace it).
+  assert.match(svg, /class="paper"/);
   assert.doesNotMatch(svg, /fill="#f4f2ea"/);
   assert.doesNotMatch(svg, /stroke="#21201b"/);
-  // The inset keeps a paper square for legibility over a photograph; in the dark palette it is the
-  // lightest surface of the dark page, not a black hole.
-  const inset = buildOpportunityLocatorInsetSvg({
-    authorityName: "Commune de Maur",
-    geoLat: 47.3407,
-    geoLng: 8.671,
-    jurisdictionKey: "switzerland",
-    jurisdictionLabel: "Switzerland",
-    locationLabel: "Maur",
-    title: "Extension du complexe sportif",
-  });
-  assert.ok(inset);
-  assert.match(inset, /class="paper"/);
-  assert.match(inset, /@media \(prefers-color-scheme: dark\) \{[^}]*\.paper \{ fill: #24231e; \}/);
+  // In the dark palette the card's paper is a step lighter than the dark page (#11110d), so the
+  // card still stands apart from it.
+  assert.match(svg, /@media \(prefers-color-scheme: dark\) \{[^}]*\.paper \{ fill: #24231e; \}/);
 });
 
 test("the inset map is the outline and one dot, and exists only for a position that is really known", () => {
@@ -142,10 +131,10 @@ test("the inset map is the outline and one dot, and exists only for a position t
   };
   const inset = buildOpportunityLocatorInsetSvg({ ...base, geoLat: 47.3407, geoLng: 8.671 });
   assert.ok(inset);
-  assert.match(inset, /class="mark-fill"/);
-  assert.equal((inset.match(/class="mark-fill"/g) ?? []).length, 1);
-  assert.doesNotMatch(inset, /locator-grid|<text/);
-  assert.match(inset, /@media \(prefers-color-scheme: dark\)/);
+  // One dot, and no backing at all: it sits over a photograph, in fixed light strokes.
+  assert.equal((inset.match(/<circle /g) ?? []).length, 1);
+  assert.doesNotMatch(inset, /<rect|class="paper"|locator-grid|<text|prefers-color-scheme/);
+  assert.match(inset, /<path d="[^"]+" fill="#f3f1e6"/);
 
   assert.equal(buildOpportunityLocatorInsetSvg(base), null, "no coordinates, no dot");
   assert.equal(buildOpportunityLocatorInsetSvg({ ...base, jurisdictionKey: "atlantis", geoLat: 1, geoLng: 1 }), null);

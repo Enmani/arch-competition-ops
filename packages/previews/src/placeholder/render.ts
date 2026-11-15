@@ -4,8 +4,9 @@
 // Outlines are precomputed by scripts/build-country-outlines.mjs into data/country-outlines.json,
 // fitted to the panel with a 40px inset.
 //
-// The full drawing has no backing (the card shows whatever is behind it); only the small inset map
-// keeps a paper square, because it sits over a photograph and must stay legible.
+// The card's drawing keeps its paper square so the card stands apart from the page. The small
+// inset map has no backing at all: it sits over a photograph, so it is drawn in fixed light
+// strokes with a soft shadow instead of the theme palette.
 //
 // Colours live in a <style> block, with a dark palette under prefers-color-scheme. An SVG shown
 // through <img> follows the embedding page's `color-scheme` (the site sets it from its theme
@@ -181,13 +182,14 @@ export const buildOpportunityLocatorInsetSvg = (
   return `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="52 52 ${PANEL_SIZE} ${PANEL_SIZE}" role="img" aria-label="Project location">
   <defs>
-    <style>${PLACEHOLDER_STYLE}
-    </style>
+    <filter id="inset-shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="0" stdDeviation="7" flood-color="#09110d" flood-opacity="0.6" />
+    </filter>
   </defs>
-  <rect x="${PANEL_START}" y="${PANEL_START}" width="${PANEL_SIZE}" height="${PANEL_SIZE}" class="paper" />
-  <path d="${outline.pathData}" class="ink-fill ink" fill-opacity="0.12" stroke-opacity="0.8" stroke-width="5" stroke-linejoin="round" stroke-linecap="round" />
-  <circle cx="${anchor.x}" cy="${anchor.y}" r="30" class="paper" />
-  <circle cx="${anchor.x}" cy="${anchor.y}" r="22" class="mark-fill" />
+  <g filter="url(#inset-shadow)">
+    <path d="${outline.pathData}" fill="#f3f1e6" fill-opacity="0.18" stroke="#f3f1e6" stroke-opacity="0.95" stroke-width="5" stroke-linejoin="round" stroke-linecap="round" />
+    <circle cx="${anchor.x}" cy="${anchor.y}" r="22" fill="#8ac998" stroke="#0e1813" stroke-opacity="0.55" stroke-width="5" />
+  </g>
 </svg>
 `.trim();
 };
@@ -218,6 +220,7 @@ export const buildOpportunityLocatorPlaceholderSvg = (
     </pattern>
   </defs>
 
+  <rect x="${PANEL_START}" y="${PANEL_START}" width="${PANEL_SIZE}" height="${PANEL_SIZE}" class="paper" />
   <rect x="${PANEL_START}" y="${PANEL_START}" width="${PANEL_SIZE}" height="${PANEL_SIZE}" fill="url(#locator-grid)" />
   <path d="M${PANEL_START} 243H${PANEL_END} M${PANEL_START} 404H${PANEL_END} M221 ${PANEL_START}V${PANEL_END} M499 ${PANEL_START}V${PANEL_END}" class="ink" fill="none" stroke-opacity="${guideOpacity}" stroke-width="1.2" />
 
