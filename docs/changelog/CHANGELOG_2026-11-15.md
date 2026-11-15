@@ -60,3 +60,8 @@ Gulf national procurement is mostly behind registration; the sources above are t
 
 - `config/taxonomy.yml`, `config/filters.yml`, `config/source_packs/**`, `apps/web/src/i18n/dictionaries/*/taxonomy.ts`, `apps/worker/src/arch_competition_ops/location.py`, `packages/previews/data/*`
 - `apps/worker/src/arch_competition_ops/collectors/{adgpg,uae_mof,monaqasat,ashghal,bahrain_tender_board,joneps,etimad,ungm,isdb,mideast_common}.py`
+
+## Production deploy
+
+- Backup `artifacts/backups/arch-competition-ops-20261115T170735Z.sql` (Time Travel bookmark `00005b4d-00000000-00005124-00d2fc1fee4162a7f79d416440d977f3`), remote migration `0008` (the ledger table stays empty on D1; the worker owns it), upsert of the 140 local records, 124 screening results, source runs and health without `--prune`, then the OpenNext build and Worker deploy (version `5debf327`).
+- Production keeps its older corpus: 1046 competitions, of which the 140 local ones carry the new exclusions and zh/en display titles. The next daily ingest and a D1 sync extend that to new records.
