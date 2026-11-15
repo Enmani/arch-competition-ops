@@ -65,3 +65,49 @@ Gulf national procurement is mostly behind registration; the sources above are t
 
 - Backup `artifacts/backups/arch-competition-ops-20261115T170735Z.sql` (Time Travel bookmark `00005b4d-00000000-00005124-00d2fc1fee4162a7f79d416440d977f3`), remote migration `0008` (the ledger table stays empty on D1; the worker owns it), upsert of the 140 local records, 124 screening results, source runs and health without `--prune`, then the OpenNext build and Worker deploy (version `5debf327`).
 - Production keeps its older corpus: 1046 competitions, of which the 140 local ones carry the new exclusions and zh/en display titles. The next daily ingest and a D1 sync extend that to new records.
+
+## Concurrent assessments, rate-limit retry and record cleanup
+
+### Changed
+
+- `ARCH_COMPETITION_OPS_AI_CONCURRENCY` (1 to 16, default 1): one source's detailed assessments run on that many threads, in input order; parse, verify, geocode and store stay sequential. The per-source AI lock is taken once for the pass (`assess_document(source_lock=False)` inside it). The first budget error stops the pass and defers the rest; a finished assessment after the stop point is left to the next run, which reuses it from `ai_screening_runs` at no cost.
+- HTTP 429 from the provider is retried up to 3 times with exponential backoff, jitter and `Retry-After` (capped at 60 s) under the same reservation, for assessments, candidate triage and title polishing. `insufficient_quota`, other 4xx, 5xx and connection errors are not retried.
+- The daily cleanup also deletes opportunities whose current assessment is `exclude` and older than 7 days (not `shortlisted`, `verified` or watchlisted; previews included) and blanks `input_json` / `result_json` of `ai_screening_runs` rows older than 45 days (rows and costs kept). The command prints the new counts (`ai_excluded_*`, `ai_runs_shrunk`).
+
+### Why
+
+The daily run moves to a cloud job with a 6-hour limit while its paid assessment was serial (about a minute per notice). Excluded records and old prompts only accumulate; the notice ledger already prevents a re-screen of either.
+
+### Validation
+
+- Worker tests with a mock transport: input order under reversed completion, in-flight peak equal to the limit (barrier), budget stop with one reservation affordable, one failing notice, ledger entries only for finished work, 16 threads against a 5-reservation budget, the 429 matrix, cleanup cases (recent, shortlisted/verified/watchlisted, stale revision, non-exclude, payload shrink, daily guard).
+
+### Modified Files
+
+- `apps/worker/src/arch_competition_ops/{ingest.py,maintenance.py,cli.py,settings.py}`, `screening/{service.py,client.py,triage.py}`, `titles/rewrite.py`, `storage/screening.py`
+- `apps/worker/tests/{test_ai_concurrency.py,test_maintenance_cleanup.py,test_cli_maintenance.py}`
+- `.env.example`, `docs/ARCHITECTURE.md`, `docs/DATA_CONTRACT.md`, `docs/SETUP.md`, `apps/worker/README.md`
+
+## Daily ingest moves to GitHub Actions
+
+### Changed
+
+- New workflow `.github/workflows/daily-ingest.yml` (schedule 02:00 UTC plus `workflow_dispatch` with `batch_id`, `publication_date_from`, `dry_run`): pull state, cleanup, `ingest-batch`, D1 sync, push state. Public-repo rules: no artifacts, counts-only logs and summary, secrets only on the steps that need them, one run at a time, repository guard, keepalive for the 60-day schedule switch-off.
+- New `scripts/cloud-state.mjs` (`pull`, `push`, `stats`): keeps `data/competitions.sqlite` and the geocode cache in the private R2 bucket `arch-competition-state` through wrangler, as `state/<UTC timestamp>/` generations plus `latest.json`, newest 14 kept. Snapshot by SQLite backup, `integrity_check` and sha256 on both sides; `pull` fails on an empty bucket, `push --init` seeds the first generation, fewer `ai_notice_ledger` rows is refused without `--force`.
+- `scripts/export-d1-data.mjs` gains `--apply` (runs the generated files against remote D1 in order, stops at the first failure, prints counts) and `--retention` (`0090-retention.sql`: remote mirror of the local cleanup rules, deadline over 7 days past or current `exclude` assessment over 7 days old, never shortlisted/verified or watchlisted, never user tables). Default behaviour is unchanged; `MAX_DATA_FILES` is 89 to leave room for the retention file. Wrangler is started by `scripts/lib/wrangler.mjs` (overridable with `ARCH_WRANGLER_CMD` for tests).
+- `package.json`: `cloud:state:pull`, `cloud:state:push`, `d1:sync`; the new tests are part of `test:tools`.
+- `CLOUDFLARE_DEPLOY_RUNBOOK.md`: section "Cloud daily run" (setup, secrets and token permissions, reading results, restoring a generation, limits).
+
+### Why
+
+The Windows scheduled task only runs while the owner's PC is on. The ledger and the assessment cache are the paid part of the state, so they move with the run (R2) instead of being rebuilt on each fresh runner. Satellite previews are not produced in the cloud and still come from a local `prewarm:previews` plus deploy.
+
+### Validation
+
+- `tests/cloud-state.test.mjs` (fake wrangler over a temp directory: round trip, empty bucket, sha256 mismatch, corrupt database, fewer ledger rows, 14-generation retention, failed upload keeps the old pointer), `tests/d1-retention-apply.test.mjs` (retention SQL against a database built from the real migrations with foreign keys on, including watchlisted, shortlisted, verified, boundary-day and user-table cases; `--apply` order, first-failure stop, credential check), `tests/daily-ingest-workflow.test.mjs` (triggers, no artifacts, concurrency, guard, timeout, permissions, pinned actions, secret list).
+- Not verified without real access: the Actions run itself, wrangler's R2 and D1 behaviour against Cloudflare, the `enable` keepalive call.
+
+### Modified Files
+
+- `.github/workflows/daily-ingest.yml`, `scripts/{cloud-state.mjs,export-d1-data.mjs}`, `scripts/lib/{wrangler.mjs,d1-sync/apply.mjs,d1-sync/retention.mjs,d1-sync/batching.mjs,d1-sync/table-specs.mjs}`
+- `tests/{cloud-state,d1-retention-apply,daily-ingest-workflow}.test.mjs`, `tests/helpers/fake-wrangler.mjs`, `package.json`, `CLOUDFLARE_DEPLOY_RUNBOOK.md`

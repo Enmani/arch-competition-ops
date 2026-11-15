@@ -57,6 +57,9 @@ class Settings(BaseSettings):
     ai_max_output_tokens: int = Field(default=12288, ge=512, le=16384)
     ai_max_input_chars: int = Field(default=30000, ge=1000, le=100000)
     ai_timeout_seconds: float = Field(default=120, gt=0, le=300, allow_inf_nan=False)
+    # Detailed assessments in flight at once during one source's ingest; 1 is serial. Higher
+    # values shorten a large run but raise the chance of provider rate limits (HTTP 429).
+    ai_concurrency: int = Field(default=1, ge=1, le=16)
 
     # Opportunity card previews are generated offline by packages/previews (a Node CLI). When
     # ARCH_PREVIEW_PREWARM=1 the worker runs that CLI, with fixed arguments and no shell, after

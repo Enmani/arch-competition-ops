@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-import { D1_DATABASE_NAME, MAX_DATA_FILES, PRUNE_FILE_NAME } from "./table-specs.mjs";
+import { D1_DATABASE_NAME, MAX_DATA_FILES, PRUNE_FILE_NAME, RETENTION_FILE_NAME } from "./table-specs.mjs";
 
 function byteLength(text) {
   return Buffer.byteLength(text, "utf8");
@@ -55,10 +55,10 @@ function toFile(name, table, statements) {
 }
 
 /**
- * Turn per-table statements (in sync order) plus optional prune statements into the ordered
- * file list: 0001-<table>.sql, 0002-<table>.sql, ... and finally 0099-prune.sql.
+ * Turn per-table statements (in sync order) plus optional retention and prune statements into the
+ * ordered file list: 0001-<table>.sql, 0002-<table>.sql, ..., 0090-retention.sql, 0099-prune.sql.
  */
-export function planFiles({ tableStatements, pruneStatements, limits }) {
+export function planFiles({ tableStatements, retentionStatements = null, pruneStatements, limits }) {
   const files = [];
   for (const { table, statements } of tableStatements) {
     for (const batch of splitIntoBatches(table, statements, limits)) {
@@ -68,9 +68,13 @@ export function planFiles({ tableStatements, pruneStatements, limits }) {
   }
   if (files.length > MAX_DATA_FILES) {
     throw new Error(
-      `Export needs ${files.length} data files but only ${MAX_DATA_FILES} fit before ${PRUNE_FILE_NAME}; ` +
+      `Export needs ${files.length} data files but only ${MAX_DATA_FILES} fit before ${RETENTION_FILE_NAME}; ` +
         "raise the per-file limits in table-specs.mjs",
     );
+  }
+
+  if (retentionStatements) {
+    files.push(toFile(RETENTION_FILE_NAME, "competitions", retentionStatements));
   }
 
   if (pruneStatements) {

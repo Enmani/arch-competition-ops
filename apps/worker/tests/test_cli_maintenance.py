@@ -102,6 +102,11 @@ def test_cleanup_expired_competitions_command_reports_deleted_counts(
             deleted_preview_files=2,
             deleted_static_preview_files=4,
             skipped=1,
+            excluded_attempted=5,
+            deleted_excluded_competitions=4,
+            deleted_excluded_preview_files=3,
+            deleted_excluded_static_preview_files=2,
+            shrunk_screening_runs=9,
         ),
     )
 
@@ -123,6 +128,11 @@ def test_cleanup_expired_competitions_command_reports_deleted_counts(
     assert "preview_files=2" in output
     assert "static_preview_files=4" in output
     assert "skipped=1" in output
+    assert "ai_excluded_attempted=5" in output
+    assert "ai_excluded_deleted=4" in output
+    assert "ai_excluded_preview_files=3" in output
+    assert "ai_excluded_static_preview_files=2" in output
+    assert "ai_runs_shrunk=9" in output
 
 
 def test_normalize_anac_source_traces_command_rewrites_machine_urls_to_public_pages(

@@ -22,8 +22,12 @@ export const DEFAULT_LIMITS = Object.freeze({
   maxStatementBytes: 90 * 1024,
 });
 
+export const RETENTION_FILE_NAME = "0090-retention.sql";
 export const PRUNE_FILE_NAME = "0099-prune.sql";
-export const MAX_DATA_FILES = 98; // 0001..0098; 0099 is reserved for prune.
+export const MAX_DATA_FILES = 89; // 0001..0089; 0090 is reserved for retention and 0099 for prune.
+
+// Same window as the worker's `expired_competition_retention_days` and its 7-day exclusion rule.
+export const RETENTION_DAYS = 7;
 
 export const PRUNE_STAGING_TABLE = "_sync_competition_ids";
 

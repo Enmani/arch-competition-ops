@@ -15,7 +15,11 @@ from arch_competition_ops.config_loader import load_targeting_preferences
 from arch_competition_ops.locking import exclusive_lock
 from arch_competition_ops.normalizers.text import strip_html
 from arch_competition_ops.screening.catalog import get_model
-from arch_competition_ops.screening.client import ScreeningError, create_client
+from arch_competition_ops.screening.client import (
+    ScreeningError,
+    call_with_rate_limit_retry,
+    create_client,
+)
 from arch_competition_ops.screening.inputs import with_today
 from arch_competition_ops.screening.models import canonical_json
 from arch_competition_ops.screening.preferences import load_screening_instructions
@@ -172,7 +176,9 @@ def _triage_batch(
                     # generic endpoint method retains the SDK's authentication/timeouts.
                     # The cache identity excludes today's date; only the request carries it.
                     sent = {**body, "input": with_today(input_text)}
-                    response = api.post("/decisions", body=sent, cast_to=dict[str, Any])
+                    response = call_with_rate_limit_retry(
+                        lambda: api.post("/decisions", body=sent, cast_to=dict[str, Any])
+                    )
             except APIError as exc:
                 status = exc.status_code if isinstance(exc, APIStatusError) else None
                 rejected = status is not None and 400 <= status < 500

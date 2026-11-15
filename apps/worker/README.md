@@ -17,7 +17,7 @@ uv run arch-competition-ops show-country-coverage
 uv run arch-competition-ops ingest-source --source-id ted_design_notices --limit 20
 uv run arch-competition-ops ingest-batch --batch-id official_daytime     # or --list-batches
 uv run arch-competition-ops ingest-lock-status
-uv run arch-competition-ops cleanup-expired-competitions                 # at most once per day
+uv run arch-competition-ops cleanup-expired-competitions                 # at most once per day; expired, AI-excluded, old AI payloads
 uv run arch-competition-ops seed-demo                                    # empty database only
 ```
 

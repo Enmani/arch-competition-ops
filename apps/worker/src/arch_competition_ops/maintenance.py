@@ -24,8 +24,15 @@ from arch_competition_ops.storage import (
     list_expired_competition_ids,
     update_competition_geocode_fields,
 )
+from arch_competition_ops.storage.screening import (
+    list_excluded_competition_ids,
+    shrink_old_screening_runs,
+)
 
 logger = logging.getLogger(__name__)
+
+# Stored prompts and results of AI runs older than this are blanked; the cost rows stay.
+SCREENING_RUN_PAYLOAD_RETENTION_DAYS = 45
 
 
 @dataclass
@@ -37,6 +44,13 @@ class ExpiredCompetitionCleanupResult:
     skipped: int
     already_ran_today: bool = False
     last_run_date: str | None = None
+    # Competitions whose current AI assessment is ``exclude``, deleted after the same retention.
+    excluded_attempted: int = 0
+    deleted_excluded_competitions: int = 0
+    deleted_excluded_preview_files: int = 0
+    deleted_excluded_static_preview_files: int = 0
+    # Old ``ai_screening_runs`` rows whose payload was blanked (cost rows are kept).
+    shrunk_screening_runs: int = 0
 
 
 def rebuild_review_queue(settings: Settings) -> list[dict[str, object | None]]:
@@ -128,11 +142,10 @@ def _sanitize_preview_slug(slug: str) -> str:
     return re.sub(r"[^a-zA-Z0-9._-]+", "_", slug)[:120]
 
 
-def _delete_expired_preview_files(
-    settings: Settings, *, competition_ids: list[str]
-) -> tuple[int, int]:
-    """Delete ``images/{slug}-{hash10}.jpg`` from the generator output and the published copy.
+def _delete_preview_files(settings: Settings, *, competition_ids: list[str]) -> tuple[int, int]:
+    """Delete removed records' ``images/{slug}-{hash10}.jpg`` from both preview locations.
 
+    The locations are the generator output and the published copy under ``apps/web/public``.
     The hash is the generator's content hash, so every revision matches without reading anything
     out of the Web app's TypeScript. The pattern is anchored: ``road-work-<hash>.jpg`` is not a
     preview of the record ``road``. Manifest entries are left alone (the generator owns that
@@ -168,7 +181,13 @@ def cleanup_expired_competitions(
     limit: int = 500,
     force: bool = False,
 ) -> ExpiredCompetitionCleanupResult:
-    """Delete opportunities whose deadline is past the retention window, once per calendar day.
+    """Clean up once per calendar day: expired opportunities, old AI exclusions, old AI payloads.
+
+    Deletes (1) opportunities whose deadline is past the retention window, (2) opportunities whose
+    current AI assessment is ``exclude`` and older than the same window, unless a human moved them
+    to ``shortlisted``/``verified``, and (3) blanks the stored prompts and results of AI runs older
+    than ``SCREENING_RUN_PAYLOAD_RETENTION_DAYS`` while keeping their cost rows. The notice ledger
+    already records excluded notices as screened, so deleting one does not cause a re-screen.
 
     The command owns its own once-a-day guard (state file ``expired_cleanup_state``), so callers
     such as scheduled scripts can invoke it on every batch and it stays idempotent. ``force``
@@ -193,10 +212,24 @@ def cleanup_expired_competitions(
     deleted_competitions = deleted_preview_files = deleted_static_preview_files = 0
     if expired_ids:
         deleted_competitions = delete_competitions(db_path, competition_ids=expired_ids)
-        deleted_preview_files, deleted_static_preview_files = _delete_expired_preview_files(
+        deleted_preview_files, deleted_static_preview_files = _delete_preview_files(
             settings, competition_ids=expired_ids
         )
+
+    # Listed after the expired pass, so a record that is both is deleted (and counted) once.
+    excluded_ids = list_excluded_competition_ids(db_path, assessed_before=threshold, limit=limit)
+    deleted_excluded = deleted_excluded_previews = deleted_excluded_static_previews = 0
+    if excluded_ids:
+        deleted_excluded = delete_competitions(db_path, competition_ids=excluded_ids)
+        deleted_excluded_previews, deleted_excluded_static_previews = _delete_preview_files(
+            settings, competition_ids=excluded_ids
+        )
+    if expired_ids or excluded_ids:
         refresh_review_queue(db_path)
+
+    shrunk_runs = shrink_old_screening_runs(
+        db_path, started_before=today - timedelta(days=SCREENING_RUN_PAYLOAD_RETENTION_DAYS)
+    )
 
     _write_cleanup_state(
         state_path,
@@ -205,6 +238,10 @@ def cleanup_expired_competitions(
             "deleted_competitions": deleted_competitions,
             "deleted_preview_files": deleted_preview_files,
             "deleted_static_preview_files": deleted_static_preview_files,
+            "deleted_excluded_competitions": deleted_excluded,
+            "deleted_excluded_preview_files": deleted_excluded_previews,
+            "deleted_excluded_static_preview_files": deleted_excluded_static_previews,
+            "shrunk_screening_runs": shrunk_runs,
             "retention_days": effective_retention_days,
         },
     )
@@ -215,4 +252,9 @@ def cleanup_expired_competitions(
         deleted_static_preview_files=deleted_static_preview_files,
         skipped=max(0, len(expired_ids) - deleted_competitions),
         last_run_date=today_iso,
+        excluded_attempted=len(excluded_ids),
+        deleted_excluded_competitions=deleted_excluded,
+        deleted_excluded_preview_files=deleted_excluded_previews,
+        deleted_excluded_static_preview_files=deleted_excluded_static_previews,
+        shrunk_screening_runs=shrunk_runs,
     )

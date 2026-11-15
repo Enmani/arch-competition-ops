@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import json
 import re
+import threading
+from collections.abc import Callable, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import nullcontext
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -14,10 +17,14 @@ from pydantic import ValidationError
 
 from arch_competition_ops.bootstrap import initialize_database
 from arch_competition_ops.config_loader import load_targeting_preferences
-from arch_competition_ops.locking import exclusive_lock
+from arch_competition_ops.locking import LockHeldError, exclusive_lock
 from arch_competition_ops.models import CompetitionRecord, SourceDefinition
 from arch_competition_ops.screening.catalog import ScreeningModel, get_model
-from arch_competition_ops.screening.client import ScreeningError, create_client
+from arch_competition_ops.screening.client import (
+    ScreeningError,
+    call_with_rate_limit_retry,
+    create_client,
+)
 from arch_competition_ops.screening.extraction import extract_record
 from arch_competition_ops.screening.inputs import (
     enrich_notice_payload,
@@ -60,6 +67,8 @@ def _request_one(
     input_json: str,
     evidence_fields: dict[str, str],
     limitations: list[str],
+    *,
+    sleep: Callable[[float], None] | None = None,
 ) -> tuple[ScreeningDecision, float, str]:
     # A UTF-8 byte is a conservative input-token bound, with headroom for schema/framing.
     reserve = model.cost(len(input_json.encode("utf-8")) + 4096, settings.ai_max_output_tokens)
@@ -77,19 +86,23 @@ def _request_one(
     # Strict Structured Outputs requires every property, including defaulted additions.
     schema["required"] = list(schema["properties"])
     try:
-        response = client.responses.create(
-            model=model.id,
-            **request_arguments(input_json),
-            store=False,
-            service_tier="default",
-            text={
-                "format": {
-                    "type": "json_schema",
-                    "name": "competition_screening",
-                    "strict": True,
-                    "schema": schema,
-                }
-            },
+        # HTTP 429 is retried (bounded) under the same reservation; nothing else is.
+        response = call_with_rate_limit_retry(
+            lambda: client.responses.create(
+                model=model.id,
+                **request_arguments(input_json),
+                store=False,
+                service_tier="default",
+                text={
+                    "format": {
+                        "type": "json_schema",
+                        "name": "competition_screening",
+                        "strict": True,
+                        "schema": schema,
+                    }
+                },
+            ),
+            sleep=sleep,
         )
     except APIStatusError as exc:
         # Rejected 4xx calls have not generated output; 5xx/network outcomes remain reserved.
@@ -165,6 +178,12 @@ class DocumentAssessment:
     cost_usd: float
 
 
+def source_lock_path(db_path: Path, source_id: str | None) -> Path:
+    """The per-source AI lock: one paid pass per source at a time, across processes."""
+    key = re.sub(r"[^a-zA-Z0-9_-]", "_", source_id or "unknown")[:100]
+    return db_path.with_suffix(f".ai-{key}.lock")
+
+
 def assess_document(
     settings: Settings,
     *,
@@ -173,8 +192,15 @@ def assess_document(
     payload: str,
     client: OpenAI | None = None,
     force: bool = False,
+    source_lock: bool = True,
+    sleep: Callable[[float], None] | None = None,
 ) -> DocumentAssessment:
-    """AI-first entry: no source-specific parser or keyword gate is needed for a notice."""
+    """AI-first entry: no source-specific parser or keyword gate is needed for a notice.
+
+    ``source_lock=False`` is for a caller that already holds the source lock for a whole pass
+    (``assess_documents``): the file lock is per process and non-blocking, so taking it again in
+    every worker thread would make all but one thread fail.
+    """
     model = get_model(settings.ai_model)
     preferences = load_targeting_preferences(settings).model_dump(mode="json")
     db_path = initialize_database(settings)
@@ -186,9 +212,12 @@ def assess_document(
         "source_id": source.source_id,
     }
     payload = enrich_notice_payload(payload, source_url, settings)
-    source_key = re.sub(r"[^a-zA-Z0-9_-]", "_", source.source_id)[:100]
-    with exclusive_lock(
-        db_path.with_suffix(f".ai-{source_key}.lock"), label="AI extraction and screening"
+    with (
+        exclusive_lock(
+            source_lock_path(db_path, source.source_id), label="AI extraction and screening"
+        )
+        if source_lock
+        else nullcontext()
     ):
         input_json, fields, limitations = prepare_input(
             row,
@@ -212,6 +241,7 @@ def assess_document(
                     input_json,
                     fields,
                     limitations,
+                    sleep=sleep,
                 )
         record, _warnings = extract_record(
             decision,
@@ -224,6 +254,75 @@ def assess_document(
         return DocumentAssessment(
             record, decision, request_id, model.id, bool(cached and not force), cost
         )
+
+
+@dataclass
+class AssessmentOutcome:
+    """One notice's result from ``assess_documents``: an assessment or the error that ended it."""
+
+    assessment: DocumentAssessment | None = None
+    error: Exception | None = None
+
+
+def assess_documents(
+    settings: Settings,
+    *,
+    source: SourceDefinition,
+    documents: Sequence[tuple[str, str]],
+) -> list[AssessmentOutcome]:
+    """Assess ``(source_url, payload)`` notices on ``settings.ai_concurrency`` threads.
+
+    Outcomes come back in input order. The source lock is taken once for the whole pass instead
+    of once per notice. Reservations stay safe under threads: ``reserve_screening`` checks the
+    spent total and inserts its reservation in one ``BEGIN IMMEDIATE`` transaction.
+
+    The first ``ScreeningBudgetExceeded`` stops the pass: notices not yet started return that same
+    error without a request, and the caller treats the first error in input order as the stop
+    point. A notice that finished after that point is not consumed; its paid result is stored in
+    ``ai_screening_runs`` under its exact input, so the next run reuses it at no cost. Any other
+    exception ends only its own notice.
+    """
+    if not documents:
+        return []
+    stop = threading.Event()
+    budget_errors: list[ScreeningBudgetExceeded] = []
+
+    def work(item: tuple[str, str]) -> AssessmentOutcome:
+        if stop.is_set():
+            return AssessmentOutcome(
+                error=budget_errors[0] if budget_errors else RuntimeError("assessment cancelled")
+            )
+        try:
+            return AssessmentOutcome(
+                assessment=assess_document(
+                    settings,
+                    source=source,
+                    source_url=item[0],
+                    payload=item[1],
+                    source_lock=False,
+                )
+            )
+        except ScreeningBudgetExceeded as exc:
+            budget_errors.append(exc)  # before the event, which workers check first
+            stop.set()
+            return AssessmentOutcome(error=exc)
+        except Exception as exc:  # noqa: BLE001 - one bad notice must not sink the pass
+            return AssessmentOutcome(error=exc)
+
+    db_path = initialize_database(settings)
+    try:
+        with (
+            exclusive_lock(
+                source_lock_path(db_path, source.source_id), label="AI extraction and screening"
+            ),
+            ThreadPoolExecutor(max_workers=settings.ai_concurrency) as pool,
+        ):
+            try:
+                return list(pool.map(work, documents))
+            finally:
+                stop.set()  # an interrupt must not wait for the queued notices
+    except LockHeldError as exc:
+        return [AssessmentOutcome(error=exc) for _ in documents]
 
 
 def screen_competitions(
@@ -264,11 +363,9 @@ def screen_competitions(
                         source_payload=(source_payloads or {}).get(row["id"]),
                         fetch_source=fetch_source,
                     )
-                    source_key = re.sub(r"[^a-zA-Z0-9_-]", "_", row.get("source_id") or "unknown")[
-                        :100
-                    ]
                     with exclusive_lock(
-                        db_path.with_suffix(f".ai-{source_key}.lock"), label="AI screening source"
+                        source_lock_path(db_path, row.get("source_id")),
+                        label="AI screening source",
                     ):
                         cached = find_cached_screening(
                             db_path, row["source_url"], model.id, input_json

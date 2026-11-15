@@ -40,7 +40,7 @@ from arch_competition_ops.screening.fingerprints import (
     notice_content_hash,
     screening_criteria_hash,
 )
-from arch_competition_ops.screening.service import DocumentAssessment, assess_document
+from arch_competition_ops.screening.service import DocumentAssessment, assess_documents
 from arch_competition_ops.screening.triage import triage_documents
 from arch_competition_ops.settings import Settings
 from arch_competition_ops.storage import (
@@ -263,19 +263,28 @@ def ingest_source(
     # enter the ledger only once the records are durably written.
     screened: list[CollectedSourceDocument] = []
     last_error: str | None = None
+    # The paid assessments run first, concurrently and in input order; everything after them
+    # (parse, verify, geocode, store) stays sequential. Geocoding is paced at one request a second.
+    outcomes = (
+        assess_documents(
+            settings,
+            source=source,
+            documents=[(d.source_url, d.payload) for d in documents],
+        )
+        if settings.ai_enabled
+        else []
+    )
     try:
-        for document in documents:
+        for position, document in enumerate(documents):
             stage = "parse"
             try:
                 assessment = None
                 if settings.ai_enabled:
                     stage = "ai_extract_and_screen"
-                    assessment = assess_document(
-                        settings,
-                        source=source,
-                        source_url=document.source_url,
-                        payload=document.payload,
-                    )
+                    outcome = outcomes[position]
+                    if outcome.error is not None:
+                        raise outcome.error
+                    assessment = outcome.assessment
                     record = assessment.record
                     # Retain stable upstream identity when the source adapter provides it.
                     try:
@@ -334,7 +343,7 @@ def ingest_source(
                 )
             except ScreeningBudgetExceeded as exc:
                 # Budget deferral is not a content rejection. Keep later sources collectable.
-                result.deferred += len(documents) - documents.index(document)
+                result.deferred += len(documents) - position
                 result.notes.append(str(exc))
                 break
             except Exception as exc:  # noqa: BLE001 - one bad document must not sink the run

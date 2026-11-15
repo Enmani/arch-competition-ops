@@ -24,7 +24,7 @@ from openai import APIConnectionError, APIError, APIStatusError, OpenAI
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from arch_competition_ops.screening.catalog import ScreeningModel
-from arch_competition_ops.screening.client import ScreeningError
+from arch_competition_ops.screening.client import ScreeningError, call_with_rate_limit_retry
 from arch_competition_ops.screening.models import canonical_json
 from arch_competition_ops.settings import Settings
 from arch_competition_ops.storage.screening import (
@@ -193,19 +193,21 @@ def condense_batch(
             daily_budget_usd=settings.ai_daily_budget_usd,
         )
         try:
-            response = client.responses.create(
-                model=model.id,
-                **request,
-                store=False,
-                service_tier="default",
-                text={
-                    "format": {
-                        "type": "json_schema",
-                        "name": "display_titles",
-                        "strict": True,
-                        "schema": _strict_schema(),
-                    }
-                },
+            response = call_with_rate_limit_retry(
+                lambda: client.responses.create(
+                    model=model.id,
+                    **request,
+                    store=False,
+                    service_tier="default",
+                    text={
+                        "format": {
+                            "type": "json_schema",
+                            "name": "display_titles",
+                            "strict": True,
+                            "schema": _strict_schema(),
+                        }
+                    },
+                )
             )
         except APIStatusError as exc:
             code = f"http_{exc.status_code}"

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import date
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -135,6 +136,56 @@ def finish_screening(
                 request_id,
             ),
         )
+
+
+def list_excluded_competition_ids(
+    db_path: Path, *, assessed_before: date, limit: int = 500
+) -> list[str]:
+    """Ids whose current AI assessment is ``exclude`` and was made before ``assessed_before``.
+
+    Current means the assessment's source revision equals the record's ``updated_at``; an older
+    exclusion never hides (or removes) a record that changed since. Human decisions
+    (``shortlisted``, ``verified``) and watchlisted opportunities are never listed.
+    """
+    ensure_schema(db_path)
+    with connect(db_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT c.id
+            FROM competitions c
+            JOIN ai_screening_results r ON r.competition_id = c.id
+            WHERE r.decision = 'exclude'
+              AND r.source_updated_at = c.updated_at
+              AND r.updated_at < ?
+              AND c.status NOT IN ('shortlisted', 'verified')
+              AND NOT EXISTS (
+                  SELECT 1 FROM workspace_watchlist_entries watch
+                  WHERE watch.opportunity_id = c.id
+              )
+            ORDER BY r.updated_at ASC, c.id ASC
+            LIMIT ?
+            """,
+            (assessed_before.isoformat(), limit),
+        ).fetchall()
+    return [str(row["id"]) for row in rows]
+
+
+def shrink_old_screening_runs(db_path: Path, *, started_before: date) -> int:
+    """Blank the stored prompt and result of runs started before ``started_before``.
+
+    Rows stay: the spend ledger sums ``cost_usd`` per month and day, so cost and timing columns
+    are untouched. Only ``input_json`` (the exact-input cache key, NOT NULL so set to '') and
+    ``result_json`` go, which ends cache hits on those runs; the notice ledger already prevents
+    a re-screen of an unchanged notice. Returns how many rows were shrunk.
+    """
+    ensure_schema(db_path)
+    with write_transaction(db_path) as connection:
+        cursor = connection.execute(
+            "UPDATE ai_screening_runs SET input_json = '', result_json = NULL "
+            "WHERE started_at < ? AND (input_json != '' OR result_json IS NOT NULL)",
+            (started_before.isoformat(),),
+        )
+        return int(cursor.rowcount or 0)
 
 
 def list_screenings(db_path: Path, *, limit: int = 20, decision: str | None = None):

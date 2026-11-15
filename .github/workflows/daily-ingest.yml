@@ -1,0 +1,196 @@
+name: Daily ingest
+
+# Runs the ingest in the cloud so the site updates even when the owner's PC is off. The worker's
+# SQLite state lives in a private R2 bucket between runs (scripts/cloud-state.mjs); the result is
+# synced to production D1 (scripts/export-d1-data.mjs --apply). Setup and operation:
+# CLOUDFLARE_DEPLOY_RUNBOOK.md, section "Cloud daily run".
+#
+# PUBLIC REPOSITORY: run logs are world-readable. Nothing here uploads artifacts, and every step
+# prints counts only (never database contents, SQL values or environment values).
+# Triggers are schedule and workflow_dispatch only, so a fork or a pull request can never reach the
+# secrets. Secrets are passed to the individual steps that need them, never to the whole job.
+
+on:
+  schedule:
+    - cron: "0 2 * * *" # 02:00 UTC every day
+  workflow_dispatch:
+    inputs:
+      batch_id:
+        description: "Automation batch from config/automation.yml"
+        type: string
+        default: all_enabled
+      publication_date_from:
+        description: "Optional YYYY-MM-DD: read notices published on or after this day (backfill)"
+        type: string
+        default: ""
+      dry_run:
+        description: "Everything except the paid ingest and the D1 apply (still pulls, cleans up, checks the export and pushes state)"
+        type: boolean
+        default: false
+
+# Least privilege: the repository is only read. The job adds actions: write for the keepalive step.
+permissions:
+  contents: read
+
+# One run at a time: both write the same R2 state and the same D1 database. A run that is still
+# going when the next trigger fires makes that trigger wait; it is never cancelled half way
+# (that would lose the paid assessments of the cancelled run).
+concurrency:
+  group: daily-ingest
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    name: Ingest and sync
+    if: github.repository == 'Enmani/arch-competition-ops'
+    runs-on: ubuntu-latest
+    timeout-minutes: 350 # GitHub's hard limit for a job is 360
+    permissions:
+      contents: read
+      actions: write # only for the keepalive step at the end
+    defaults:
+      run:
+        shell: bash # bash -e -o pipefail
+    env:
+      PYTHONUTF8: "1"
+      NO_COLOR: "1"
+      BATCH_ID: ${{ inputs.batch_id || 'all_enabled' }}
+      PUBLICATION_DATE_FROM: ${{ inputs.publication_date_from }}
+      DRY_RUN: ${{ inputs.dry_run == true && 'true' || 'false' }}
+      ARCH_COMPETITION_OPS_AI_ENABLED: "1"
+      ARCH_COMPETITION_OPS_AI_CONCURRENCY: "8"
+      ARCH_COMPETITION_OPS_AI_DAILY_BUDGET_USD: "15"
+      ARCH_COMPETITION_OPS_AI_MONTHLY_BUDGET_USD: "100"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true # keyed on uv.lock
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Check the inputs
+        run: |
+          [[ "$BATCH_ID" =~ ^[A-Za-z0-9_-]{1,64}$ ]] || { echo "Invalid batch_id"; exit 2; }
+          [[ -z "$PUBLICATION_DATE_FROM" || "$PUBLICATION_DATE_FROM" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] \
+            || { echo "publication_date_from must be YYYY-MM-DD"; exit 2; }
+
+      - run: npm ci
+      - run: uv sync --frozen
+
+      # Fails (and stops every later step that depends on it) when the bucket holds no state:
+      # an empty database would buy every assessment again.
+      - name: Pull state from R2
+        id: pull
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          node scripts/cloud-state.mjs pull | tee "$RUNNER_TEMP/pull.log"
+          node scripts/cloud-state.mjs stats > "$RUNNER_TEMP/stats-before.txt"
+
+      # Same as the Windows task: the command guards itself to once a day, a failure is recorded
+      # but does not block the ingest.
+      - name: Clean up expired records
+        id: cleanup
+        run: |
+          set +e
+          uv run arch-competition-ops cleanup-expired-competitions 2>&1 | tee "$RUNNER_TEMP/cleanup.log"
+          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      # Some sources failing is normal: record the exit code, finish the sync, and fail the job in
+      # the last step. The step has its own limit, well under the job's, so that a runaway ingest
+      # still leaves time for the D1 sync and the state push (the job limit would skip them).
+      - name: Ingest batch
+        id: ingest
+        if: ${{ inputs.dry_run != true }}
+        timeout-minutes: 290
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          set +e
+          args=(run arch-competition-ops ingest-batch --batch-id "$BATCH_ID")
+          if [ -n "$PUBLICATION_DATE_FROM" ]; then
+            args+=(--publication-date-from "$PUBLICATION_DATE_FROM")
+          fi
+          uv "${args[@]}" 2>&1 | tee "$RUNNER_TEMP/ingest.log"
+          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Check the D1 export (dry run)
+        if: ${{ inputs.dry_run == true }}
+        run: node scripts/export-d1-data.mjs --retention | tee "$RUNNER_TEMP/d1.log"
+
+      # From here on, run whenever the pull worked (also after a failed ingest), never after a
+      # failed pull.
+      - name: Sync to D1
+        if: ${{ always() && steps.pull.outcome == 'success' && inputs.dry_run != true }}
+        timeout-minutes: 30
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node scripts/export-d1-data.mjs --apply | tee "$RUNNER_TEMP/d1.log"
+
+      - name: Push state to R2
+        id: push
+        if: ${{ always() && steps.pull.outcome == 'success' }}
+        timeout-minutes: 15
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          node scripts/cloud-state.mjs push | tee "$RUNNER_TEMP/push.log"
+          node scripts/cloud-state.mjs stats > "$RUNNER_TEMP/stats-after.txt"
+
+      # GitHub disables schedules of a public repository after 60 days without repository
+      # activity. Re-enabling the workflow resets that clock. Not fatal when it does not work.
+      - name: Keep the schedule alive
+        if: ${{ always() }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/daily-ingest.yml/enable"
+
+      # Counts only. No notice titles, no file contents, no SQL.
+      - name: Summary
+        if: ${{ always() }}
+        run: |
+          {
+            echo "### Daily ingest"
+            echo
+            echo "- batch: \`$BATCH_ID\`, dry run: \`$DRY_RUN\`"
+            if [ -s "$RUNNER_TEMP/pull.log" ]; then echo "- $(head -n 1 "$RUNNER_TEMP/pull.log")"; else echo "- state pull: did not complete"; fi
+            if [ -s "$RUNNER_TEMP/cleanup.log" ]; then echo "- $(grep -m1 'cleanup' "$RUNNER_TEMP/cleanup.log" || true)"; fi
+            if [ -s "$RUNNER_TEMP/ingest.log" ]; then
+              echo "- $(grep -m1 '^Batch ' "$RUNNER_TEMP/ingest.log" || echo 'ingest: no summary line')"
+              echo "- ingest exit code: \`${{ steps.ingest.outputs.exit_code }}\`"
+              failed="$(sed -n 's/^\[FAIL\] \([^ ]*\) :: .*/\1/p' "$RUNNER_TEMP/ingest.log" | head -n 20 | paste -sd ' ' -)"
+              if [ -n "$failed" ]; then echo "- failed sources: $failed"; fi
+            fi
+            if [ -s "$RUNNER_TEMP/stats-before.txt" ] && [ -s "$RUNNER_TEMP/stats-after.txt" ]; then
+              echo
+              echo "| table | before | after |"
+              echo "|---|---|---|"
+              join -t= <(sort "$RUNNER_TEMP/stats-before.txt") <(sort "$RUNNER_TEMP/stats-after.txt") \
+                | awk -F= '{ printf "| %s | %s | %s |\n", $1, $2, $3 }'
+            fi
+            if [ -s "$RUNNER_TEMP/d1.log" ]; then
+              echo
+              echo "D1:"
+              grep -E '^(D1 sync complete|d1_rows_upserted|d1_remote_competitions)' "$RUNNER_TEMP/d1.log" | sed 's/^/- /' || true
+            fi
+            if [ -s "$RUNNER_TEMP/push.log" ]; then echo; echo "- $(head -n 1 "$RUNNER_TEMP/push.log")"; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail when the ingest reported failures
+        if: ${{ always() && steps.ingest.outputs.exit_code != '' && steps.ingest.outputs.exit_code != '0' }}
+        run: |
+          echo "ingest-batch exited with code ${{ steps.ingest.outputs.exit_code }}; the sync and the state push above still ran."
+          exit 1

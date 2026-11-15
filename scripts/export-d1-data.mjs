@@ -2,8 +2,9 @@
 //
 // Generates batched, idempotent upsert SQL files for the tables the Python worker owns.
 // It NEVER connects to Cloudflare and never runs wrangler; it only writes files and prints the
-// commands to run. It never emits DELETE against user data (workspace_*, ops_review_decisions,
-// auth_*), and never emits BEGIN/COMMIT/SAVEPOINT (remote D1 import rejects them).
+// commands to run, unless --apply is given: then it runs them through lib/wrangler.mjs, in order,
+// stopping at the first failure. It never emits DELETE against user data (workspace_*,
+// ops_review_decisions, auth_*), and never emits BEGIN/COMMIT/SAVEPOINT (remote D1 import rejects them).
 // See CLOUDFLARE_DEPLOY_RUNBOOK.md for the operating procedure.
 
 import { realpathSync } from "node:fs";
@@ -18,6 +19,8 @@ import {
   utcTimestamp,
   writeExport,
 } from "./lib/d1-sync/batching.mjs";
+import { ApplyError, applyExport, prepareApply } from "./lib/d1-sync/apply.mjs";
+import { buildRetentionStatements } from "./lib/d1-sync/retention.mjs";
 import { findSchemaProblems, loadMigratedColumns, SchemaMismatchError } from "./lib/d1-sync/schema-check.mjs";
 import { quoteIdentifier } from "./lib/d1-sync/sql-values.mjs";
 import { buildPruneStatements, buildUpsertStatement } from "./lib/d1-sync/statements.mjs";
@@ -39,14 +42,20 @@ export { DEFAULT_LIMITS, SYNC_TABLES } from "./lib/d1-sync/table-specs.mjs";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-export const USAGE = `Usage: node scripts/export-d1-data.mjs [--prune] [--out-dir <dir>] [--help]
+export const USAGE = `Usage: node scripts/export-d1-data.mjs [--prune] [--retention] [--apply] [--out-dir <dir>] [--help]
 
-Writes batched upsert SQL for competitions, source_runs, source_health and worker-owned
-ops_review_queue_items to <out-dir>/<UTC timestamp>/ plus manifest.json, and prints the
-wrangler commands to run. Nothing is executed against Cloudflare.
+Writes batched upsert SQL for competitions, source_runs, source_health, ai_screening_results and
+worker-owned ops_review_queue_items to <out-dir>/<UTC timestamp>/ plus manifest.json, and prints the
+wrangler commands to run. Without --apply nothing is executed against Cloudflare.
 
   --prune          also delete remote competitions that no longer exist locally
                    (never deletes ones on a user watchlist). Off by default.
+  --retention      add 0090-retention.sql: delete remote competitions whose deadline is more than
+                   7 days past, or whose current AI assessment is exclude (older than 7 days, not
+                   shortlisted/verified). Never deletes watchlisted ones or touches user tables.
+  --apply          after writing, run every file against remote D1 in order (stops at the first
+                   failure) and print row counts. Implies --retention. Needs CLOUDFLARE_API_TOKEN
+                   and CLOUDFLARE_ACCOUNT_ID.
   --out-dir <dir>  output root, relative to the repo root (default ${DEFAULT_OUTPUT_RELATIVE_DIR})
 
 Environment:
@@ -60,11 +69,16 @@ export function resolveDatabasePath(env = process.env, repoRoot = REPO_ROOT) {
 }
 
 export function parseArgs(argv) {
-  const options = { prune: false, outDir: null, help: false };
+  const options = { prune: false, retention: false, apply: false, outDir: null, help: false };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--prune") {
       options.prune = true;
+    } else if (arg === "--retention") {
+      options.retention = true;
+    } else if (arg === "--apply") {
+      options.apply = true;
+      options.retention = true;
     } else if (arg === "--help" || arg === "-h") {
       options.help = true;
     } else if (arg === "--out-dir") {
@@ -101,6 +115,7 @@ export function runExport({
   outputRoot = path.join(REPO_ROOT, DEFAULT_OUTPUT_RELATIVE_DIR),
   repoRoot = REPO_ROOT,
   prune = false,
+  retention = false,
   now = new Date(),
   limits = DEFAULT_LIMITS,
 }) {
@@ -151,7 +166,8 @@ export function runExport({
     pruneStatements = buildPruneStatements(competitionIds, limits);
   }
 
-  const files = planFiles({ tableStatements, pruneStatements, limits });
+  const retentionStatements = retention ? buildRetentionStatements(now) : null;
+  const files = planFiles({ tableStatements, retentionStatements, pruneStatements, limits });
   const outputDir = path.join(outputRoot, utcTimestamp(now));
   const wranglerCommands = buildWranglerCommands({ repoRoot, outputDir, files });
   const relativeDb = path.relative(repoRoot, dbPath);
@@ -160,6 +176,7 @@ export function runExport({
     sourceDatabase: relativeDb.startsWith("..") || path.isAbsolute(relativeDb) ? dbPath : relativeDb,
     d1Database: D1_DATABASE_NAME,
     prune,
+    retention,
     limits,
     tables: Object.fromEntries(
       Object.entries(rowCounts).map(([table, rows]) => [table, { rows }]),
@@ -194,12 +211,15 @@ export function main(argv = process.argv.slice(2), env = process.env, log = cons
   }
 
   try {
+    // Fail before writing anything when --apply cannot run.
+    const wrangler = options.apply ? prepareApply(env, REPO_ROOT) : null;
     const result = runExport({
       dbPath: resolveDatabasePath(env),
       outputRoot: options.outDir
         ? path.resolve(REPO_ROOT, options.outDir)
         : path.join(REPO_ROOT, DEFAULT_OUTPUT_RELATIVE_DIR),
       prune: options.prune,
+      retention: options.retention,
     });
     const { manifest } = result;
     log(`Source database: ${manifest.sourceDatabase}`);
@@ -208,13 +228,28 @@ export function main(argv = process.argv.slice(2), env = process.env, log = cons
     }
     log(`Wrote ${manifest.files.length} SQL file(s) + manifest.json to ${path.relative(REPO_ROOT, result.outputDir)}`);
     log(options.prune ? "--prune: ENABLED (see runbook before running the last file)" : "--prune: off");
+    log(options.retention ? "--retention: ENABLED (0090-retention.sql)" : "--retention: off");
+    if (options.apply) {
+      log("\nApplying to remote D1 in order:\n");
+      applyExport({
+        wrangler,
+        env,
+        repoRoot: REPO_ROOT,
+        outputDir: result.outputDir,
+        files: result.files,
+        manifest,
+        log,
+      });
+      return 0;
+    }
     log("\nBack up first (see runbook), then run in this order. Nothing was executed:\n");
     for (const command of result.wranglerCommands) {
       log(command);
     }
     return 0;
   } catch (error) {
-    console.error(error instanceof SchemaMismatchError ? error.message : `export-d1-data failed: ${error.message}`);
+    const plain = error instanceof SchemaMismatchError || error instanceof ApplyError;
+    console.error(plain ? error.message : `export-d1-data failed: ${error.message}`);
     return 1;
   }
 }

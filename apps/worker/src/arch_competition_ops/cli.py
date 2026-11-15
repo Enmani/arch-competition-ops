@@ -101,7 +101,8 @@ def build_parser() -> argparse.ArgumentParser:
         "cleanup-expired-competitions",
         help=(
             "delete opportunities (and cached previews) whose deadline is past the retention "
-            "window; runs at most once per calendar day unless --force"
+            "window or whose current AI assessment is exclude and older than it, and blank old "
+            "AI run payloads; runs at most once per calendar day unless --force"
         ),
     )
     cleanup_parser.add_argument("--retention-days", type=int)
@@ -260,7 +261,12 @@ def _handle_cleanup(settings: Settings, args: argparse.Namespace) -> int:
         "Expired competition cleanup completed "
         f"(attempted={result.attempted}, deleted={result.deleted_competitions}, "
         f"preview_files={result.deleted_preview_files}, "
-        f"static_preview_files={result.deleted_static_preview_files}, skipped={result.skipped})"
+        f"static_preview_files={result.deleted_static_preview_files}, skipped={result.skipped}; "
+        f"ai_excluded_attempted={result.excluded_attempted}, "
+        f"ai_excluded_deleted={result.deleted_excluded_competitions}, "
+        f"ai_excluded_preview_files={result.deleted_excluded_preview_files}, "
+        f"ai_excluded_static_preview_files={result.deleted_excluded_static_preview_files}, "
+        f"ai_runs_shrunk={result.shrunk_screening_runs})"
     )
     return 0
 

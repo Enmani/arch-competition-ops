@@ -140,6 +140,11 @@ npm run d1:export-data -- --prune
 
 `--prune` adds a last file, `0099-prune.sql`, that deletes remote `competitions` rows whose `id` no longer exists in the local database. It uses a scratch table (`_sync_competition_ids`, dropped at the end) because the script never connects to the remote database. Competitions on any user's watchlist are never deleted, so they can remain on D1 even though they are gone locally. The exporter refuses `--prune` when the local `competitions` table is empty. Risk: a local database that is incomplete (for example a partial crawl or the wrong `ARCH_COMPETITION_OPS_DB`) will delete the missing public records from production. Check the row counts printed by the exporter before running `0099-prune.sql`, and run it only after all upsert files succeeded.
 
+Two more flags exist for the unattended cloud run (see [Cloud daily run](#cloud-daily-run)):
+
+- `--retention` adds a last data file, `0090-retention.sql` (before `0099-prune.sql`): it deletes remote `competitions` whose `deadline_at` is more than 7 days before the sync's UTC date, and those whose current AI assessment is `exclude` (assessed on the record's current revision, more than 7 days ago) unless the record is `shortlisted` or `verified`. Records on a watchlist are never deleted, user tables are never touched, and `ai_screening_results` goes with its competition. It mirrors the worker's local cleanup.
+- `--apply` (implies `--retention`) runs every file with wrangler, in order, and stops at the first failure; `npm run d1:sync` is the short form. It needs `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` in the environment and prints counts only.
+
 Verify D1 counts:
 
 ```powershell
@@ -331,6 +336,93 @@ git add CLOUDFLARE_DEPLOY_RUNBOOK.md scripts/export-d1-data.mjs   # example: lis
 git commit -m "chore: update cloudflare deployment"
 git push
 ```
+
+## Cloud daily run
+
+`.github/workflows/daily-ingest.yml` runs the daily ingest on a GitHub Actions runner (free for a public repository, 6 hour job limit), so the site updates even when the owner's PC is off. It replaces the Windows scheduled task. Each run:
+
+1. pulls the worker state from the private R2 bucket `arch-competition-state` (`scripts/cloud-state.mjs pull`): `data/competitions.sqlite` (notice ledger, paid-assessment cache, all records) and `data/geocoding-cache.json`;
+2. `cleanup-expired-competitions`, then `ingest-batch --batch-id all_enabled` with AI on, 8 assessments at once, caps of 15 USD a day and 100 USD a month;
+3. `node scripts/export-d1-data.mjs --apply`: upserts the worker-owned tables into production D1 and deletes expired and excluded records there (`0090-retention.sql`);
+4. pushes the new state as a new generation (`scripts/cloud-state.mjs push`), keeping the newest 14.
+
+The state is the expensive part. Losing it, or starting from an empty database, means paying for every assessment again, so `pull` fails when the bucket has no state (only `push --init` creates the first one), and `pull`/`push` refuse to replace a state with one that has fewer `ai_notice_ledger` rows unless `--force`. Steps 3 and 4 still run when the ingest exits non-zero (some sources failing is normal) and never run when the pull failed; the job is then marked failed so the red run is visible.
+
+### One-time setup
+
+1. Cloudflare API token for the cloud run. Create a separate token (`My Profile -> API Tokens`), account-scoped to the production account, with `Account -> Workers R2 Storage -> Edit` and `Account -> D1 -> Edit`. Nothing else is needed: the run does not deploy the Worker. R2 must be enabled for the account in the dashboard first.
+2. Create the private bucket. R2 buckets are private unless you add a public bucket URL or a custom domain; do not add either.
+
+   ```powershell
+   $env:CLOUDFLARE_API_TOKEN="paste-token-here"
+   $env:CLOUDFLARE_ACCOUNT_ID="9b32ab0cdd1d91002ccfc9b45882b4db"
+   npm --workspace apps/web exec -- wrangler r2 bucket create arch-competition-state
+   ```
+
+3. Set the three repository secrets from environment variables, so the values are never typed into the command or echoed (set `$env:OPENAI_API_KEY` the same way as the two above; do not paste a key into a command line that is saved in shell history):
+
+   ```powershell
+   gh secret set CLOUDFLARE_API_TOKEN  --repo Enmani/arch-competition-ops --body $env:CLOUDFLARE_API_TOKEN
+   gh secret set CLOUDFLARE_ACCOUNT_ID --repo Enmani/arch-competition-ops --body $env:CLOUDFLARE_ACCOUNT_ID
+   gh secret set OPENAI_API_KEY        --repo Enmani/arch-competition-ops --body $env:OPENAI_API_KEY
+   ```
+
+   These are the only secrets the workflow uses. Clear the variables afterwards (see After Deployment).
+4. Make the local database the first generation. Do it right after the last local ingest, with the Windows task paused, so the ledger and the assessment cache of the cloud start from everything already paid for. The snapshot is taken with SQLite's backup API, so a running ingest does not corrupt it.
+
+   ```powershell
+   node scripts/cloud-state.mjs push --init
+   ```
+
+   The command prints the generation id and row counts.
+5. First run, as a dry run: it pulls, cleans up, checks the D1 export and pushes a state, but does no paid ingest and no D1 apply.
+
+   ```powershell
+   gh workflow run daily-ingest.yml --repo Enmani/arch-competition-ops -f dry_run=true
+   gh run watch --repo Enmani/arch-competition-ops
+   ```
+
+   Then a real run (`-f dry_run=false`), and check the site. Pass `-f publication_date_from=YYYY-MM-DD` to read further back than the batch window.
+6. Only after a real run is green, remove the Windows scheduled task `arch-competition-ops-all_enabled-0330`, so local and cloud never write the ledger at the same time (two divergent ledgers mean paying twice):
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File scripts/register-auto-ingest-tasks.ps1 -Action Remove
+   ```
+
+From then on the cloud state is the master copy. To ingest locally again, run `npm run cloud:state:pull` first (it refuses to overwrite a local database that has more ledger rows) and `npm run cloud:state:push` afterwards.
+
+### Reading the results
+
+- Actions tab, workflow "Daily ingest": the run summary shows counts only (batch line from the CLI, failed source ids, ledger/results/cost before and after, D1 rows upserted, remote competition count before and after, pushed generation). Nothing is uploaded as an artifact and no notice titles are logged, because logs of a public repository are world-readable.
+- `gh run list --workflow daily-ingest.yml --repo Enmani/arch-competition-ops`, and `gh run view <id> --log` for the full log.
+- A red run with a green "Sync to D1" and "Push state to R2" means only that some sources failed; the data and state were still saved. A red "Pull state from R2" means nothing was changed and nothing was spent: fix the bucket or token and run again. A red "Sync to D1" means the state was pushed but D1 is behind; re-run the workflow (the upserts are idempotent and the next ingest finds nothing new, so it costs nothing).
+- Verify production: `curl.exe -s "https://arch-competition.com/api/opportunities?limit=1"`.
+
+### Restore an earlier state generation
+
+The newest 14 generations are kept under `state/<UTC timestamp>/` and indexed in `latest.json`. Restore into a scratch database so the local `data/competitions.sqlite` is not replaced, check it, then make it the newest generation:
+
+```powershell
+npm --workspace apps/web exec -- wrangler r2 object get arch-competition-state/latest.json --remote --file ../../artifacts/latest.json
+# read "generation" and "history[].generation" in artifacts/latest.json
+$env:ARCH_COMPETITION_OPS_DB="artifacts/state-restore/competitions.sqlite"
+node scripts/cloud-state.mjs pull --generation <id> --force
+node scripts/cloud-state.mjs stats
+node scripts/cloud-state.mjs push --force
+Remove-Item Env:ARCH_COMPETITION_OPS_DB
+```
+
+`--force` is needed because an older generation has fewer ledger rows than the current one. The pull verifies the recorded sha256 and `PRAGMA integrity_check` before it replaces anything.
+
+### Known limits
+
+- Job limit: a job may run 6 hours. The workflow caps the ingest step at 290 minutes so the D1 sync and the state push still run if the ingest takes too long; work finished before that is kept (ledger and assessment cache) and the next run continues. With 8 parallel assessments a normal day takes about half an hour; a large backfill (`publication_date_from`) can exceed it and is simply continued by the next run.
+- Schedules switch off: GitHub disables the schedule of a public repository after 60 days without repository activity. The last step of every run calls the workflow `enable` endpoint as a keepalive and never fails the run. If the schedule is ever off (Actions tab shows the workflow as disabled), enable it there or run `gh workflow enable daily-ingest.yml`.
+- Satellite preview images are not produced by the cloud run. Records that are new since the last local `npm run prewarm:previews -w @arch-competition/web` plus deploy show the locator placeholder until previews are rebuilt locally and the Worker is redeployed (see Preview images below).
+- The raw HTML evidence archive (`artifacts/html`) is not kept between runs; only the database and the geocode cache are stored.
+- Stored state is one gzip file per generation; `wrangler r2 object put` accepts objects up to about 300 MB, which is far above the current 10 MB database.
+- Pruning old generations is best effort: a failed delete only leaves an unreferenced object under `state/`, which can be removed by hand.
+- Only people with write access to the repository can start `workflow_dispatch` runs; forks and pull requests cannot start this workflow or read its secrets.
 
 ## Preview images: prewarm + R2/ASSETS
 
