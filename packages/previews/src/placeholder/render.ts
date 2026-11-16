@@ -194,8 +194,9 @@ export const buildOpportunityLocatorInsetSvg = (
     </filter>
   </defs>
   <g filter="url(#inset-shadow)">
-    <path d="${outline.pathData}" fill="#f3f1e6" fill-opacity="0.18" stroke="#f3f1e6" stroke-opacity="0.95" stroke-width="5" stroke-linejoin="round" stroke-linecap="round" />
-    <circle cx="${anchor.x}" cy="${anchor.y}" r="22" fill="#8ac998" stroke="#0e1813" stroke-opacity="0.55" stroke-width="5" />
+    <path d="${outline.pathData}" fill="none" stroke="#0e1813" stroke-opacity="0.8" stroke-width="22" stroke-linejoin="round" stroke-linecap="round" />
+    <path d="${outline.pathData}" fill="#f3f1e6" fill-opacity="0.22" stroke="#f3f1e6" stroke-width="9" stroke-linejoin="round" stroke-linecap="round" />
+    <circle cx="${anchor.x}" cy="${anchor.y}" r="26" fill="#8ac998" stroke="#0e1813" stroke-opacity="0.85" stroke-width="9" />
   </g>
 </svg>
 `.trim();

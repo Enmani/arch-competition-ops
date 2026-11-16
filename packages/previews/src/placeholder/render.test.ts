@@ -189,6 +189,8 @@ test("the inset map is the outline and one dot, and exists only for a position t
   // One dot, and no backing at all: it sits over a photograph, in fixed light strokes.
   assert.equal((inset.match(/<circle /g) ?? []).length, 1);
   assert.doesNotMatch(inset, /<rect|class="paper"|locator-grid|<text|prefers-color-scheme/);
+  // A dark casing under the light stroke keeps the outline readable on pale imagery too.
+  assert.match(inset, /<path d="[^"]+" fill="none" stroke="#0e1813"/);
   assert.match(inset, /<path d="[^"]+" fill="#f3f1e6"/);
 
   assert.equal(buildOpportunityLocatorInsetSvg(base), null, "no coordinates, no dot");

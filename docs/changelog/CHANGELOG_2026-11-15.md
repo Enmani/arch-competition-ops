@@ -275,3 +275,9 @@ Sign-in used a full-page POST, a 303 redirect and a full reload of the next page
 - `apps/worker/src/arch_competition_ops/{countries.py,data/countries.json,location.py,maintenance.py,cli.py,screening/extraction.py,storage/competitions.py,storage/screening.py,storage/__init__.py}`, `apps/worker/tests/test_countries.py`
 - `apps/web/src/lib/{opportunity-display.ts,opportunity-display.test.ts}`, `.github/workflows/daily-ingest.yml`, `tests/daily-ingest-workflow.test.mjs`
 - `docs/DATA_CONTRACT.md`, `docs/ARCHITECTURE.md`, `docs/structures/2026-10-21-preview-pipeline-architecture.md`
+
+## Corner map readable on pale satellite images
+
+- The corner map's outline was a 1 px light stroke, which disappeared over pale imagery (a city square, bare ground). It now has a dark casing under a heavier light stroke (the halo style of map labels) and a slightly larger dot with a dark ring. It still has no backing; dark imagery looks as before.
+- Checked by rendering the corner map over a pale and a dark backdrop at card size; previews 193 tests pass.
+- Modified: `packages/previews/src/placeholder/{render.ts,render.test.ts}`
