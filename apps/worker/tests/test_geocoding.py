@@ -63,6 +63,61 @@ def test_map_lookup_rejects_partial_homonyms_and_keeps_city_context(tmp_path):
     assert result is not None and result.lat == 28.8 and result.lng == 105.4
 
 
+def _reply(payload: list[dict]) -> Reply:
+    return Reply(body=json.dumps(payload).encode(), headers={"Content-Type": "application/json"})
+
+
+def test_a_place_written_with_a_preposition_or_admin_prefix_is_found_by_its_name(tmp_path):
+    nouakchott = {
+        "address": {"city": "Nouakchott", "country_code": "mr"},
+        "addresstype": "city",
+        "class": "place",
+        "display_name": "Nouakchott, Mauritania",
+        "lat": "18.08",
+        "lon": "-15.97",
+        "type": "city",
+    }
+    craiova = {**nouakchott, "address": {"city": "Craiova", "country_code": "ro"}}
+    craiova["display_name"] = "Craiova, Dolj, Romania"
+    client, adapter, _ = make_client([_reply([nouakchott]), _reply([craiova])])
+    geocoder = NominatimGeocoder(cache_path=tmp_path / "geo.json", client=client)
+
+    # The French country name is dropped: the country is already part of the request.
+    assert geocoder.geocode(location_label="à Nouakchott, en Mauritanie", jurisdiction="mauritania")
+    assert geocoder.geocode(location_label="Municipiul Craiova", jurisdiction="romania")
+    first, second = (request.url for request in adapter.requests)
+    assert "q=Nouakchott%2C+Mauritania" in first and "accept-language=en" in first
+    assert "q=Craiova%2C+Romania" in second
+
+
+def test_a_whole_region_is_not_taken_for_the_place_but_a_city_after_it_is(tmp_path):
+    region = {
+        "address": {"state": "Kyzylorda Region", "country_code": "kz"},
+        "addresstype": "state",
+        "class": "boundary",
+        "display_name": "Kyzylorda Region, Kazakhstan",
+        "lat": "45.2",
+        "lon": "63.9",
+        "type": "administrative",
+    }
+    city = {
+        "address": {"city": "Kyzylorda", "state": "Kyzylorda Region", "country_code": "kz"},
+        "addresstype": "city",
+        "class": "place",
+        "display_name": "Kyzylorda, Kyzylorda Region, Kazakhstan",
+        "lat": "44.84",
+        "lon": "65.5",
+        "type": "city",
+    }
+    client, _, _ = make_client([_reply([region, city]), _reply([region])])
+    geocoder = NominatimGeocoder(cache_path=tmp_path / "geo.json", client=client)
+
+    result = geocoder.geocode(location_label="Kyzylorda", jurisdiction="kazakhstan")
+    assert result is not None and (result.lat, result.lng) == (44.84, 65.5)
+    # Only the region: its centre is not where the project is.
+    assert geocoder.geocode(location_label="Kyzylorda Region", jurisdiction="kazakhstan") is None
+
+
 def test_country_fallback_is_not_written_as_a_project_address(tmp_path):
     client, _, _ = make_client(
         [
@@ -122,8 +177,8 @@ def test_independent_source_geocoders_merge_cache_entries(tmp_path):
     first.flush()
     second.flush()
     assert set(json.loads(path.read_text())["entries"]) == {
-        "v2:switzerland:maur",
-        "v2:switzerland:zurich",
+        "v3:switzerland:maur",
+        "v3:switzerland:zurich",
     }
 
 
@@ -195,7 +250,7 @@ def test_enrich_record_geocode_uses_nominatim_cache(tmp_path) -> None:
 
     geocoder.flush()
     cache_payload = json.loads(cache_path.read_text(encoding="utf-8"))
-    assert cache_payload["entries"]["v2:switzerland:maur"]["lat"] == 47.3407
+    assert cache_payload["entries"]["v3:switzerland:maur"]["lat"] == 47.3407
 
 
 def test_cache_is_written_in_batches_and_flushed_atomically(tmp_path) -> None:
@@ -214,10 +269,10 @@ def test_cache_is_written_in_batches_and_flushed_atomically(tmp_path) -> None:
     geocoder.flush()
     entries = json.loads(cache_path.read_text(encoding="utf-8"))["entries"]
     assert set(entries) == {
-        "v2:switzerland:maur",
-        "v2:switzerland:uster",
-        "v2:switzerland:zurich",
-        "v2:switzerland:winterthur",
+        "v3:switzerland:maur",
+        "v3:switzerland:uster",
+        "v3:switzerland:zurich",
+        "v3:switzerland:winterthur",
     }
     assert not list(tmp_path.glob("*.tmp"))  # temp files are replaced, never left behind
 

@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import tempfile
 import threading
 from dataclasses import dataclass
@@ -19,6 +20,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
+from arch_competition_ops.countries import normalize_slug, resolve_country_from_text
 from arch_competition_ops.http import HttpClient, HttpError, get_default_client
 from arch_competition_ops.location import (
     clean_location_label,
@@ -37,6 +39,17 @@ NOMINATIM_USER_AGENT = "arch-competition-ops/0.1 geocoding-cache"
 GEOCODE_CACHE_VERSION = 1
 GEOCODE_TIMEOUT_SECONDS = 15.0
 _CACHE_WRITE_LOCK = threading.Lock()
+
+# Notices write "à Nouakchott, en Mauritanie" or "Municipiul Craiova"; the map knows "Nouakchott"
+# and "Craiova".
+_LEADING_PREPOSITION = re.compile(
+    r"^(?:à|au|aux|en|dans|sur|at|in|near|près de)\s+(?:(?:le|la|les|l'|the)\s+)?", re.IGNORECASE
+)
+_ADMIN_PREFIX = re.compile(
+    r"^(?:municipiul|municipality of|city of|town of|commune de|ville de)\s+", re.IGNORECASE
+)
+# A hit this large is a region, not a place: its centre would claim a spot the notice never gave.
+_COARSE_ADDRESS_TYPES = frozenset({"country", "state", "region", "province", "state_district"})
 
 
 @dataclass(frozen=True)
@@ -102,6 +115,17 @@ def enrich_record_geocode(
     return record
 
 
+def _search_parts(location_label: str, jurisdiction: str | None) -> list[str]:
+    """The place names a label holds, without prepositions, admin prefixes or the country itself."""
+    country_slug = normalize_slug(jurisdiction)
+    parts: list[str] = []
+    for raw in location_label.split(","):
+        part = _ADMIN_PREFIX.sub("", _LEADING_PREPOSITION.sub("", raw.strip())).strip()
+        if part and not (country_slug and resolve_country_from_text(part) == country_slug):
+            parts.append(part)
+    return parts
+
+
 class NominatimGeocoder:
     def __init__(
         self,
@@ -158,13 +182,18 @@ class NominatimGeocoder:
         country_label: str,
     ) -> GeocodeResult | None:
         country_code = get_country_code_for_jurisdiction(jurisdiction)
+        country_only = normalize_location_key(location_label) == normalize_location_key(
+            country_label
+        )
+        parts = [location_label] if country_only else _search_parts(location_label, jurisdiction)
+        if not parts:
+            return None
         params = {
+            "accept-language": "en",
             "addressdetails": "1",
             "format": "jsonv2",
             "limit": "3",
-            "q": location_label
-            if normalize_location_key(location_label) == normalize_location_key(country_label)
-            else f"{location_label}, {country_label}",
+            "q": ", ".join(parts if country_only else [*parts, country_label]),
         }
         if country_code:
             params["countrycodes"] = country_code
@@ -186,9 +215,8 @@ class NominatimGeocoder:
         for candidate in payload:
             if not isinstance(candidate, dict):
                 continue
-            country_only = normalize_location_key(location_label) == normalize_location_key(
-                country_label
-            )
+            if not country_only and candidate.get("addresstype") in _COARSE_ADDRESS_TYPES:
+                continue
             names = [candidate.get("name", ""), candidate.get("display_name", "")]
             address = candidate.get("address")
             if isinstance(address, dict):
@@ -201,8 +229,9 @@ class NominatimGeocoder:
                 names.extend(str(v) for v in address.values())
             normalized_names = normalize_location_key(" ".join(str(v) for v in names))
             # Do not accept a fuzzy match that drops the supplied place or city context.
-            parts = [normalize_location_key(p) for p in location_label.split(",") if p.strip()]
-            if not country_only and not all(part in normalized_names for part in parts):
+            if not country_only and not all(
+                normalize_location_key(part) in normalized_names for part in parts
+            ):
                 continue
             result = _parse_nominatim_result(
                 candidate, fallback_label=location_label, jurisdiction=jurisdiction
@@ -291,7 +320,9 @@ def _has_valid_coordinates(record: CompetitionRecord) -> bool:
 
 def _build_cache_key(location_label: str, jurisdiction: str | None) -> str:
     jurisdiction_key = normalize_jurisdiction_key(jurisdiction) or "unknown"
-    return f"v2:{jurisdiction_key}:{normalize_location_key(location_label)}"
+    # v3: lookups ask for English names and read "à Nouakchott" as "Nouakchott"; the "not found"
+    # answers cached before that were wrong for many places, so they are asked again.
+    return f"v3:{jurisdiction_key}:{normalize_location_key(location_label)}"
 
 
 def _parse_nominatim_result(
