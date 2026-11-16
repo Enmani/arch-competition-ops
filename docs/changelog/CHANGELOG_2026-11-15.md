@@ -289,3 +289,10 @@ Sign-in used a full-page POST, a 303 redirect and a full reload of the next page
 - Result on the local list: 4 records got a real place (Bad Ischl, Craiova, Sonagazi, Nouakchott); their satellite images were generated and checked by hovering the cards. Not accepted: Burg (resolves to a homonym village), the country centres of Côte d'Ivoire and Pakistan, and the region Niger State.
 - The 35 still without coordinates, counted one by one: no place stated (9), a road, canal or corridor (7), a region (5), an institution or a street without a city (6), several places at once (4), a country only (3), Burg (1). Filling these needs the notice read again for a better place (for instance the San Pedro card: the notice says "à San Pedro", the stored label is only the country), not another lookup.
 - Modified: `apps/worker/src/arch_competition_ops/geocoding.py`, `apps/worker/tests/test_geocoding.py`, `docs/DATA_CONTRACT.md`. Local data only (not committed): `data/competitions.sqlite` (backup `artifacts/backups/competitions-before-geocode-fill-20261116.sqlite`), `apps/web/public/previews/`.
+
+## Hover: satellite fades in while the locator shrinks, no mosaic step
+
+- The card hover first turned the locator into a mosaic, then showed the satellite, then moved the corner map; it read as slow. Now the satellite image fades in (420 ms) while the corner map shrinks from large into the corner (420 ms) at the same time, driven by one class (`is-shown`) in CSS, so leaving plays it backwards. The canvas, the per-frame drawing and `lib/mosaic.ts` are deleted.
+- The satellite and the corner map are decoded before the fade starts; a card without a satellite image or without a known position simply skips the part it lacks. Reduced motion gets a plain 120 ms fade.
+- Checked on `localhost:3400` with frames taken during the hover (locator, then satellite fading in with the large corner map shrinking, then settled) and after leaving.
+- Modified: `apps/web/src/components/opportunity-media.tsx`, `apps/web/src/app/styles/tiles.css`; deleted `apps/web/src/lib/mosaic.ts`.

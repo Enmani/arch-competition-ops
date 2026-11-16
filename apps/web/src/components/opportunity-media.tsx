@@ -3,7 +3,6 @@
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 
-import { drawMosaic } from "@/lib/mosaic";
 import { loadSatellite } from "@/lib/opportunity-satellite";
 import { opportunityImageRevision } from "@/lib/opportunity-preview-revision";
 
@@ -12,120 +11,79 @@ type OpportunityMediaProps = {
 };
 
 const HOVER_INTENT_MS = 90;
-/** Whole transition, locator to satellite. A half way reversal takes half as long. */
-const TRANSITION_MS = 760;
-const MAX_CANVAS_PX = 720;
 
-const ease = (k: number) => (k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2);
+type Satellite = { attribution: string | null; hasInset: boolean; url: string };
+
+/** Loads and decodes an image off screen; false when it is missing or broken. */
+const preload = (src: string) => {
+  const image = new window.Image();
+  image.src = src;
+  return image.decode().then(
+    () => true,
+    () => false,
+  );
+};
 
 /**
  * A card's picture. At rest it is the drawn locator (cheap, and every card looks alike). When the
- * card is pointed at, the locator turns into a coarse mosaic that sharpens into the satellite
- * image, and the locator settles into a corner as a small map with a dot at the project. Leaving
- * plays it backwards. Cards without a satellite image stay as they are, and touch screens, where
- * there is no hover, keep the locator (the detail sheet shows the satellite).
+ * card is pointed at, the satellite image fades in while the locator shrinks into a corner as a
+ * small map with a dot at the project (all CSS, see tiles.css); leaving plays it backwards. Cards
+ * without a satellite image stay as they are, and touch screens, where there is no hover, keep
+ * the locator (the detail sheet shows the satellite).
  */
 export const OpportunityMedia = ({ slug }: OpportunityMediaProps) => {
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const locatorRef = useRef<HTMLImageElement | null>(null);
-  const [insetShown, setInsetShown] = useState(false);
-  const [revealed, setRevealed] = useState(false);
-  const [active, setActive] = useState(false);
-  const [credit, setCredit] = useState<string | null>(null);
+  const [satellite, setSatellite] = useState<Satellite | null>(null);
+  const [shown, setShown] = useState(false);
 
   const base = `/api/opportunities/${slug}/image?rev=${opportunityImageRevision}`;
 
   useEffect(() => {
-    const root = rootRef.current;
-    const tile = root?.closest(".opportunity-tile");
-    if (!root || !tile) {
+    const tile = rootRef.current?.closest(".opportunity-tile");
+    if (!tile) {
       return;
     }
 
-    let progress = 0;
-    let frame = 0;
     let intent = 0;
     let wanted = false;
-    let satellite: ImageBitmap | null = null;
     let missing = false;
     let loading = false;
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let ready = false;
+    let objectUrl: string | null = null;
+    let disposed = false;
 
-    const render = () => {
-      const canvas = canvasRef.current;
-      const locator = locatorRef.current;
-      if (!canvas || !locator) {
-        return;
-      }
-      // A canvas starts at 300x150; it must be sized to the card (square) or it is stretched.
-      const size = Math.max(
-        1,
-        Math.round(Math.min(MAX_CANVAS_PX, root.clientWidth * Math.min(window.devicePixelRatio || 1, 2))),
+    // The element mounts hidden and is revealed two frames later, so the browser has a starting
+    // style to transition from.
+    const reveal = () =>
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          if (!disposed && wanted) {
+            setShown(true);
+          }
+        }),
       );
-      if (canvas.width !== size || canvas.height !== size) {
-        canvas.width = size;
-        canvas.height = size;
-      }
-      drawMosaic(canvas, progress, locator, satellite);
-      setActive(progress > 0);
-      setRevealed(progress >= 1);
-    };
-
-    const run = () => {
-      cancelAnimationFrame(frame);
-      const from = progress;
-      // Without the satellite yet the transition holds at the coarsest step of the locator.
-      const goal = wanted ? (satellite ? 1 : 0.5) : 0;
-      const distance = Math.abs(goal - from);
-      if (distance === 0) {
-        return;
-      }
-      const duration = reduced.matches ? 0 : TRANSITION_MS * distance;
-      const start = performance.now();
-      const step = (now: number) => {
-        const k = duration === 0 ? 1 : Math.min(1, (now - start) / duration);
-        progress = from + (goal - from) * ease(k);
-        render();
-        if (k < 1) {
-          frame = requestAnimationFrame(step);
-        } else if (!wanted) {
-          satellite?.close();
-          satellite = null;
-        }
-      };
-      frame = requestAnimationFrame(step);
-    };
 
     const fetchSatellite = () => {
-      if (loading || satellite || missing) {
-        return;
-      }
       loading = true;
       void loadSatellite(base).then(async (loaded) => {
         loading = false;
-        const blob = loaded?.blob;
-        if (!blob) {
-          missing = true;
-          if (wanted) {
-            wanted = false;
-            run();
-          }
-          return;
-        }
-        const bitmap = await createImageBitmap(blob).catch(() => null);
-        if (!bitmap) {
+        if (disposed || !loaded?.blob) {
           missing = true;
           return;
         }
-        if (!wanted) {
-          bitmap.close();
+        const url = URL.createObjectURL(loaded.blob);
+        // Decode both before the fade starts, so it never shows a half-painted picture. The corner
+        // map exists only when the project's position is really known (otherwise 404).
+        const [decoded, hasInset] = await Promise.all([preload(url), preload(`${base}&kind=inset`)]);
+        if (disposed || !decoded) {
+          URL.revokeObjectURL(url);
+          missing ||= !decoded;
           return;
         }
-        satellite = bitmap;
-        setCredit(loaded.attribution);
-        setInsetShown(true);
-        run();
+        objectUrl = url;
+        ready = true;
+        setSatellite({ attribution: loaded.attribution, hasInset, url });
+        reveal();
       });
     };
 
@@ -133,16 +91,20 @@ export const OpportunityMedia = ({ slug }: OpportunityMediaProps) => {
       wanted = true;
       clearTimeout(intent);
       intent = window.setTimeout(() => {
-        if (wanted && !missing) {
+        if (!wanted || missing) {
+          return;
+        }
+        if (ready) {
+          setShown(true);
+        } else if (!loading) {
           fetchSatellite();
-          run();
         }
       }, HOVER_INTENT_MS);
     };
     const leave = () => {
       wanted = false;
       clearTimeout(intent);
-      run();
+      setShown(false);
     };
 
     const onPointerEnter = (event: Event) => {
@@ -167,32 +129,37 @@ export const OpportunityMedia = ({ slug }: OpportunityMediaProps) => {
     tile.addEventListener("focusin", onFocusIn);
     tile.addEventListener("focusout", leave);
     return () => {
+      disposed = true;
       tile.removeEventListener("pointerenter", onPointerEnter);
       tile.removeEventListener("pointerleave", onPointerLeave);
       tile.removeEventListener("focusin", onFocusIn);
       tile.removeEventListener("focusout", leave);
-      cancelAnimationFrame(frame);
       clearTimeout(intent);
-      satellite?.close();
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
     };
   }, [base]);
 
   return (
-    <div className={`opportunity-media${active ? " is-active" : ""}`} ref={rootRef}>
+    <div className={`opportunity-media${shown ? " is-shown" : ""}`} ref={rootRef}>
       <Image
         alt=""
         className="opportunity-media-locator"
         fill
-        ref={locatorRef}
         sizes="(max-width: 640px) 100vw, (max-width: 1200px) 50vw, 33vw"
         src={`${base}&kind=locator`}
         unoptimized
       />
-      <canvas aria-hidden="true" className="opportunity-media-canvas" ref={canvasRef} />
-      {credit ? <p className={`imagery-credit${revealed ? " is-revealed" : ""}`}>{credit}</p> : null}
-      {insetShown ? (
-        <div className={`opportunity-media-inset${revealed ? " is-revealed" : ""}`}>
-          <Image alt="" fill onError={() => setInsetShown(false)} sizes="10vw" src={`${base}&kind=inset`} unoptimized />
+      {satellite ? (
+        // A blob URL from the shared satellite cache: next/image has nothing to optimise here.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img alt="" className="opportunity-media-satellite" src={satellite.url} />
+      ) : null}
+      {satellite?.attribution ? <p className="imagery-credit">{satellite.attribution}</p> : null}
+      {satellite?.hasInset ? (
+        <div className="opportunity-media-inset">
+          <Image alt="" fill sizes="10vw" src={`${base}&kind=inset`} unoptimized />
         </div>
       ) : null}
     </div>
