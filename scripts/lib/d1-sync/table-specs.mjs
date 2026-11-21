@@ -39,6 +39,17 @@ export const QUEUE_HUMAN_COLUMNS = Object.freeze(["status", "first_detected_at",
  * `updateColumns: null` means "every column except the primary key".
  * `rowFilter` is a fixed SQL fragment (never built from input).
  * `conflictGuard` is an optional WHERE on the DO UPDATE branch.
+ * `changeSignal` is a fixed SQL expression (never built from input) whose MAX() is the
+ * table's incremental-sync watermark: the exporter re-sends only rows with
+ * datetime(changeSignal) newer than the stored watermark (minus a small overlap).
+ * It must be a value the worker stamps on EVERY insert and update of a synced column:
+ *   - competitions / source_health / ai_screening_results: `updated_at` (NOT NULL, and the
+ *     sync itself writes it, so any synced change moves it).
+ *   - ops_review_queue_items: `updated_at` is a human column the sync never writes (see
+ *     QUEUE_HUMAN_COLUMNS), so worker-side changes are signalled by `last_detected_at`,
+ *     which is in the update list and moves whenever the worker re-detects an item.
+ *   - source_runs: append-only run log without `updated_at`; a run is final once
+ *     `completed_at` is set, so COALESCE(completed_at, started_at) is its change signal.
  */
 export const SYNC_TABLES = Object.freeze([
   Object.freeze({
@@ -47,6 +58,7 @@ export const SYNC_TABLES = Object.freeze([
     rowFilter: null,
     updateColumns: null,
     conflictGuard: null,
+    changeSignal: '"updated_at"',
   }),
   Object.freeze({
     name: "source_runs",
@@ -54,6 +66,7 @@ export const SYNC_TABLES = Object.freeze([
     rowFilter: null,
     updateColumns: null,
     conflictGuard: null,
+    changeSignal: 'COALESCE("completed_at", "started_at")',
   }),
   Object.freeze({
     name: "ai_screening_results",
@@ -61,6 +74,7 @@ export const SYNC_TABLES = Object.freeze([
     rowFilter: null,
     updateColumns: null,
     conflictGuard: null,
+    changeSignal: '"updated_at"',
   }),
   Object.freeze({
     name: "source_health",
@@ -68,10 +82,12 @@ export const SYNC_TABLES = Object.freeze([
     rowFilter: null,
     updateColumns: null,
     conflictGuard: null,
+    changeSignal: '"updated_at"',
   }),
   Object.freeze({
     name: "ops_review_queue_items",
     primaryKey: "queue_id",
+    changeSignal: '"last_detected_at"',
     rowFilter: "origin = 'worker_diagnostic'",
     updateColumns: Object.freeze([
       "reason_code",

@@ -5,12 +5,14 @@
 //   node scripts/cloud-state.mjs stats
 //
 // The state is data/competitions.sqlite (notice ledger + paid-assessment cache) plus
-// data/geocoding-cache.json. Losing it, or starting from an empty database, means paying for
-// every assessment again, so:
+// data/geocoding-cache.json, plus the optional data/d1-sync-state.json (incremental D1 sync
+// watermarks; losing it only costs one full re-sync, never data). Losing the database, or
+// starting from an empty one, means paying for every assessment again, so:
 //   - `pull` fails loudly when the bucket holds no state; only `push --init` creates the first one.
 //   - `pull` and `push` refuse to replace newer-looking state (more ai_notice_ledger rows) with older
 //     state unless --force.
-// Objects: state/<UTC timestamp>/competitions.sqlite.gz, state/<UTC timestamp>/geocoding-cache.json.gz
+// Objects: state/<UTC timestamp>/competitions.sqlite.gz, state/<UTC timestamp>/geocoding-cache.json.gz,
+// state/<UTC timestamp>/d1-sync-state.json.gz (only when the file exists locally)
 // and the small pointer latest.json (written last, so a half-finished push never becomes "latest").
 // The newest KEEP_GENERATIONS generations are kept. wrangler has no `r2 object list`, so latest.json
 // also carries the generation index.
@@ -49,6 +51,7 @@ export const KEEP_GENERATIONS = 14;
 export const POINTER_KEY = "latest.json";
 const DB_FILE = "competitions.sqlite";
 const GEOCODE_FILE = "geocoding-cache.json";
+const SYNC_FILE = "d1-sync-state.json";
 const COUNTED_TABLES = ["competitions", "ai_notice_ledger", "ai_screening_results", "ai_screening_runs"];
 const KEY_PATTERN = /^state\/[0-9A-Za-z-]+\/[0-9A-Za-z._-]+$/;
 const BUCKET_PATTERN = /^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/;
@@ -214,6 +217,9 @@ function validatePointer(pointer) {
     if (entry.geocode) {
       assertKey(entry.geocode.key);
     }
+    if (entry.sync) {
+      assertKey(entry.sync.key);
+    }
   }
   return pointer;
 }
@@ -273,6 +279,10 @@ async function push({ context, dbPath, options, now }) {
   if (existsSync(geocodePath)) {
     files.push({ name: GEOCODE_FILE, source: geocodePath, contentType: "application/gzip", slot: "geocode" });
   }
+  const syncPath = path.join(path.dirname(dbPath), SYNC_FILE);
+  if (existsSync(syncPath)) {
+    files.push({ name: SYNC_FILE, source: syncPath, contentType: "application/gzip", slot: "sync" });
+  }
   const entry = { generation, createdAt: stamp.toISOString(), counts };
   for (const file of files) {
     const gz = gzipSync(readFileSync(file.source), { level: 9 });
@@ -294,7 +304,7 @@ async function push({ context, dbPath, options, now }) {
   // Pruning comes after the new pointer is live; a failed delete only leaves an unreferenced object.
   let deleted = 0;
   for (const old of dropped) {
-    for (const slot of [old.db, old.geocode]) {
+    for (const slot of [old.db, old.geocode, old.sync]) {
       if (!slot) {
         continue;
       }
@@ -355,6 +365,10 @@ async function pull({ context, dbPath, options }) {
   if (entry.geocode) {
     geocode = downloadVerified(context, entry.geocode);
   }
+  let sync = null;
+  if (entry.sync) {
+    sync = downloadVerified(context, entry.sync);
+  }
 
   mkdirSync(path.dirname(dbPath), { recursive: true });
   const pendingPath = `${dbPath}.restore`;
@@ -366,6 +380,14 @@ async function pull({ context, dbPath, options }) {
   renameSync(pendingPath, dbPath);
   if (geocode !== null) {
     writeFileSync(path.join(path.dirname(dbPath), GEOCODE_FILE), geocode);
+  }
+  if (sync !== null) {
+    writeFileSync(path.join(path.dirname(dbPath), SYNC_FILE), sync);
+  } else {
+    // A generation without watermarks must not inherit newer ones from a previous restore:
+    // stale watermarks would make the next export skip rows this database still owes D1.
+    // Removing the file makes that export fall back to a full sync.
+    rmSync(path.join(path.dirname(dbPath), SYNC_FILE), { force: true });
   }
   context.log(`Restored generation ${entry.generation} from ${context.bucket} (${formatCounts(counts)}).`);
 }
