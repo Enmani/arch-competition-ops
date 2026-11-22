@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import type { StoredOpportunityFeedItem } from "@arch-competition/storage";
+import type { OpportunityWithPreview } from "@/lib/opportunity-preview-assets";
 
 import { OpportunityDetailBody } from "@/components/opportunity-detail-body";
 import { OpportunityDrawer } from "@/components/opportunity-drawer";
@@ -16,13 +16,13 @@ type OpportunitySheetProps = {
   locale: AppLocale;
   onClose: () => void;
   onWatchChange: (isWatched: boolean) => void;
-  opportunity: StoredOpportunityFeedItem;
+  opportunity: OpportunityWithPreview;
   signedIn: boolean;
 };
 
 /**
  * Opens at once from the list item already on screen. The AI overview and the notice excerpts
- * come from the cached detail request (usually finished by the hover) and replace the
+ * come from the detail request on open and replace the
  * placeholder without reloading the sheet. The list mounts one sheet per opened item.
  */
 export const OpportunitySheet = ({
@@ -35,7 +35,7 @@ export const OpportunitySheet = ({
   signedIn,
 }: OpportunitySheetProps) => {
   const [now] = useState(() => new Date());
-  const [detail, setDetail] = useState<StoredOpportunityFeedItem | null>(null);
+  const [detail, setDetail] = useState<OpportunityWithPreview | null>(null);
   const [settled, setSettled] = useState(false);
 
   useEffect(() => {

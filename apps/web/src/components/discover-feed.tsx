@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import type { StoredOpportunityFeedItem, StoredOpportunityQuery } from "@arch-competition/storage";
+import type { StoredOpportunityQuery } from "@arch-competition/storage";
 
 import { OpportunitySheet } from "@/components/opportunity-sheet";
 import { OpportunityStreamItem } from "@/components/opportunity-stream-item";
@@ -12,6 +12,7 @@ import type { DiscoverFeedCopy } from "@/i18n/slices";
 import { describeApiFailure, requestJson, type ApiFailure } from "@/lib/api-client";
 import { buildDiscoverPageSearchParams, buildDiscoverSearchParams, DISCOVER_PAGE_SIZE } from "@/lib/discover";
 import { consumeFeedTopReset } from "@/lib/discover-navigation";
+import type { OpportunityWithPreview } from "@/lib/opportunity-preview-assets";
 import {
   appendFeedPage,
   createFeedState,
@@ -23,7 +24,7 @@ type DiscoverFeedProps = {
   continuation: string | null;
   copy: DiscoverFeedCopy;
   filters: StoredOpportunityQuery;
-  initialItems: StoredOpportunityFeedItem[];
+  initialItems: OpportunityWithPreview[];
   initialTotal: number;
   initialWatchedIds: string[];
   locale: AppLocale;
@@ -50,7 +51,7 @@ export const DiscoverFeed = ({
   routeBase,
   signedIn,
 }: DiscoverFeedProps) => {
-  const [feed, setFeed] = useState<FeedState<StoredOpportunityFeedItem>>(() =>
+  const [feed, setFeed] = useState<FeedState<OpportunityWithPreview>>(() =>
     createFeedState(initialItems, initialTotal),
   );
   const [watchedIds, setWatchedIds] = useState(() => new Set(initialWatchedIds));
@@ -73,7 +74,7 @@ export const DiscoverFeed = ({
   // The side sheet is a history entry, not a navigation: the list keeps its place and state, the
   // address becomes the opportunity's own page, and Back, Esc and the close button all return to
   // the list. A reload on that address renders the standalone page.
-  const openOpportunity = (opportunity: StoredOpportunityFeedItem) => {
+  const openOpportunity = (opportunity: OpportunityWithPreview) => {
     window.history.pushState({ sheet: opportunity.id }, "", buildLocalePath(locale, `/opportunities/${opportunity.slug}`));
     setOpenId(opportunity.id);
   };
@@ -105,9 +106,10 @@ export const DiscoverFeed = ({
 
     const search = serializeSearchParams({
       ...buildDiscoverSearchParams({ ...filters, limit: DISCOVER_PAGE_SIZE, offset: feedRef.current.nextOffset }),
+      media: "static",
       ...(continuation === null ? { live: "1" } : { continuation }),
     });
-    const result = await requestJson<{ opportunities: StoredOpportunityFeedItem[]; total?: number }>(
+    const result = await requestJson<{ opportunities: OpportunityWithPreview[]; total?: number }>(
       `/api/opportunities${search}`,
     );
     if (!result.ok && continuation !== null && result.failure.status === 409) {

@@ -1,21 +1,21 @@
-import type { StoredOpportunityFeedItem } from "@arch-competition/storage";
+import type { OpportunityWithPreview } from "./opportunity-preview-assets";
 
 import { requestJson } from "@/lib/api-client";
 
 const DETAIL_TTL_MS = 60_000;
 const requests = new Map<string, {
   expiresAt: number;
-  promise: Promise<StoredOpportunityFeedItem | null>;
+  promise: Promise<OpportunityWithPreview | null>;
 }>();
 
 /** Share in-flight detail requests. Reopenings revalidate after the browser HTTP cache lifetime. */
-export const loadOpportunityDetail = (slug: string): Promise<StoredOpportunityFeedItem | null> => {
+export const loadOpportunityDetail = (slug: string): Promise<OpportunityWithPreview | null> => {
   const now = Date.now();
   const cached = requests.get(slug);
   if (cached && cached.expiresAt > now) return cached.promise;
 
-  const promise = requestJson<{ opportunity: StoredOpportunityFeedItem }>(
-    `/api/opportunities/${encodeURIComponent(slug)}`,
+  const promise = requestJson<{ opportunity: OpportunityWithPreview }>(
+    `/api/opportunities/${encodeURIComponent(slug)}?media=static`,
   ).then((result) => {
     if (!result.ok && requests.get(slug)?.promise === promise) requests.delete(slug);
     return result.ok ? result.data.opportunity : null;

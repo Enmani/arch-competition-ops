@@ -14,6 +14,7 @@ import type { PreviewOpportunity } from "../types";
 import { PREVIEW_ALGORITHM_VERSION } from "../version";
 import { createRecordContext, type PipelineServices } from "./context";
 import { readOpportunities } from "./db";
+import { publishPreviews } from "./publish";
 import { resolveOpportunitySatellite } from "./resolve-record";
 import {
   acquireLock,
@@ -21,7 +22,6 @@ import {
   fileExists,
   imagePath,
   listImageFiles,
-  publishPreviews,
   readManifest,
   writeFileAtomic,
   writeManifest,
@@ -198,7 +198,7 @@ export const runPrewarm = async (
     await services.geocoding.cache.flush();
     await writeManifest(directory, manifest);
     if (options.publishDirectory) {
-      summary.published = await publishPreviews(directory, options.publishDirectory, manifest);
+      summary.published = await publishPreviews(directory, options.publishDirectory, manifest, options.databasePath);
     }
     return summary;
   } finally {

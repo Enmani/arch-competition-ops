@@ -4,6 +4,7 @@ import {
 } from "@arch-competition/previews/placeholder";
 import {
   lookupPreview,
+  previewLocatorOverride,
   type ManifestLoader,
   type PreviewAssetSource,
 } from "@arch-competition/previews/serve";
@@ -67,7 +68,7 @@ export const createOpportunityImageHandler = (deps: OpportunityImageDeps) => {
   return async (request: Request, slug: string): Promise<Response> => {
     const { loader, source } = await deps.getPreviewSource();
     const kind = new URL(request.url).searchParams.get("kind");
-    const preview = await lookupPreview(loader, source, slug);
+    const preview = await lookupPreview(loader, source, slug, kind !== "locator" && kind !== "inset");
 
     if (kind === "locator" || kind === "inset") {
       const opportunity = await deps.getOpportunity(slug);
@@ -77,8 +78,7 @@ export const createOpportunityImageHandler = (deps: OpportunityImageDeps) => {
           : new Response(null, { headers: { "cache-control": cacheControl(MISSING_CACHE) }, status: 404 });
       }
       // The generator may know where the record is even though it could not render imagery.
-      const known = preview?.entry.locator;
-      const override = known ? { geoLat: known.lat, geoLng: known.lng, locationLabel: known.label } : undefined;
+      const override = previewLocatorOverride(preview?.entry, opportunity, deps.revision);
       if (kind === "inset") {
         const inset = buildOpportunityLocatorInsetSvg(opportunity, override);
         return inset
@@ -113,12 +113,6 @@ export const createOpportunityImageHandler = (deps: OpportunityImageDeps) => {
     }
 
     // The generator may know where the record is even though it could not render imagery.
-    const locator = preview?.entry.locator;
-    return placeholder(
-      opportunity,
-      locator
-        ? { geoLat: locator.lat, geoLng: locator.lng, locationLabel: locator.label }
-        : undefined,
-    );
+    return placeholder(opportunity, previewLocatorOverride(preview?.entry, opportunity, deps.revision));
   };
 };

@@ -15,37 +15,19 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 
-import { PREVIEW_ALGORITHM_VERSION } from "../version";
 import {
   IMAGES_DIRECTORY,
   MANIFEST_FILE,
   createEmptyManifest,
   isSafeImageFileName,
   parsePreviewManifest,
+  previewSourceInput,
   type PreviewManifest,
 } from "../manifest";
 import type { PreviewOpportunity } from "../types";
 
 export const computeSourceHash = (opportunity: PreviewOpportunity) =>
-  createHash("sha256")
-    .update(
-      JSON.stringify([
-        PREVIEW_ALGORITHM_VERSION,
-        opportunity.slug,
-        opportunity.title,
-        opportunity.authorityName,
-        opportunity.jurisdictionKey,
-        opportunity.locationLabel,
-        opportunity.officialUrl,
-        opportunity.sourceUrl,
-        opportunity.documentsPortalUrl,
-        opportunity.briefPdfUrl,
-        opportunity.geoLat ?? null,
-        opportunity.geoLng ?? null,
-      ]),
-    )
-    .digest("hex")
-    .slice(0, 16);
+  createHash("sha256").update(previewSourceInput(opportunity)).digest("hex").slice(0, 16);
 
 const temporaryName = (target: string) => `${target}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
 
@@ -132,12 +114,8 @@ export const acquireLock = async (directory: string, now: () => number = Date.no
   throw new LockHeldError(lockPath);
 };
 
-/**
- * Mirror the manifest and the images it references into `publishDirectory` (apps/web/public/previews),
- * which the Web build ships as static assets. Unreferenced images there are removed so the shipped
- * set cannot grow without bound.
- */
-export const publishPreviews = async (
+/** Copy referenced JPEGs to the static assets directory and remove superseded files. */
+export const copyPreviewImages = async (
   directory: string,
   publishDirectory: string,
   manifest: PreviewManifest,
@@ -146,14 +124,17 @@ export const publishPreviews = async (
     Object.values(manifest.entries).flatMap((entry) => (entry.file ? [entry.file] : [])),
   );
   await mkdir(path.join(publishDirectory, IMAGES_DIRECTORY), { recursive: true });
+  const available = new Set<string>();
   let copied = 0;
   for (const file of wanted) {
     const target = imagePath(publishDirectory, file);
     if (await fileExists(target)) {
+      available.add(file);
       continue;
     }
     try {
       await copyFile(imagePath(directory, file), target);
+      available.add(file);
       copied += 1;
     } catch {
       // The source image is missing; the manifest entry is dropped by the next prune.
@@ -164,9 +145,5 @@ export const publishPreviews = async (
       await rm(imagePath(publishDirectory, file), { force: true });
     }
   }
-  await writeFileAtomic(
-    path.join(publishDirectory, MANIFEST_FILE),
-    `${JSON.stringify(manifest, null, 1)}\n`,
-  );
-  return copied;
+  return { available, copied };
 };

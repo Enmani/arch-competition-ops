@@ -10,8 +10,10 @@ import Database from "better-sqlite3";
 import sharp from "sharp";
 
 import { loadPreviewConfig } from "../config";
-import { parsePreviewManifest } from "../manifest";
+import { LOCATORS_DIRECTORY, parsePreviewManifest } from "../manifest";
 import { createPipelineServices, type PipelineServices } from "./context";
+import { readOpportunities } from "./db";
+import { staticOpportunityPreview } from "../serve";
 import { PREVIEW_ALGORITHM_VERSION } from "../version";
 import { runPrewarm } from "./prewarm";
 import { acquireLock, LockHeldError } from "./store";
@@ -283,9 +285,22 @@ test("publishing mirrors the manifest and its images into the Web public directo
       publishDirectory: publish,
     });
 
-    const entry = (await readManifest(publish))?.entries["road-work"];
+    const manifest = await readManifest(publish);
+    assert.ok(manifest);
+    const entry = manifest.entries["road-work"];
     assert.equal(summary.published, 1);
-    assert.deepEqual(await readdir(path.join(publish, "images")), [entry?.file]);
+    assert.deepEqual(await readdir(path.join(publish, "images")), [entry.file]);
+    const [opportunity] = readOpportunities(databasePath, { only: ["road-work"] });
+    const assets = await staticOpportunityPreview(manifest, opportunity);
+    assert.ok(assets?.image && assets.inset);
+    assert.match(assets.attribution ?? "", /Esri/);
+    assert.match(await readFile(path.join(publish, LOCATORS_DIRECTORY, entry.locatorAssets!.locator), "utf8"),
+      /data-marker-source="geo-coordinates"/);
+    assert.match(await readFile(path.join(publish, LOCATORS_DIRECTORY, entry.locatorAssets!.inset!), "utf8"), /<svg /);
+    assert.equal(await staticOpportunityPreview(manifest, { ...opportunity, geoLat: 45 }), undefined);
+    assert.equal(await staticOpportunityPreview(manifest, { ...opportunity, officialUrl: "https://changed.example" }), undefined);
+    entry.algorithmVersion = "v-old";
+    assert.equal(await staticOpportunityPreview(manifest, opportunity), undefined);
   } finally {
     await rm(h.directory, { force: true, recursive: true });
   }

@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import type { StoredOpportunityFeedItem } from "@arch-competition/storage";
+import type { OpportunityWithPreview } from "@/lib/opportunity-preview-assets";
 
 import { OpportunityDetailBody } from "@/components/opportunity-detail-body";
 import { buildLocalePath, type AppLocale } from "@/i18n/config";
@@ -10,7 +10,7 @@ type OpportunityDetailSurfaceProps = {
   copy: DiscoverFeedCopy;
   isWatched: boolean;
   locale: AppLocale;
-  opportunity: StoredOpportunityFeedItem;
+  opportunity: OpportunityWithPreview;
   signedIn: boolean;
 };
 

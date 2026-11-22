@@ -430,7 +430,7 @@ Remove-Item Env:ARCH_COMPETITION_OPS_DB
 
 ## Preview images: prewarm + R2/ASSETS
 
-Card images are built offline and shipped as static assets. `/api/opportunities/[slug]/image` only looks the record up in `previews/manifest.json` (through the `ASSETS` binding on Workers, the local previews directory under `next dev` / `next start`) and otherwise draws the locator placeholder. Nothing in the request path geocodes, fetches a notice page, renders a map or calls this site's own domain. Architecture and decisions: `docs/structures/2026-10-21-preview-pipeline-architecture.md`.
+Prewarming publishes the image, locator and corner map through the existing preview manifest. Cards and detail pages request those files directly when the stored record and renderer version match. Cloudflare can serve those URLs as static assets before the Worker runs. For a new or changed record, the image endpoint can draw a live locator after reading its location fields by primary key. See the [preview pipeline architecture](docs/structures/2026-10-21-preview-pipeline-architecture.md).
 
 ### Build the previews (before every deploy that should show new imagery)
 
@@ -479,4 +479,4 @@ Static assets are capped at 20,000 files per Worker version (25 MiB each) and ev
 
 ### Imagery terms
 
-Satellite images use Esri World Imagery tiles. The credit line "Imagery © Esri, Maxar, Earthstar Geographics, and the GIS User Community" is drawn onto every image and recorded in the manifest; do not crop it away. The public `services.arcgisonline.com` endpoint is subject to Esri's terms of use; if traffic or commercial use grows, review them or switch `ARCH_SATELLITE_TILE_URL_TEMPLATE` (and `ARCH_PREVIEW_TILE_ATTRIBUTION`) to a licensed provider.
+Satellite images use Esri World Imagery tiles. The site displays the credit line from the manifest next to the image. For Esri World Imagery it is "Imagery © Esri, Maxar, Earthstar Geographics, and the GIS User Community". The public `services.arcgisonline.com` endpoint is subject to Esri's terms of use; if traffic or commercial use grows, review them or switch `ARCH_SATELLITE_TILE_URL_TEMPLATE` (and `ARCH_PREVIEW_TILE_ATTRIBUTION`) to a licensed provider.

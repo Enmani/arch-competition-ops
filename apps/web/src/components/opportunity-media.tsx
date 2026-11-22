@@ -3,10 +3,13 @@
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 
+import type { StaticOpportunityPreview } from "@arch-competition/previews/serve";
+
 import { loadSatellite } from "@/lib/opportunity-satellite";
 import { opportunityImageRevision } from "@/lib/opportunity-preview-revision";
 
 type OpportunityMediaProps = {
+  preview?: StaticOpportunityPreview;
   slug: string;
 };
 
@@ -31,12 +34,16 @@ const preload = (src: string) => {
  * without a satellite image stay as they are, and touch screens, where there is no hover, keep
  * the locator (the detail sheet shows the satellite).
  */
-export const OpportunityMedia = ({ slug }: OpportunityMediaProps) => {
+export const OpportunityMedia = ({ preview, slug }: OpportunityMediaProps) => {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [satellite, setSatellite] = useState<Satellite | null>(null);
   const [shown, setShown] = useState(false);
 
   const base = `/api/opportunities/${slug}/image?rev=${opportunityImageRevision}`;
+  const staticImage = preview?.image;
+  const attribution = preview?.attribution;
+  const inset = preview ? preview.inset : `${base}&kind=inset`;
+  const useStatic = preview !== undefined;
 
   useEffect(() => {
     const tile = rootRef.current?.closest(".opportunity-tile");
@@ -63,28 +70,28 @@ export const OpportunityMedia = ({ slug }: OpportunityMediaProps) => {
         }),
       );
 
-    const fetchSatellite = () => {
+    const fetchSatellite = async () => {
       loading = true;
-      void loadSatellite(base).then(async (loaded) => {
+      const loaded = useStatic ? null : await loadSatellite(base);
+      if (disposed || (!staticImage && !loaded)) {
         loading = false;
-        if (disposed || !loaded?.blob) {
-          missing = true;
-          return;
-        }
-        const url = URL.createObjectURL(loaded.blob);
-        // Decode both before the fade starts, so it never shows a half-painted picture. The corner
-        // map exists only when the project's position is really known (otherwise 404).
-        const [decoded, hasInset] = await Promise.all([preload(url), preload(`${base}&kind=inset`)]);
-        if (disposed || !decoded) {
-          URL.revokeObjectURL(url);
-          missing ||= !decoded;
-          return;
-        }
-        objectUrl = url;
-        ready = true;
-        setSatellite({ attribution: loaded.attribution, hasInset, url });
-        reveal();
-      });
+        missing = true;
+        return;
+      }
+      const blobUrl = loaded ? URL.createObjectURL(loaded.blob) : null;
+      const url = staticImage ?? blobUrl!;
+      // Decode before the fade starts. Fallback insets may return 404 for an unknown location.
+      const [decoded, hasInset] = await Promise.all([preload(url), inset ? preload(inset) : false]);
+      loading = false;
+      if (disposed || !decoded) {
+        if (blobUrl) URL.revokeObjectURL(blobUrl);
+        missing ||= !decoded;
+        return;
+      }
+      objectUrl = blobUrl;
+      ready = true;
+      setSatellite({ attribution: attribution ?? loaded?.attribution ?? null, hasInset, url });
+      reveal();
     };
 
     const enter = () => {
@@ -97,7 +104,7 @@ export const OpportunityMedia = ({ slug }: OpportunityMediaProps) => {
         if (ready) {
           setShown(true);
         } else if (!loading) {
-          fetchSatellite();
+          void fetchSatellite();
         }
       }, HOVER_INTENT_MS);
     };
@@ -139,7 +146,7 @@ export const OpportunityMedia = ({ slug }: OpportunityMediaProps) => {
         URL.revokeObjectURL(objectUrl);
       }
     };
-  }, [base]);
+  }, [attribution, base, inset, staticImage, useStatic]);
 
   return (
     <div className={`opportunity-media${shown ? " is-shown" : ""}`} ref={rootRef}>
@@ -148,18 +155,18 @@ export const OpportunityMedia = ({ slug }: OpportunityMediaProps) => {
         className="opportunity-media-locator"
         fill
         sizes="(max-width: 640px) 100vw, (max-width: 1200px) 50vw, 33vw"
-        src={`${base}&kind=locator`}
+        src={preview?.locator ?? `${base}&kind=locator`}
         unoptimized
       />
       {satellite ? (
-        // A blob URL from the shared satellite cache: next/image has nothing to optimise here.
+        // The satellite has already been decoded off-screen.
         // eslint-disable-next-line @next/next/no-img-element
         <img alt="" className="opportunity-media-satellite" src={satellite.url} />
       ) : null}
       {satellite?.attribution ? <p className="imagery-credit">{satellite.attribution}</p> : null}
-      {satellite?.hasInset ? (
+      {satellite?.hasInset && inset ? (
         <div className="opportunity-media-inset">
-          <Image alt="" fill sizes="10vw" src={`${base}&kind=inset`} unoptimized />
+          <Image alt="" fill sizes="10vw" src={inset} unoptimized />
         </div>
       ) : null}
     </div>

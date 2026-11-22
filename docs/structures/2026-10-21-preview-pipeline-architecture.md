@@ -3,7 +3,7 @@ title: Preview Pipeline Architecture
 vision_doc: vision.md
 goal_doc: docs/goals/2026-04-19-future-direction.md
 status: done
-updated_at: 2026-10-21
+updated_at: 2026-11-22
 related_docs:
   - docs/AI_CONSTRAINTS.md
   - docs/structures/2026-10-21-storage-auth-api-architecture.md
@@ -74,8 +74,8 @@ GET /api/opportunities/[slug]/image?rev=<PREVIEW_ALGORITHM_VERSION>
 ## Main Flows
 
 1. Ingest: the worker stores records, then (when `ARCH_PREVIEW_PREWARM=1`) runs the CLI for the new ids and reports `card previews ok|skipped|failed`; failure never affects ingested data.
-2. Publish: `npm run prewarm:previews -w @arch-competition/web` runs the CLI over all visible records and mirrors manifest plus referenced images into `apps/web/public/previews/`; the next build ships them as static assets.
-3. Request: manifest (cached 60 s per isolate) -> `images/<file>` -> response. A request with `rev` equal to `PREVIEW_ALGORITHM_VERSION` for an image made by that version is `public, max-age=31536000, immutable`; any other asset hit is `max-age=3600`; the placeholder is `max-age=300` (404 placeholder 60); `next dev` sends `no-store`.
+2. Publish: `npm run prewarm:previews -w @arch-competition/web` copies the referenced JPEGs into `apps/web/public/previews/`. It uses the live locator renderer to generate static SVGs for current entries and records their file names alongside the imagery credit. The web build ships these files with the manifest.
+3. Request: the server compares the current record and algorithm version with the manifest. A match gives the browser a direct asset URL for the resting image, the hover image and the corner map when available. A miss keeps the live image endpoint and its single location lookup. Direct file requests can bypass the Worker on Cloudflare.
 4. Per record generation: Stadt Zuerich official image if the record links to that site; otherwise the stored `geo_lat`/`geo_lng` when it is a real point (`geo_source` not `:country`, confidence >= 0.5), which needs no second geocode; only without such a point do the title candidates, display locality, page signals (3 pages) and PDFs (3) run in that order. The first usable point is geocoded, 9 to 16 Esri tiles are fetched, composed with the precision ring and credit line, and written as JPEG.
 
 ## Decision Records
@@ -106,7 +106,7 @@ Page, PDF and image URLs come from scraped notices. `net/safe-fetch.ts` allows o
 
 ### 7. Imagery attribution and terms
 
-Every satellite image carries a bar with "Imagery © Esri, Maxar, Earthstar Geographics, and the GIS User Community" and the same text is stored as the manifest `attribution` (override both with `ARCH_PREVIEW_TILE_ATTRIBUTION` when changing the tile URL). Tile requests no longer pretend to be Chrome. Risk: the public ArcGIS endpoint has terms of use that may require an account at higher volume; review them before commercial scale. Official images record `Image source: <host>`.
+The manifest stores the imagery credit and the site displays it next to the image. For Esri the credit is "Imagery © Esri, Maxar, Earthstar Geographics, and the GIS User Community". Use `ARCH_PREVIEW_TILE_ATTRIBUTION` when changing the tile source. Tile requests no longer pretend to be Chrome. Risk: the public ArcGIS endpoint has terms of use that may require an account at higher volume; review them before commercial scale. Official images record `Image source: <host>`.
 
 ### 8. Dead code removed instead of kept compatible
 

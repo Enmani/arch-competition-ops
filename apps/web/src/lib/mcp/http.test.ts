@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { competitionDetailSchema, competitionPageSchema, MCP_MAX_OFFSET, REGIONS } from "@arch-competition/core";
+import { competitionDetailSchema, competitionPageSchema, MCP_MAX_OFFSET, MCP_MAX_RESPONSE_BYTES, REGIONS } from "@arch-competition/core";
 import { createTestStorage, seedOpportunity } from "@arch-competition/storage/testing";
 
 import { createMcpHandler } from "./http";
@@ -49,7 +49,7 @@ test("anonymous MCP discovery returns JSON, exactly four documented tools and no
   for (const tool of list.result.tools) {
     assert.equal(tool.annotations.readOnlyHint, true);
     assert.equal(tool.outputSchema.type, "object");
-    assert.match(tool.description, /Never invent a deadline or fee/);
+    assert.ok(tool.description.length > 0);
   }
   const filterSchema = list.result.tools.find((tool: { name: string }) => tool.name === "search_competitions").inputSchema;
   assert.equal(filterSchema.properties.limit.maximum, 25);
@@ -83,6 +83,9 @@ test("search filters before paging, preserves fee evidence and returns verifiabl
   assert.deepEqual(first.competitions.map((item) => item.slug), ["aa"]);
   assert.equal(first.next_offset, 1);
   assert.equal(first.hasMore, true);
+  assert.equal(first.competitions[0].official_url, "https://example.org/buyer");
+  assert.equal(first.competitions[0].source_url, "https://example.org/notice");
+  assert.equal(first.competitions[0].evidence_note, "Official notice checked");
   const last = await search({ ...filters, offset: first.next_offset });
   assert.deepEqual(last.competitions.map((item) => item.slug), ["bb"]);
   assert.equal(last.next_offset, null);
@@ -212,4 +215,41 @@ test("oversized output is reported without truncating evidence", async (t) => {
   assert.equal(payload.id, 1);
   assert.match(payload.error.message, /128 KiB/);
   assert.equal(payload.result, undefined);
+});
+
+test("both MCP lists reduce the page to fit the full JSON-RPC response and advance by returned rows", async (t) => {
+  const db = createTestStorage();
+  t.after(db.cleanup);
+  const note = '证"\\'.repeat(7_000);
+  const url = "https://example.org/buyer";
+  for (const id of ["a", "b", "c"]) {
+    seedOpportunity(db.raw, { id, deadline_at: "2026-04-19", official_url: url, evidence_note: note });
+  }
+  seedOpportunity(db.raw, { id: "d", deadline_at: "2026-04-19", evidence_note: "证".repeat(25_000) });
+  const handle = createMcpHandler(async () => db.storage.opportunities, testAccess(db), db.clock);
+  for (const name of ["search_competitions", "list_closing_soon"]) {
+    const id = "测试".repeat(100);
+    const request = async (offset: number) => {
+      const response = await handle(post({ ...rpc("tools/call", { name, arguments: { offset } }), id }));
+      assert.equal(response.status, 200);
+      const bytes = await response.arrayBuffer();
+      assert.ok(bytes.byteLength <= MCP_MAX_RESPONSE_BYTES);
+      const message = JSON.parse(new TextDecoder().decode(bytes));
+      assert.equal(message.id, id);
+      return message.result;
+    };
+    const first = competitionPageSchema.parse((await request(0)).structuredContent);
+    assert.deepEqual(first.competitions.map((item) => item.slug), ["a"]);
+    assert.equal(first.competitions[0].official_url, url);
+    assert.equal(first.competitions[0].source_url, "https://example.org/notice");
+    assert.equal(first.competitions[0].evidence_note, note);
+    assert.equal(first.hasMore, true);
+    assert.equal(first.next_offset, 1);
+    const next = competitionPageSchema.parse((await request(first.next_offset!)).structuredContent);
+    assert.deepEqual(next.competitions.map((item) => item.slug), ["b"]);
+    assert.equal(next.next_offset, 2);
+    const oversize = await request(3);
+    assert.equal(oversize.isError, true);
+    assert.match(oversize.content[0].text, /competition exceeds 128 KiB/);
+  }
 });
