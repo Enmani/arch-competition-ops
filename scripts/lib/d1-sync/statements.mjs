@@ -26,11 +26,14 @@ export function buildUpsertStatement(spec, columns, row) {
   const assignments = updateColumns
     .map((column) => `${quoteIdentifier(column)} = excluded.${quoteIdentifier(column)}`)
     .join(", ");
-  const guard = spec.conflictGuard ? ` WHERE ${spec.conflictGuard}` : "";
+  const changes = updateColumns
+    .map((column) => `${table}.${quoteIdentifier(column)} IS NOT excluded.${quoteIdentifier(column)}`)
+    .join(" OR ");
+  const guard = spec.conflictGuard ? `(${spec.conflictGuard}) AND (${changes})` : changes;
 
   return (
     `INSERT INTO ${table} (${columnList}) VALUES (${values}) ` +
-    `ON CONFLICT(${quoteIdentifier(spec.primaryKey)}) DO UPDATE SET ${assignments}${guard};`
+    `ON CONFLICT(${quoteIdentifier(spec.primaryKey)}) DO UPDATE SET ${assignments} WHERE ${guard};`
   );
 }
 
