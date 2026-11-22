@@ -24,7 +24,9 @@
   top: 0;
   z-index: 40;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  /* The brand keeps at least its longest word; when space runs out the links wrap instead of
+     sliding over the wordmark. */
+  grid-template-columns: minmax(min-content, 1fr) auto;
   align-items: center;
   gap: var(--space-sm) var(--space-lg);
   min-height: calc(var(--control-h) + (var(--topbar-pad-y) * 2));
@@ -97,6 +99,10 @@
 }
 
 .brand-caption {
+  /* Takes whatever room is left and never claims width of its own, so the brand column's
+     minimum is the wordmark alone. */
+  flex: 1 1 0;
+  contain: inline-size;
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
@@ -247,7 +253,18 @@
   }
 
   .brand-caption {
+    flex: none;
+    contain: none;
     white-space: normal;
     overflow: visible;
+  }
+}
+
+@media (max-width: 480px) {
+  /* Phones: half the side padding on topbar links so the utility row (Pricing, Support, About,
+     Log in, language, theme) stays on one line at 390px; link height and touch area are unchanged. */
+  .nav-row .nav-link,
+  .utility-row .nav-link {
+    padding-inline: var(--space-xs);
   }
 }

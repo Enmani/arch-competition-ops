@@ -205,11 +205,5 @@ export const mcp = {
     },
     billing: "Monthly or yearly subscription. Payments are handled by Stripe.",
     counted: "Each tool call by your AI assistant counts as one call.",
-    legal: {
-      label: "Legal",
-      terms: "Terms of service",
-      refund: "Refund policy",
-      privacy: "Privacy policy",
-    },
   },
 } satisfies AppDictionary["mcp"];

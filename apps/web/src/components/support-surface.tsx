@@ -1,6 +1,6 @@
+import { SupportLinkList } from "@/components/support-link-list";
 import type { AppLocale } from "@/i18n/config";
 import type { AppDictionary } from "@/i18n/dictionaries";
-import { SUPPORT_LINKS } from "@/lib/support-links";
 
 type SupportSurfaceProps = {
   dictionary: AppDictionary;
@@ -22,26 +22,7 @@ export const SupportSurface = ({ dictionary, locale }: SupportSurfaceProps) => {
         <p className="support-signature">{copy.signature}</p>
       </div>
 
-      <ul className="support-links">
-        {SUPPORT_LINKS.map((link) => {
-          const external = link.href.startsWith("http");
-          const label = typeof link.label === "string" ? link.label : link.label[locale];
-
-          return (
-            <li key={link.href}>
-              <a
-                className="support-link"
-                href={link.href}
-                rel={external ? "noreferrer" : undefined}
-                target={external ? "_blank" : undefined}
-              >
-                <span className="support-link-label">{label}</span>
-                <span className="support-link-value">{link.value}</span>
-              </a>
-            </li>
-          );
-        })}
-      </ul>
+      <SupportLinkList locale={locale} />
     </main>
   );
 };

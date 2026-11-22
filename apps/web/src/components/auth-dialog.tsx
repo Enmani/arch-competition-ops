@@ -3,12 +3,14 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
+import { ConsentLine } from "@/components/consent-line";
 import type { AppLocale } from "@/i18n/config";
 import type { AppDictionary } from "@/i18n/dictionaries";
 import type { AuthMode } from "@/lib/auth-dialog";
 
 type AuthDialogProps = {
   closeLabel: string;
+  consentCopy: AppDictionary["legal"]["consent"];
   copy: AppDictionary["auth"];
   locale: AppLocale;
   mode: AuthMode;
@@ -22,7 +24,7 @@ type AuthDialogProps = {
  * server components are refreshed in place (the account appears, watch state loads) and the page
  * keeps its scroll position and list. The pages stay as the no-JavaScript and direct-link path.
  */
-export const AuthDialog = ({ closeLabel, copy, locale, mode, onClose, onModeChange }: AuthDialogProps) => {
+export const AuthDialog = ({ closeLabel, consentCopy, copy, locale, mode, onClose, onModeChange }: AuthDialogProps) => {
   const router = useRouter();
   const dialogRef = useRef<HTMLDialogElement | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -141,6 +143,7 @@ export const AuthDialog = ({ closeLabel, copy, locale, mode, onClose, onModeChan
               />
             </div>
           ) : null}
+          {mode === "register" ? <ConsentLine copy={consentCopy} locale={locale} onFollow={onClose} /> : null}
           <button aria-busy={pending} className="button primary auth-submit" disabled={pending} type="submit">
             {text.submit}
           </button>

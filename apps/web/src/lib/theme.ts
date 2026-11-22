@@ -7,6 +7,12 @@ export type ThemeChoice = "dark" | "light" | "system";
 
 export const THEME_STORAGE_KEY = "theme";
 
+/**
+ * Fired on window after every change, with the choice as `detail`, so the toggle button follows a
+ * reset made elsewhere even when storage is blocked.
+ */
+export const THEME_CHANGE_EVENT = "arch-theme-change";
+
 export const THEME_ORDER: readonly ThemeChoice[] = ["system", "light", "dark"];
 
 export const parseThemeChoice = (value: string | null | undefined): ThemeChoice =>
@@ -39,4 +45,5 @@ export const applyThemeChoice = (choice: ThemeChoice) => {
   } catch {
     // Private mode or blocked storage: the choice still applies to this page view.
   }
+  window.dispatchEvent(new CustomEvent<ThemeChoice>(THEME_CHANGE_EVENT, { detail: choice }));
 };

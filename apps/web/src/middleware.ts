@@ -1,8 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { localeCookieName } from "./i18n/config";
+import { localeCookieName, localeCookieOptions } from "./i18n/config";
 import { LOCALE_HEADER, localeToRemember, negotiateLocale, resolveLocaleRedirect } from "./i18n/negotiate";
-import { sessionCookieName } from "./lib/session-cookie";
+import { SESSION_COOKIE_MAX_AGE_SECONDS, sessionCookieName } from "./lib/session-cookie";
 
 /**
  * Two cross-cutting jobs for every page and API request:
@@ -18,9 +18,6 @@ import { sessionCookieName } from "./lib/session-cookie";
  *    expired or revoked token simply fails validation later. `/api/auth/*` is excluded so
  *    login/logout keep sole control of the cookie they set or clear.
  */
-const THIRTY_DAYS_SECONDS = 30 * 24 * 60 * 60;
-const ONE_YEAR_SECONDS = 365 * 24 * 60 * 60;
-
 const isPrefetch = (request: NextRequest) =>
   request.headers.has("next-router-prefetch") ||
   request.headers.get("purpose") === "prefetch" ||
@@ -51,12 +48,7 @@ export const middleware = (request: NextRequest) => {
 
   const remember = localeToRemember({ cookieLocale, isPrefetch: isPrefetch(request), pathname });
   if (remember) {
-    response.cookies.set(localeCookieName, remember, {
-      maxAge: ONE_YEAR_SECONDS,
-      path: "/",
-      sameSite: "lax",
-      secure: production,
-    });
+    response.cookies.set(localeCookieName, remember, localeCookieOptions(production));
   }
 
   const name = sessionCookieName(production);
@@ -64,7 +56,7 @@ export const middleware = (request: NextRequest) => {
   if (token) {
     response.cookies.set(name, token, {
       httpOnly: true,
-      maxAge: THIRTY_DAYS_SECONDS,
+      maxAge: SESSION_COOKIE_MAX_AGE_SECONDS,
       path: "/",
       sameSite: "lax",
       secure: production,

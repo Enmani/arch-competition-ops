@@ -8,6 +8,14 @@ export const defaultLocale: AppLocale = "zh";
 export const intlLocaleTags: Record<AppLocale, string> = { en: "en-GB", zh: "zh-CN" };
 export const localeCookieName = "arch_competition_ops_locale";
 
+/**
+ * The language cookie: set by middleware whenever a page in another language is opened, so a
+ * bare address (`/`) opens in the language last used. Readable by page script on purpose (not
+ * HttpOnly), so the About page can clear it.
+ */
+export const localeCookieOptions = (production: boolean) =>
+  ({ maxAge: 365 * 24 * 60 * 60, path: "/", sameSite: "lax", secure: production }) as const;
+
 export const isLocale = (value: string): value is AppLocale =>
   locales.includes(value as AppLocale);
 

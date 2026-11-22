@@ -114,3 +114,29 @@ An architect can copy the address and get a first answer without an account, cre
 - `apps/web/src/app/globals.css`, `apps/web/src/app/styles/{tokens,mcp,mcp-account,pricing}.css`
 - `tests/visual/mcp-flow.spec.ts`
 - `docs/goals/2026-04-19-future-direction.md`, `docs/structures/2026-10-21-storage-auth-api-architecture.md`, `docs/changelog/CHANGELOG_2026-11-22.md`
+
+## About page, legal pages and footer
+
+### Changed
+
+Added `/[locale]/about`, `/[locale]/terms`, `/[locale]/privacy` and `/[locale]/refund` in Chinese and English, a one-line footer on every page except discover and opportunity pages, an About link in the top bar, and a consent line on sign-up. The [API architecture](../structures/2026-10-21-storage-auth-api-architecture.md#about-legal-pages-and-footer) describes where each stated fact comes from. On narrow screens the top-bar links use less side padding, and the brand keeps the width of its longest word, so the extra link does not overlap the wordmark.
+
+### Why
+
+A paid plan needs public terms, a refund policy and a privacy notice. The discover list stays unchanged so scanning projects stays fast.
+
+### Validation
+
+- `npx tsx --test apps/web/src/lib/legal-content.test.ts`: legal links resolve to pages, en and zh sections match, placeholders fill, plan rows come from `MCP_PLANS` and `MCP_PRICING`, and the cookie table matches the code.
+- `npx playwright test tests/visual/legal-pages.spec.ts --project desktop` against `next dev` on port 3400 with a copy of the local database: 30 passed, 2 skipped (zh discover has no recorded baseline). `/en/discover` matched the layout signature recorded before the change at 1280 and 390 px. Screenshots go to `artifacts/visual/legal`.
+- `npm run check`, `npm run build:web` and `npm run build:web:cloudflare`.
+
+### Modified Files
+
+- `apps/web/src/app/[locale]/{about,terms,privacy,refund}/page.tsx`, `apps/web/src/app/[locale]/{layout,pricing/page,register/page}.tsx`
+- `apps/web/src/components/{legal-document,legal-extras,about-cookies,preferences-reset,consent-line,site-footer,support-link-list}.tsx`, `apps/web/src/components/{site-shell,support-surface,auth-dialog,theme-toggle}.tsx`
+- `apps/web/src/lib/{operator,legal-content,site-storage}.ts`, `apps/web/src/lib/legal-content.test.ts`, `apps/web/src/lib/{legal-links,session-cookie,theme}.ts`, `apps/web/src/i18n/config.ts`, `apps/web/src/middleware.ts`
+- `apps/web/src/i18n/dictionaries/legal-section.ts`, `apps/web/src/i18n/dictionaries/{zh,en}/{about,legal,legal-terms,legal-privacy,legal-refund,index,shell,mcp}.ts`
+- `apps/web/src/app/globals.css`, `apps/web/src/app/styles/{legal,layout}.css`
+- `tests/visual/legal-pages.spec.ts`
+- `docs/goals/2026-04-19-future-direction.md`, `docs/structures/2026-10-21-storage-auth-api-architecture.md`, `docs/changelog/CHANGELOG_2026-11-22.md`

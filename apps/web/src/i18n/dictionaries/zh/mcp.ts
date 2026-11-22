@@ -204,11 +204,5 @@ export const mcp = {
     },
     billing: "按月或按年订阅，付款由 Stripe 处理。",
     counted: "AI 助手每调用一次工具计一次。",
-    legal: {
-      label: "法律信息",
-      terms: "服务条款",
-      refund: "退款政策",
-      privacy: "隐私政策",
-    },
   },
 };

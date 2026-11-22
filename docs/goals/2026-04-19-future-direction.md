@@ -73,6 +73,7 @@ It should win by being:
 - Let architects try the assistant connection anonymously and evaluate it with a free key. Keep source evidence accessible at every tier and build the paid tier around functions such as deadline alerts.
 - Keep the path short: an architect can copy the address and get a first answer without an account, and move from a free key to Pro in at most three clicks.
 - Charge studios for better filtering, alerting, and decision support
+- Before taking payment, publish plain terms, a refund policy and a privacy notice in both languages, reachable from every page except the discover list, which stays a fast scan with no footer
 - Build operator-grade review flows before opening any external submission channel
 
 ## Explicit Non-Goals

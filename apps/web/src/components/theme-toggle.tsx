@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 
-import { THEME_ORDER, applyThemeChoice, readThemeChoice, type ThemeChoice } from "@/lib/theme";
+import { THEME_CHANGE_EVENT, THEME_ORDER, applyThemeChoice, readThemeChoice, type ThemeChoice } from "@/lib/theme";
 
 type ThemeToggleProps = {
   copy: { dark: string; label: string; light: string; system: string };
@@ -44,12 +44,16 @@ const GLYPHS: Record<ThemeChoice, ReactNode> = {
 export const ThemeToggle = ({ copy }: ThemeToggleProps) => {
   // The server cannot know the saved choice, so it renders "system" and the real one is read after mount.
   const [choice, setChoice] = useState<ThemeChoice>("system");
-  useEffect(() => setChoice(readThemeChoice()), []);
+  useEffect(() => {
+    setChoice(readThemeChoice());
+    const follow = (event: Event) => setChoice((event as CustomEvent<ThemeChoice>).detail);
+    window.addEventListener(THEME_CHANGE_EVENT, follow);
+    return () => window.removeEventListener(THEME_CHANGE_EVENT, follow);
+  }, []);
 
   const cycle = () => {
     const next = THEME_ORDER[(THEME_ORDER.indexOf(choice) + 1) % THEME_ORDER.length];
     applyThemeChoice(next);
-    setChoice(next);
   };
   const name = `${copy.label}: ${copy[choice]}`;
 
