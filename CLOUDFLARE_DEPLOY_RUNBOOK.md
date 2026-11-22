@@ -142,7 +142,7 @@ npm run d1:export-data -- --prune
 
 Two more flags exist for the unattended cloud run (see [Cloud daily run](#cloud-daily-run)):
 
-- `--retention` adds a last data file, `0090-retention.sql` (before `0099-prune.sql`): it deletes remote `competitions` whose `deadline_at` is more than 7 days before the sync's UTC date, and those whose current AI assessment is `exclude` (assessed on the record's current revision, more than 7 days ago) unless the record is `shortlisted` or `verified`. Records on a watchlist are never deleted, user tables are never touched, and `ai_screening_results` goes with its competition. It mirrors the worker's local cleanup.
+- `--retention` adds a last data file, `0090-retention.sql` (before `0099-prune.sql`): it deletes remote `competitions` whose `deadline_at` is more than 7 days before the sync's UTC date, and those whose current AI assessment is `exclude` (assessed on the record's current revision, more than 7 days ago) unless the record is `shortlisted` or `verified`. Records on a watchlist are kept. An AI assessment is deleted with its competition. The file also runs [anonymous MCP usage cleanup](docs/structures/2026-10-21-storage-auth-api-architecture.md#api-keys-and-tool-quotas).
 - `--apply` (implies `--retention`) runs every file with wrangler, in order, and stops at the first failure; `npm run d1:sync` is the short form. It needs `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` in the environment and prints counts only.
 
 Verify D1 counts:

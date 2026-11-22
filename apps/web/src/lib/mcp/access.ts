@@ -55,7 +55,10 @@ export const quotaHeaders = (usage: McpUsage) => {
   return headers;
 };
 
-export const mcpLimitHint = (usage: McpUsage, request: Request) => {
+export const mcpLimitHint = (usage: McpUsage, request: Request, dailyBudgetReached: boolean) => {
+  if (dailyBudgetReached) {
+    return `Anonymous access is paused for today because the shared daily limit was reached. You can keep using a free API key. Get one at ${dashboardUrl(request)} or retry after the time indicated by Retry-After.`;
+  }
   const reason = usage.month.used >= usage.month.limit ? "Monthly tool quota reached." : "Tool rate limit reached.";
   const retry = "Retry after the time indicated by Retry-After.";
   switch (usage.plan) {

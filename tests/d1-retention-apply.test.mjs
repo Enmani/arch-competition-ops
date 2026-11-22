@@ -53,18 +53,41 @@ function ids(database) {
   return dumpTable(database, "competitions", "id").map((row) => row.id);
 }
 
-test("retention statements embed the cut-off date and touch only competitions and their results", () => {
+test("retention SQL embeds the cut-off dates and limits its tables", () => {
   const statements = buildRetentionStatements(NOW);
   const sql = statements.join("\n");
-  assert.equal(statements.length, 3);
+  assert.equal(statements.length, 4);
   assert.match(sql, /date\('2026-11-15', '-7 days'\)/);
+  assert.match(sql, /unixepoch\('2026-11-01'\)/);
   assert.doesNotMatch(sql, /\bnow\b|CURRENT_|datetime\(/i, "deterministic: no clock inside the SQL");
   assert.doesNotMatch(sql, /\b(BEGIN|COMMIT|SAVEPOINT|ROLLBACK)\b/i);
   assert.deepEqual(
     [...new Set([...sql.matchAll(/(?:DELETE FROM|FROM) "(\w+)"/g)].map((match) => match[1]))].sort(),
-    ["ai_screening_results", "competitions", "workspace_watchlist_entries"],
+    ["ai_screening_results", "competitions", "mcp_usage", "workspace_watchlist_entries"],
   );
   assert.doesNotMatch(sql, /auth_|ops_review|workspace_saved/);
+});
+
+test("retention deletes prior-month anonymous usage and preserves current and account counters", () => {
+  const remote = remoteDatabase();
+  try {
+    seedRemoteUserData(remote);
+    const user = remote.prepare("SELECT id FROM auth_users").pluck().get();
+    const insert = remote.prepare("INSERT INTO mcp_usage VALUES (?, ?, ?, 3, 0, 0)");
+    const october = Date.parse("2026-10-01T00:00:00Z") / 1000;
+    const november = Date.parse("2026-11-01T00:00:00Z") / 1000;
+    insert.run("anon:old", null, october);
+    insert.run("anon:current", null, november);
+    insert.run("global:anonymous", null, october);
+    insert.run(`user:${user}`, user, october);
+
+    applyRetention(remote);
+    applyRetention(remote);
+    assert.deepEqual(remote.prepare("SELECT subject FROM mcp_usage ORDER BY subject").pluck().all(),
+      ["anon:current", "global:anonymous", `user:${user}`]);
+  } finally {
+    remote.close();
+  }
 });
 
 test("deadline rule: more than 7 days past is deleted, the boundary day and open deadlines stay", () => {

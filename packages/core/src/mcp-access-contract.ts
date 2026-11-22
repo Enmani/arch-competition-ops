@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+// The Worker free-plan request budget is shared with the website.
+export const MCP_ANONYMOUS_DAILY_BUDGET = 20_000;
+
 export const MCP_PLANS = {
   anonymous: { monthlyLimit: 100, minuteLimit: 5 },
   free: { monthlyLimit: 300, minuteLimit: 20 },

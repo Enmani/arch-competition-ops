@@ -42,7 +42,9 @@ const summarySchema = z.object({
 });
 
 export const competitionPageSchema = z.object({
-  competitions: z.array(summarySchema), next_offset: z.number().int().nullable(),
+  competitions: z.array(summarySchema),
+  hasMore: z.boolean().describe("Whether more records match after this page."),
+  next_offset: z.number().int().nullable().describe("Offset for the next page, or null when none is available within the offset limit."),
 });
 export const competitionDetailSchema = summarySchema.extend({
   official_url: z.string().nullable(), source_url: z.string(), evidence_note: z.string(),

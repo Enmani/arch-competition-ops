@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { competitionDetailSchema, competitionPageSchema, REGIONS } from "@arch-competition/core";
+import { competitionDetailSchema, competitionPageSchema, MCP_MAX_OFFSET, REGIONS } from "@arch-competition/core";
 import { createTestStorage, seedOpportunity } from "@arch-competition/storage/testing";
 
 import { createMcpHandler } from "./http";
@@ -82,9 +82,11 @@ test("search filters before paging, preserves fee evidence and returns verifiabl
   const first = await search(filters);
   assert.deepEqual(first.competitions.map((item) => item.slug), ["aa"]);
   assert.equal(first.next_offset, 1);
+  assert.equal(first.hasMore, true);
   const last = await search({ ...filters, offset: first.next_offset });
   assert.deepEqual(last.competitions.map((item) => item.slug), ["bb"]);
   assert.equal(last.next_offset, null);
+  assert.equal(last.hasMore, false);
   assert.deepEqual((await search({ participationFee: "unknown" })).competitions.map((item) => item.slug), ["partial"]);
   assert.deepEqual((await search({ participationFee: "paid" })).competitions.map((item) => item.slug), ["paid"]);
   assert.equal((await search({ ...filters, deadlineBefore: "9999-12-31" })).competitions[0].slug, "aa");
@@ -107,9 +109,17 @@ test("closing soon uses inclusive UTC days and excludes expired and undated reco
   for (const deadline of [null, "2026-12-30", "2026-12-31", "2027-01-01T23:59:00Z", "2027-01-02"]) {
     seedOpportunity(db.raw, { id: deadline ?? "missing", deadline_at: deadline });
   }
-  const result = await call(handle, "list_closing_soon", { days: 2 });
-  assert.deepEqual(competitionPageSchema.parse(result.structuredContent).competitions.map((item) => item.deadline_at),
-    ["2026-12-31", "2027-01-01T23:59:00Z"]);
+  const closingSoon = async (args: Record<string, unknown>) => competitionPageSchema.parse(
+    (await call(handle, "list_closing_soon", { days: 2, ...args })).structuredContent,
+  );
+  const first = await closingSoon({ limit: 1 });
+  assert.equal(first.hasMore, true);
+  assert.equal(first.next_offset, 1);
+  assert.equal(first.competitions[0].deadline_at, "2026-12-31");
+  const last = await closingSoon({ limit: 1, offset: first.next_offset });
+  assert.equal(last.hasMore, false);
+  assert.equal(last.next_offset, null);
+  assert.equal(last.competitions[0].deadline_at, "2027-01-01T23:59:00Z");
 });
 
 test("the default page has ten rows, the largest page has 25, and its cursor resumes after the last row", async (t) => {
@@ -126,7 +136,35 @@ test("the default page has ten rows, the largest page has 25, and its cursor res
   assert.equal(first.next_offset, 25);
   const last = await search({ limit: 25, offset: first.next_offset });
   assert.deepEqual(last.competitions.map((item) => item.slug), ["25"]);
+  assert.equal(last.hasMore, false);
   assert.equal(last.next_offset, null);
+
+  const exact = await search({ limit: 13, offset: 13 });
+  assert.equal(exact.competitions.length, 13);
+  assert.equal(exact.hasMore, false);
+  assert.equal(exact.next_offset, null);
+});
+
+test("hasMore still indicates matching records when the next offset is outside the limit", async (t) => {
+  const db = createTestStorage();
+  t.after(db.cleanup);
+  db.raw.transaction(() => {
+    for (let index = 0; index <= MCP_MAX_OFFSET + 1; index++) {
+      seedOpportunity(db.raw, { id: String(index).padStart(4, "0") });
+    }
+  })();
+  const handle = createMcpHandler(async () => db.storage.opportunities, testAccess(db), db.clock);
+  const search = async (offset: number) => competitionPageSchema.parse(
+    (await call(handle, "search_competitions", { limit: 1, offset })).structuredContent,
+  );
+
+  const previous = await search(MCP_MAX_OFFSET - 1);
+  assert.equal(previous.hasMore, true);
+  assert.equal(previous.next_offset, MCP_MAX_OFFSET);
+  const maximum = await search(MCP_MAX_OFFSET);
+  assert.equal(maximum.competitions[0].slug, String(MCP_MAX_OFFSET));
+  assert.equal(maximum.hasMore, true);
+  assert.equal(maximum.next_offset, null);
 });
 
 test("bad arguments return corrective errors before storage access", async (t) => {

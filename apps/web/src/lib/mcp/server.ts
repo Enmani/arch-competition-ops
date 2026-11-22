@@ -10,6 +10,7 @@ type PublicReads = Pick<Storage["opportunities"], "feed" | "getBySlug">;
 export type GetPublicReads = () => Promise<PublicReads>;
 
 const truth = "Unknown means unknown. Never invent a deadline or fee.";
+const pagination = "Follow next_offset when present. If hasMore is true and next_offset is null, narrow your filters.";
 const annotations = { readOnlyHint: true, openWorldHint: false };
 const logger = createLogger("web.mcp");
 
@@ -42,15 +43,17 @@ export const createCompetitionServer = (getReads: GetPublicReads, clock: Clock =
     const { limit, offset } = filters;
     // One extra row tells the client whether to continue, without a COUNT or facet scan.
     const items = await read(async () => (await getReads()).feed({ ...filters, limit: limit + 1 }));
+    const hasMore = items.length > limit;
     return result({
       competitions: items.slice(0, limit).map(summary),
-      next_offset: items.length > limit && offset + limit <= MCP_MAX_OFFSET ? offset + limit : null,
+      hasMore,
+      next_offset: hasMore && offset + limit <= MCP_MAX_OFFSET ? offset + limit : null,
     });
   };
 
   server.registerTool("search_competitions", {
     annotations, inputSchema: competitionSearchSchema, outputSchema: competitionPageSchema,
-    description: `Search active architecture competitions and public design procurements. All filters are optional and combined. Earliest deadline first. Use get_taxonomy for controlled values. Keep filters unchanged when paging. Narrow your search beyond offset 1000. ${truth}`,
+    description: `Search active architecture competitions and public design procurements. All filters are optional and combined. Earliest deadline first. Use get_taxonomy for controlled values. Keep filters unchanged when paging. ${pagination} ${truth}`,
   }, (filters) => {
     if (filters.deadlineAfter && filters.deadlineBefore && filters.deadlineAfter > filters.deadlineBefore) {
       return toolError("deadlineAfter must be on or before deadlineBefore (YYYY-MM-DD).");
@@ -75,7 +78,7 @@ export const createCompetitionServer = (getReads: GetPublicReads, clock: Clock =
 
   server.registerTool("list_closing_soon", {
     annotations, inputSchema: closingSoonSchema, outputSchema: competitionPageSchema,
-    description: `List active notices with recorded deadlines in the next days, earliest first. Today is day 1 (UTC). Follow next_offset until null. ${truth}`,
+    description: `List active notices with recorded deadlines in the next days, earliest first. Today is day 1 (UTC). ${pagination} ${truth}`,
   }, ({ days, limit, offset }) => {
     const start = clock.now();
     const end = new Date(start);
