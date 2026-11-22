@@ -66,6 +66,12 @@ CREATE INDEX IF NOT EXISTS idx_competitions_discovered_at ON competitions (disco
 CREATE INDEX IF NOT EXISTS idx_competitions_contract_value
     ON competitions (estimated_contract_value_eur);
 CREATE INDEX IF NOT EXISTS idx_competitions_updated_at ON competitions (updated_at);
+CREATE INDEX IF NOT EXISTS idx_competitions_discover_deadline ON competitions (
+    COALESCE(deadline_at, '9999-12-31') ASC,
+    COALESCE(qualification_score, 0) DESC,
+    updated_at DESC,
+    id ASC
+) WHERE status NOT IN ('archived', 'discarded');
 
 -- Local worker advisory results and budget accounting. Not exported to D1.
 -- SET NULL retains usage accounting when an expired opportunity is removed.

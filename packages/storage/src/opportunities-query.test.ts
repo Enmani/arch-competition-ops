@@ -125,6 +125,27 @@ test("deadline filters validate dates; deadlineBefore includes timestamps on tha
   });
 });
 
+test("deadline index treats the final ISO day as inclusive and still excludes nulls for a range", async () => {
+  const { storage, raw, cleanup } = createTestStorage();
+  try {
+    seedOpportunity(raw, { id: "undated", qualification_score: 100 });
+    seedOpportunity(raw, { id: "last-date", deadline_at: "9999-12-31", qualification_score: null });
+    seedOpportunity(raw, { id: "last-time", deadline_at: "9999-12-31T23:59:59Z" });
+    for (const sort of ["deadline", "latest", "highest_value"] as const) {
+      assert.deepEqual(new Set((await storage.opportunities.feed({
+        deadlineAfter: "9999-12-31", deadlineBefore: "9999-12-31", sort,
+      })).map(({ id }) => id)), new Set(["last-date", "last-time"]));
+      assert.deepEqual(new Set((await storage.opportunities.feed({
+        deadlineBefore: "9999-12-31", sort,
+      })).map(({ id }) => id)), new Set(["last-date", "last-time"]));
+    }
+    assert.deepEqual((await storage.opportunities.feed()).map(({ id }) => id),
+      ["undated", "last-date", "last-time"]);
+  } finally {
+    cleanup();
+  }
+});
+
 test("value bounds ignore unknown contract values instead of treating them as zero", async () => {
   await withStorage(async ({ raw, storage }) => {
     seedOpportunity(raw, { id: "small", title: "Small", estimated_contract_value_eur: 100_000 });

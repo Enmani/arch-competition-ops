@@ -52,6 +52,9 @@ const searchVariants = (term: string) => {
   return [...new Set([term, lower, capitalised])];
 };
 
+// Must match 0011_discover_deadline_index.sql for SQLite to use the expression index.
+const DEADLINE_ORDER_KEY = "COALESCE(deadline_at, '9999-12-31')";
+
 const MAX_D1_LIKE_BYTES = 50;
 const SEARCH_COLUMNS = ["title", "authority_name", "organizer", "source_name", "official_notice_id"] as const;
 
@@ -130,24 +133,25 @@ export const buildWhere = (query: NormalizedQuery, clock: Clock) => {
   conditions.push(
     query.includeExpired === true ? "status != 'discarded'" : "status NOT IN ('archived', 'discarded')",
   );
-  if (query.includeExpired === true) {
-    if (query.deadlineAfter) {
-      conditions.push("deadline_at >= ?");
-      parameters.push(query.deadlineAfter);
-    }
-  } else if (query.deadlineAfter) {
-    conditions.push("deadline_at >= ?");
-    parameters.push(query.deadlineAfter >= today ? query.deadlineAfter : today);
-  } else {
-    conditions.push("(deadline_at IS NULL OR deadline_at >= ?)");
-    parameters.push(today);
+  const indexedDeadline = query.sort === "deadline" && query.includeExpired !== true;
+  const deadlineKey = indexedDeadline ? DEADLINE_ORDER_KEY : "deadline_at";
+  if (query.deadlineAfter || query.includeExpired !== true) {
+    const requested = query.deadlineAfter ?? today;
+    const lowerBound = query.includeExpired === true || requested >= today ? requested : today;
+    // This expression changes the access path only for deadline sorting. Applying it to
+    // other sorts can make SQLite abandon their ordered scans.
+    conditions.push(!indexedDeadline && !query.deadlineAfter
+      ? "(deadline_at IS NULL OR deadline_at >= ?)"
+      : `${deadlineKey} >= ?`);
+    parameters.push(lowerBound);
   }
-  if (query.deadlineBefore === "9999-12-31") {
-    // The day after the final four-digit ISO year sorts before it as "+010000-01-01".
-    conditions.push("deadline_at IS NOT NULL");
-  } else if (query.deadlineBefore) {
-    conditions.push("deadline_at < ?");
+  if (query.deadlineBefore && query.deadlineBefore !== "9999-12-31") {
+    conditions.push(`${deadlineKey} < ?`);
     parameters.push(nextDay(query.deadlineBefore));
+  }
+  // Ranges never include NULL, even when the endpoint is the order key's sentinel.
+  if ((indexedDeadline && (query.deadlineAfter || query.deadlineBefore)) || query.deadlineBefore === "9999-12-31") {
+    conditions.push("deadline_at IS NOT NULL");
   }
 
   // Unknown (NULL) contract values never satisfy a value bound: unknown is not zero.
@@ -178,7 +182,7 @@ export const buildWhere = (query: NormalizedQuery, clock: Clock) => {
 
 const ORDER_BY: Record<OpportunitySort, string> = {
   deadline:
-    "COALESCE(deadline_at, '9999-12-31') ASC, COALESCE(qualification_score, 0) DESC, updated_at DESC, id ASC",
+    `${DEADLINE_ORDER_KEY} ASC, COALESCE(qualification_score, 0) DESC, updated_at DESC, id ASC`,
   highest_value:
     "COALESCE(estimated_contract_value_eur, 0) DESC, COALESCE(qualification_score, 0) DESC, updated_at DESC, id ASC",
   latest: "updated_at DESC, COALESCE(qualification_score, 0) DESC, id ASC",

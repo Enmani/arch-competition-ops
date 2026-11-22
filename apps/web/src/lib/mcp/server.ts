@@ -39,10 +39,10 @@ const summary = (item: StoredOpportunityFeedItem) => ({
 export const createCompetitionServer = (getReads: GetPublicReads, clock: Clock = systemClock) => {
   const server = new McpServer({ name: "arch-competition-ops", version: "1.0.0" });
 
-  const page = async (filters: DiscoverFilters & { limit: number; offset: number }) => {
+  const page = async (filters: DiscoverFilters & { limit: number; offset: number }, asOf = clock.now()) => {
     const { limit, offset } = filters;
     // One extra row tells the client whether to continue, without a COUNT or facet scan.
-    const items = await read(async () => (await getReads()).feed({ ...filters, limit: limit + 1 }));
+    const items = await read(async () => (await getReads()).feed({ ...filters, limit: limit + 1 }, asOf));
     const hasMore = items.length > limit;
     return result({
       competitions: items.slice(0, limit).map(summary),
@@ -83,7 +83,7 @@ export const createCompetitionServer = (getReads: GetPublicReads, clock: Clock =
     const start = clock.now();
     const end = new Date(start);
     end.setUTCDate(end.getUTCDate() + days - 1);
-    return page({ deadlineAfter: start.toISOString().slice(0, 10), deadlineBefore: end.toISOString().slice(0, 10), limit, offset });
+    return page({ deadlineAfter: start.toISOString().slice(0, 10), deadlineBefore: end.toISOString().slice(0, 10), limit, offset }, start);
   });
 
   server.registerTool("get_taxonomy", {
