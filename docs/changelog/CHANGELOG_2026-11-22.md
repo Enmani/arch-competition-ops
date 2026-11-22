@@ -140,3 +140,28 @@ A paid plan needs public terms, a refund policy and a privacy notice. The discov
 - `apps/web/src/app/globals.css`, `apps/web/src/app/styles/{legal,layout}.css`
 - `tests/visual/legal-pages.spec.ts`
 - `docs/goals/2026-04-19-future-direction.md`, `docs/structures/2026-10-21-storage-auth-api-architecture.md`, `docs/changelog/CHANGELOG_2026-11-22.md`
+
+## Shared anonymous MCP budget and hourly key timestamps
+
+### Changed
+
+Added the shared UTC-day admission limit and linked expired anonymous usage to the daily D1 cleanup. The two list tools now expose `hasMore` with their existing next offset. A key's last-use timestamp updates at most once per hour. [API architecture](../structures/2026-10-21-storage-auth-api-architecture.md#api-keys-and-tool-quotas)
+
+### Why
+
+The website and MCP share the Worker request budget. The daily admission limit caps anonymous calls that reach tool execution, and hourly timestamps reduce key writes.
+
+### Validation
+
+- `npm run check`
+- `npm run build:web`
+- `npm run build:web:cloudflare`
+- Local Workerd with a fixture D1 database exercised concurrent admission, the 429 response, UTC midnight, pagination, hourly key timestamps and retention.
+
+### Modified Files
+
+- `packages/core/src/mcp-access-contract.ts`, `packages/core/src/mcp-contract.ts`
+- `packages/storage/src/mcp/usage.ts`, `packages/storage/src/mcp/access.test.ts`
+- `apps/web/src/lib/mcp/access.ts`, `apps/web/src/lib/mcp/http.ts`, `apps/web/src/lib/mcp/server.ts`, `apps/web/src/lib/mcp/access.test.ts`, `apps/web/src/lib/mcp/http.test.ts`
+- `scripts/lib/d1-sync/retention.mjs`, `scripts/export-d1-data.mjs`, `tests/d1-retention-apply.test.mjs`
+- `CLOUDFLARE_DEPLOY_RUNBOOK.md`, `docs/structures/2026-10-21-storage-auth-api-architecture.md`, `docs/changelog/CHANGELOG_2026-11-22.md`

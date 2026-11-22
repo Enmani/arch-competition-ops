@@ -1,5 +1,8 @@
 import { RETENTION_DAYS } from "./table-specs.mjs";
 
+// Bound the deletes per run while allowing cleanup to catch up across successive runs.
+const MCP_ANONYMOUS_PRUNE_LIMIT = 25_000;
+
 /**
  * Remote mirror of the worker's daily cleanup (`cleanup-expired-competitions`), so records the
  * worker has dropped also leave production D1. Generated only for `--apply` / `--retention`.
@@ -9,9 +12,9 @@ import { RETENTION_DAYS } from "./table-specs.mjs";
  *   - the CURRENT AI assessment is `exclude` (assessed on this very revision: source_updated_at =
  *     competitions.updated_at) and was made more than RETENTION_DAYS ago, and the record is not
  *     `shortlisted` / `verified`.
- * A competition on any watchlist is never deleted (the foreign key forbids it anyway). Only
- * `competitions` and its worker-owned child `ai_screening_results` are touched; user tables
- * (workspace_*, ops_review_decisions, auth_*) are not read or written.
+ * A competition on any watchlist is kept (the foreign key forbids deletion anyway).
+ * This file also removes expired anonymous MCP usage. The subject prefix leaves account
+ * usage and the single global counter outside the sweep.
  *
  * Foreign keys on D1 (migrations): ai_screening_results cascades on delete,
  * ai_screening_runs.competition_id is set to NULL, ops_review_queue_items has no foreign key to
@@ -39,5 +42,8 @@ export function buildRetentionStatements(now) {
       `AND ${notWatched};`,
     `DELETE FROM "competitions" WHERE "deadline_at" IS NOT NULL AND "deadline_at" < ${cutoff} AND ${notWatched};`,
     `DELETE FROM "ai_screening_results" WHERE "competition_id" NOT IN (SELECT "id" FROM "competitions");`,
+    `DELETE FROM "mcp_usage" WHERE "subject" IN (SELECT "subject" FROM "mcp_usage" ` +
+      `WHERE "subject" GLOB 'anon:*' AND "month_start" < unixepoch('${today.slice(0, 7)}-01') ` +
+      `LIMIT ${MCP_ANONYMOUS_PRUNE_LIMIT});`,
   ];
 }

@@ -65,7 +65,7 @@ export const createMcpHandler = (getReads: GetPublicReads, access: McpAccess, cl
   if (metered && metered.retryAfter > 0) {
     quota?.set("Retry-After", String(metered.retryAfter));
     logMcpCall(started, tool, attemptedSubject, "rate_limited");
-    return rpcError(429, -32029, mcpLimitHint(metered.usage, request), id, quota);
+    return rpcError(429, -32029, mcpLimitHint(metered.usage, request, metered.dailyBudgetReached), id, quota);
   }
 
   const server = createCompetitionServer(getReads, clock);

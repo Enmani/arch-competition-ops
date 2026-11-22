@@ -52,7 +52,8 @@ wrangler commands to run. Without --apply nothing is executed against Cloudflare
                    (never deletes ones on a user watchlist). Off by default.
   --retention      add 0090-retention.sql: delete remote competitions whose deadline is more than
                    7 days past, or whose current AI assessment is exclude (older than 7 days, not
-                   shortlisted/verified). Never deletes watchlisted ones or touches user tables.
+                   shortlisted/verified). Keeps watchlisted records and removes expired anonymous
+                   MCP counters. Signed-in user data stays outside this cleanup.
   --apply          after writing, run every file against remote D1 in order (stops at the first
                    failure) and print row counts. Implies --retention. Needs CLOUDFLARE_API_TOKEN
                    and CLOUDFLARE_ACCOUNT_ID.

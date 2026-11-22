@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
 
-import { MCP_MAX_ACTIVE_KEYS, MCP_PLANS, type McpPlan, mcpApiKeyCreatedSchema } from "@arch-competition/core";
+import { MCP_ANONYMOUS_DAILY_BUDGET, MCP_MAX_ACTIVE_KEYS, MCP_PLANS, type McpPlan, mcpApiKeyCreatedSchema } from "@arch-competition/core";
 
 import { createTestStorage } from "../testing";
 
@@ -86,7 +86,7 @@ for (const plan of Object.keys(expectedLimits) as McpPlan[]) {
     assert.equal(burst.at(-1)?.usage.month.used, minuteLimit);
     assert.equal(burst.at(-1)?.usage.minute.used, minuteLimit);
     if (plan === "anonymous") {
-      const subject = String(db.raw.prepare("SELECT subject FROM mcp_usage").pluck().get());
+      const subject = String(db.raw.prepare("SELECT subject FROM mcp_usage WHERE subject GLOB 'anon:*'").pluck().get());
       const hash = createHash("sha256").update(JSON.stringify(["private-test-salt", originalIp])).digest("hex");
       assert.equal(subject, `anon:${hash}`);
     } else {
@@ -99,7 +99,7 @@ for (const plan of Object.keys(expectedLimits) as McpPlan[]) {
     assert.equal(nextMinute?.usage.minute.used, 1);
     assert.equal(nextMinute?.usage.month.used, minuteLimit + 1);
 
-    db.raw.prepare("UPDATE mcp_usage SET month_count = ?").run(monthlyLimit - 1);
+    db.raw.prepare("UPDATE mcp_usage SET month_count = ? WHERE subject != 'global:anonymous'").run(monthlyLimit - 1);
     db.clock.set("2026-12-31T23:59:59.999Z");
     const monthlyBurst = await Promise.all([call(), call(), call()]);
     assert.equal(monthlyBurst.filter((result) => result?.retryAfter === 0).length, 1);
@@ -115,3 +115,81 @@ for (const plan of Object.keys(expectedLimits) as McpPlan[]) {
     assert.equal(reset?.usage.month.used, 1);
   });
 }
+
+test("anonymous daily admission is shared across IPs and keyed plans bypass it", async (t) => {
+  const db = createTestStorage({ now: "2026-04-19T23:59:58.999Z" });
+  t.after(db.cleanup);
+  const call = (anonymousIp: string) => db.storage.mcp.reserveCall({ anonymousIp, salt: "fixture" });
+  const daily = db.raw.prepare("SELECT month_count FROM mcp_usage WHERE subject = 'global:anonymous'").pluck();
+  const anonymous = db.raw.prepare("SELECT * FROM mcp_usage WHERE subject GLOB 'anon:*' ORDER BY subject");
+
+  assert.equal(MCP_ANONYMOUS_DAILY_BUDGET, 20_000);
+  for (let attempt = 0; attempt < MCP_PLANS.anonymous.minuteLimit; attempt++) {
+    assert.equal((await call("2001:db8::1"))?.retryAfter, 0);
+  }
+  assert.equal((await call("2001:db8::1"))?.retryAfter, 2);
+  assert.equal(daily.get(), MCP_PLANS.anonymous.minuteLimit, "a per-IP refusal does not use the daily budget");
+  db.raw.prepare("UPDATE mcp_usage SET month_count = ? WHERE subject = 'global:anonymous'")
+    .run(MCP_ANONYMOUS_DAILY_BUDGET - 2);
+  const burst = await Promise.all(Array.from({ length: 12 }, (_, i) => call(`2001:db8::${i + 2}`)));
+  assert.equal(burst.filter((result) => result?.retryAfter === 0).length, 2);
+  assert.equal(burst.filter((result) => result?.dailyBudgetReached && result.retryAfter === 2).length, 10);
+  assert.equal(daily.get(), MCP_ANONYMOUS_DAILY_BUDGET);
+  const beforeRefusal = anonymous.all();
+  assert.equal(beforeRefusal.length, 3, "only admitted IPs have rows");
+
+  db.clock.set("2026-04-19T23:59:59.999Z");
+  const admittedIp = burst.findIndex((result) => result?.retryAfter === 0) + 2;
+  const refusal = await call(`2001:db8::${admittedIp}`);
+  assert.equal(refusal?.dailyBudgetReached, true);
+  assert.equal(refusal?.retryAfter, 1);
+  assert.equal(refusal?.usage.month.used, 1);
+  assert.equal(refusal?.usage.minute.used, 1);
+  assert.deepEqual(anonymous.all(), beforeRefusal);
+
+  for (const plan of ["free", "paid"]) {
+    addUser(db, plan);
+    if (plan === "paid") {
+      db.raw.prepare("INSERT INTO mcp_billing_accounts (user_id, paid_until) VALUES (?, ?)").run(plan, Date.parse("2026-04-20T01:00:00Z") / 1000);
+    }
+    const created = await db.storage.mcp.createKey(plan, "Fixture");
+    assert.ok(created);
+    const reserved = await db.storage.mcp.reserveCall({ id: created.item.id, userId: plan });
+    assert.equal(reserved?.usage.plan, plan);
+    assert.equal(reserved?.retryAfter, 0);
+    assert.equal(reserved?.dailyBudgetReached, false);
+  }
+  assert.equal(daily.get(), MCP_ANONYMOUS_DAILY_BUDGET);
+  assert.deepEqual(anonymous.all(), beforeRefusal);
+
+  db.clock.set("2026-04-20T00:00:00.000Z");
+  const reset = await call("2001:db8::1");
+  assert.equal(reset?.retryAfter, 0);
+  assert.equal(reset?.usage.month.used, MCP_PLANS.anonymous.minuteLimit + 1, "the monthly count continues");
+  assert.equal(reset?.usage.minute.used, 1);
+  assert.equal(daily.get(), 1);
+  assert.equal(db.raw.prepare("SELECT COUNT(*) FROM mcp_usage WHERE subject = 'global:anonymous'").pluck().get(), 1);
+});
+
+test("last_used_at changes at most once per hour per key", async (t) => {
+  const db = createTestStorage({ now: "2026-04-19T12:00:00.125Z" });
+  t.after(db.cleanup);
+  addUser(db, "member");
+  const key = await db.storage.mcp.createKey("member", "Fixture");
+  assert.ok(key);
+  const principal = { id: key.item.id, userId: "member" };
+  const lastUsed = db.raw.prepare("SELECT last_used_at FROM api_keys WHERE id = ?").pluck();
+  assert.equal(lastUsed.get(principal.id), null);
+
+  assert.equal((await db.storage.mcp.reserveCall(principal))?.retryAfter, 0);
+  const initial = "2026-04-19T12:00:00.125Z";
+  assert.equal(lastUsed.get(principal.id), initial);
+
+  db.clock.set("2026-04-19T13:00:00.124Z");
+  assert.equal((await db.storage.mcp.reserveCall(principal))?.retryAfter, 0);
+  assert.equal(lastUsed.get(principal.id), initial);
+
+  db.clock.set("2026-04-19T13:00:00.125Z");
+  assert.equal((await db.storage.mcp.reserveCall(principal))?.retryAfter, 0);
+  assert.equal(lastUsed.get(principal.id), "2026-04-19T13:00:00.125Z");
+});

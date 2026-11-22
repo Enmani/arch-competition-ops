@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { MCP_PLANS, mcpApiKeyCreatedSchema, mcpApiKeyListSchema, mcpApiKeySchema, mcpUsageSchema } from "@arch-competition/core";
+import { MCP_ANONYMOUS_DAILY_BUDGET, MCP_PLANS, mcpApiKeyCreatedSchema, mcpApiKeyListSchema, mcpApiKeySchema, mcpUsageSchema } from "@arch-competition/core";
 import { createTestStorage } from "@arch-competition/storage/testing";
 
 import { createMcpKeyHandlers, createMcpUsageHandler } from "../api/mcp-keys";
@@ -66,6 +66,17 @@ test("session API issues one-time keys and MCP meters only tool calls with valid
   assert.equal(blocked.headers.get("x-ratelimit-remaining"), "0");
   assert.match((await blocked.json()).error.message, /Get a free API key.*\/en\/dashboard/);
 
+  db.raw.prepare("UPDATE mcp_usage SET month_count = ? WHERE subject = 'global:anonymous'")
+    .run(MCP_ANONYMOUS_DAILY_BUDGET);
+  const daily = await use();
+  assert.equal(daily.status, 429);
+  assert.equal(daily.headers.get("retry-after"), "1");
+  assert.equal(daily.headers.get("x-quota-remaining"), String(MCP_PLANS.anonymous.monthlyLimit - MCP_PLANS.anonymous.minuteLimit));
+  const dailyError = await daily.json();
+  assert.equal(dailyError.error.code, -32029);
+  assert.match(dailyError.error.message, /Anonymous access is paused for today because the shared daily limit was reached/);
+  assert.match(dailyError.error.message, /keep using a free API key\. Get one at http:\/\/localhost:3400\/en\/dashboard/);
+
   const first = await use(key);
   assert.equal(first.status, 200);
   assert.equal(first.headers.get("x-ratelimit-plan"), "free");
@@ -84,4 +95,10 @@ test("session API issues one-time keys and MCP meters only tool calls with valid
   assert.equal((await send("tools/list", {}, key)).status, 401);
   assert.equal((await send("tools/list")).status, 200);
   assert.equal((await db.storage.mcp.getUsage(user.id)).month.used, 1);
+
+  db.clock.set("2027-01-01T00:00:00.000Z");
+  const afterMidnight = await use();
+  assert.equal(afterMidnight.status, 200);
+  assert.equal(afterMidnight.headers.get("retry-after"), null);
+  assert.equal(afterMidnight.headers.get("x-quota-remaining"), String(MCP_PLANS.anonymous.monthlyLimit - 1));
 });
