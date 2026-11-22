@@ -7,6 +7,9 @@
  */
 const BASE_NAME = "arch_competition_ops_session";
 
+/** Browser lifetime of the session cookie; middleware re-issues it on every visit (see middleware.ts). */
+export const SESSION_COOKIE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
+
 export const sessionCookieName = (production: boolean) => (production ? `__Host-${BASE_NAME}` : BASE_NAME);
 
 export const readCookie = (cookieHeader: string | null, name: string) => {
@@ -22,13 +25,13 @@ export const readCookie = (cookieHeader: string | null, name: string) => {
   return null;
 };
 
-const attributes = (production: boolean) => ["Path=/", "HttpOnly", "SameSite=Lax", ...(production ? ["Secure"] : [])];
+export const sessionCookieAttributes = (production: boolean) => ["Path=/", "HttpOnly", "SameSite=Lax", ...(production ? ["Secure"] : [])];
 
 export const serializeSessionCookie = (token: string, expiresAt: string, production: boolean) => {
   const expires = new Date(expiresAt);
   const maxAge = Math.max(0, Math.floor((expires.getTime() - Date.now()) / 1000));
-  return [`${sessionCookieName(production)}=${token}`, ...attributes(production), `Expires=${expires.toUTCString()}`, `Max-Age=${maxAge}`].join("; ");
+  return [`${sessionCookieName(production)}=${token}`, ...sessionCookieAttributes(production), `Expires=${expires.toUTCString()}`, `Max-Age=${maxAge}`].join("; ");
 };
 
 export const serializeClearedSessionCookie = (production: boolean) =>
-  [`${sessionCookieName(production)}=`, ...attributes(production), "Expires=Thu, 01 Jan 1970 00:00:00 GMT", "Max-Age=0"].join("; ");
+  [`${sessionCookieName(production)}=`, ...sessionCookieAttributes(production), "Expires=Thu, 01 Jan 1970 00:00:00 GMT", "Max-Age=0"].join("; ");

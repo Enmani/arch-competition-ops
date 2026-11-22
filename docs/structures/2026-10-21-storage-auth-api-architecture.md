@@ -100,7 +100,14 @@ A key's plaintext exists only in the create response, the one-time dialog, page 
 
 Every failed request maps to one next step, decided by `mcpNextStep` in `apps/web/src/lib/mcp-account.ts`. Examples: sign in for 401, reload for a rejected origin, revoke a key for a full key list, open the portal for an existing subscription, and retry after `Retry-After` for 503. After `?billing=success` the dashboard reads usage up to five times, three seconds apart. It then reports the Pro plan or says that confirmation is still pending. The `billing` parameter is removed from the address bar.
 
-Footer entries for terms, refund policy and privacy notice are listed in `apps/web/src/lib/legal-links.ts`. An entry is shown only once its page exists.
+### About, legal pages and footer
+
+The paid plan needs public terms, a refund policy and a privacy notice. They live at `/[locale]/terms`, `/[locale]/refund` and `/[locale]/privacy`; `/[locale]/about` describes the project, its sources, contact and the cookies the site sets. All four render one reading column (`components/legal-document.tsx`) from the `legal` and `about` dictionaries, with a "last updated" date on the three legal pages.
+
+- One list, `apps/web/src/lib/legal-links.ts`, feeds the footer, the About page and the pricing page. Paths are locale-independent and rendered with the locale prefix.
+- Facts the pages state come from code, not prose: plan limits and prices from `MCP_PLANS` and `MCP_PRICING`, the key limit from `MCP_MAX_ACTIVE_KEYS`, the session length from the cookie lifetime, and the operator (name, contact email from `SUPPORT_LINKS`, governing law, optional address, tax id and country) from `apps/web/src/lib/operator.ts`. An optional operator field that is null is not shown.
+- The cookie table on the About page is built from `SITE_STORAGE` in `apps/web/src/lib/site-storage.ts`: the session cookie, the language cookie and the `theme` item in localStorage. The site sets nothing else, so there is no consent banner. A button clears the language cookie and the theme; the HttpOnly session cookie is kept. `apps/web/src/lib/legal-content.test.ts` checks the table against the code that sets each item.
+- The footer is one line on every page except discover and opportunity pages, which keep their full-bleed list. Sign-up (page and dialog) carries one consent line linking the terms and the privacy notice; there is no checkbox.
 
 ### Connector sign-in feasibility
 

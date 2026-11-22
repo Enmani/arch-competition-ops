@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useLayoutEffect, useRef, useState, type FormEvent, type PropsWithChildren } from "react";
+import { useLayoutEffect, useRef, useState, type FormEvent, type PropsWithChildren, type ReactNode } from "react";
 
 import { AuthDialog } from "@/components/auth-dialog";
 import { LocaleSwitcher } from "@/components/locale-switcher";
@@ -15,12 +15,24 @@ import type { AppDictionary } from "@/i18n/dictionaries";
 type SiteShellProps = PropsWithChildren<{
   authCopy: AppDictionary["auth"];
   authUserEmail?: string | null;
+  consentCopy: AppDictionary["legal"]["consent"];
   copy: AppDictionary["shell"];
+  /** Rendered under every page except discover and opportunity pages, which stay full-bleed lists. */
+  footer: ReactNode;
   locale: AppLocale;
   showOpsLink?: boolean;
 }>;
 
-export const SiteShell = ({ authCopy, authUserEmail, children, copy, locale, showOpsLink = false }: SiteShellProps) => {
+export const SiteShell = ({
+  authCopy,
+  authUserEmail,
+  children,
+  consentCopy,
+  copy,
+  footer,
+  locale,
+  showOpsLink = false,
+}: SiteShellProps) => {
   const pathname = usePathname();
   const router = useRouter();
   const [authMode, setAuthMode] = useState<AuthMode | null>(null);
@@ -31,7 +43,8 @@ export const SiteShell = ({ authCopy, authUserEmail, children, copy, locale, sho
     barePathname === "/discover" ||
     barePathname.startsWith("/opportunities/") ||
     barePathname.startsWith("/competitions/");
-  const supportSurface = barePathname.startsWith("/support");
+  // Reading pages carry no surface caption under the brand.
+  const textSurface = ["/support", "/about", "/terms", "/privacy", "/refund"].some((path) => barePathname.startsWith(path));
   const authSurface = barePathname.startsWith("/login") || barePathname.startsWith("/register");
 
   const navigation = [
@@ -45,6 +58,7 @@ export const SiteShell = ({ authCopy, authUserEmail, children, copy, locale, sho
   const utilityLinks = [
     { href: buildLocalePath(locale, "/pricing"), label: copy.utility.pricing },
     { href: buildLocalePath(locale, "/support"), label: copy.utility.support },
+    { href: buildLocalePath(locale, "/about"), label: copy.utility.about },
   ];
 
   // Sign out without leaving the page: post the same form, then refresh the server components.
@@ -137,7 +151,7 @@ export const SiteShell = ({ authCopy, authUserEmail, children, copy, locale, sho
             <Link className="brand-title" href={buildLocalePath(locale, "/discover")}>
               {copy.brandTitle}
             </Link>
-            {discoverSurface || supportSurface ? null : (
+            {discoverSurface || textSurface ? null : (
               <span className="brand-caption">{describeSurface()}</span>
             )}
           </div>
@@ -215,10 +229,12 @@ export const SiteShell = ({ authCopy, authUserEmail, children, copy, locale, sho
         <div id="main-content" tabIndex={-1}>
           {children}
         </div>
+        {discoverSurface ? null : footer}
       </div>
       {authMode ? (
         <AuthDialog
           closeLabel={copy.closeLabel}
+          consentCopy={consentCopy}
           copy={authCopy}
           locale={locale}
           mode={authMode}

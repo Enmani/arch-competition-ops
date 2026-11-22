@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { ConsentLine } from "@/components/consent-line";
 import { buildLocalePath } from "@/i18n/config";
 import { getDictionary, resolveLocaleOrNotFound } from "@/i18n/server";
 import { buildPageMetadata } from "@/lib/page-metadata";
@@ -99,6 +100,7 @@ const LocalizedRegisterPage = async ({
               type="password"
             />
           </div>
+          <ConsentLine copy={dictionary.legal.consent} locale={locale} />
           <button className="button primary auth-submit" type="submit">
             {dictionary.auth.register.submit}
           </button>

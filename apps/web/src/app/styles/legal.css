@@ -1,0 +1,293 @@
+/* Long reading pages (About, Terms, Privacy, Refund), the site footer line and the sign-up
+   consent line. One narrow column at reading size; tables and lists use hairline rules only. */
+
+.legal-page {
+  display: grid;
+  gap: var(--space-2xl);
+  max-width: 42rem;
+  padding: var(--space-3xl) 0 var(--space-xl);
+  line-height: 1.75;
+  text-wrap: pretty;
+}
+
+.legal-intro {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.legal-intro h1 {
+  margin: 0;
+  font-family: var(--font-display), var(--font-cjk-fallback), sans-serif;
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  line-height: 1.25;
+  text-wrap: balance;
+}
+
+.legal-lede,
+.legal-updated {
+  margin: 0;
+}
+
+.legal-updated {
+  color: var(--ink-faint);
+  font-size: var(--fs-sm);
+}
+
+/* Contents list: a quiet ruled block, two columns where there is room. */
+.legal-toc {
+  padding: var(--space-md) 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--fs-sm);
+}
+
+.legal-toc-label {
+  margin: 0 0 var(--space-xs);
+  color: var(--ink-faint);
+}
+
+.legal-toc ol {
+  columns: 2 14rem;
+  column-gap: var(--space-2xl);
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.legal-toc li {
+  break-inside: avoid;
+}
+
+.legal-toc a {
+  text-decoration: underline transparent;
+  text-underline-offset: 0.25em;
+}
+
+.legal-toc a:hover,
+.legal-toc a:focus-visible {
+  text-decoration-color: currentColor;
+}
+
+.legal-section {
+  display: grid;
+  gap: var(--space-md);
+  scroll-margin-top: calc(var(--shell-topbar-height) + var(--space-lg));
+}
+
+.legal-section h2 {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.legal-section p,
+.legal-section ul {
+  margin: 0;
+}
+
+.legal-section ul {
+  display: grid;
+  gap: var(--space-xs);
+  padding-left: 1.25rem;
+}
+
+/* Lists that are rows of links, not bullets: no indent, their own layout. */
+.legal-section .support-links {
+  gap: 0;
+  margin-top: 0;
+  padding-left: 0;
+}
+
+.legal-section .legal-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs) var(--space-xl);
+  padding-left: 0;
+  list-style: none;
+}
+
+/* Tables scroll inside their own box on narrow screens instead of widening the page. */
+.legal-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.legal-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+}
+
+.legal-table caption {
+  padding-bottom: var(--space-sm);
+  color: var(--ink-faint);
+  text-align: left;
+}
+
+.legal-table th,
+.legal-table td {
+  padding: var(--space-sm) var(--space-md) var(--space-sm) 0;
+  border-top: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.legal-table thead th {
+  border-top: 0;
+  color: var(--ink-faint);
+  font-weight: 400;
+}
+
+.legal-table tbody tr:last-child > * {
+  border-bottom: 1px solid var(--line);
+}
+
+.legal-table tbody th {
+  font-weight: 600;
+}
+
+.legal-table code {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+
+.legal-cell-note {
+  display: block;
+  margin-top: var(--space-xs);
+  color: var(--ink-faint);
+  font-weight: 400;
+}
+
+.legal-cookie-table th[scope="row"] {
+  width: 34%;
+}
+
+/* The cookie table carries three columns of prose; on a phone each row stacks instead. */
+@media (max-width: 40rem) {
+  .legal-cookie-table thead {
+    display: none;
+  }
+
+  .legal-cookie-table,
+  .legal-cookie-table caption,
+  .legal-cookie-table tbody,
+  .legal-cookie-table tr,
+  .legal-cookie-table th,
+  .legal-cookie-table td {
+    display: block;
+    width: auto;
+  }
+
+  .legal-cookie-table tr {
+    padding: var(--space-sm) 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .legal-cookie-table th,
+  .legal-cookie-table td,
+  .legal-cookie-table tbody tr:last-child > * {
+    padding: var(--space-xs) 0;
+    border: 0;
+  }
+
+  .legal-cookie-table tbody tr:last-child {
+    border-bottom: 1px solid var(--line);
+  }
+}
+
+.legal-details {
+  display: grid;
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+
+.legal-details div {
+  display: flex;
+  gap: var(--space-lg);
+  padding: var(--space-xs) 0;
+  border-top: 1px solid var(--line);
+}
+
+.legal-details dt {
+  min-width: 6rem;
+  color: var(--ink-faint);
+}
+
+.legal-details dd {
+  margin: 0;
+}
+
+.preferences-reset {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-sm);
+}
+
+.preferences-reset p {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: var(--fs-sm);
+}
+
+.preferences-reset .preferences-reset-status {
+  color: var(--ink);
+}
+
+.preferences-reset-status:empty {
+  display: none;
+}
+
+/* The footer: one muted line of small links under the page, wrapping cleanly on a phone. */
+.site-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-xs) var(--space-lg);
+  margin-top: var(--space-3xl);
+  padding-top: var(--space-lg);
+  border-top: 1px solid var(--line);
+  color: var(--ink-faint);
+  font-size: var(--fs-sm);
+}
+
+.site-footer ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs) var(--space-lg);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.site-footer a {
+  text-decoration: underline transparent;
+  text-underline-offset: 0.25em;
+  transition: color 180ms var(--ease-out-quart), text-decoration-color 180ms var(--ease-out-quart);
+}
+
+.site-footer a:hover,
+.site-footer a:focus-visible {
+  color: var(--ink);
+  text-decoration-color: currentColor;
+}
+
+.site-footer a:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.auth-consent {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: var(--fs-sm);
+}
+
+.auth-consent .auth-link {
+  font-weight: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}

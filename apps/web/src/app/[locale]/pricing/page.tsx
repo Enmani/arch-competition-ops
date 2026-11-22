@@ -44,7 +44,6 @@ const PricingPage = async ({ params }: PricingPageProps) => {
     currency: MCP_PRICING.currency, maximumFractionDigits: 2, minimumFractionDigits: 0, style: "currency",
   });
   const savings = annualSavings();
-  const legal = LEGAL_LINKS.filter((link): link is { href: string; id: typeof link.id } => link.href !== null);
 
   return (
     <main className="mcp-page pricing-page">
@@ -114,15 +113,13 @@ const PricingPage = async ({ params }: PricingPageProps) => {
         <p>{text.billing}</p>
       </div>
 
-      {legal.length > 0 ? (
-        <nav aria-label={text.legal.label} className="pricing-legal">
-          {legal.map((link) => (
-            <a className="inline-link" href={link.href} key={link.id}>
-              {text.legal[link.id]}
-            </a>
-          ))}
-        </nav>
-      ) : null}
+      <nav aria-label={dictionary.legal.links.label} className="pricing-legal">
+        {LEGAL_LINKS.map((link) => (
+          <Link className="inline-link" href={buildLocalePath(locale, link.href)} key={link.id}>
+            {dictionary.legal[link.id].title}
+          </Link>
+        ))}
+      </nav>
     </main>
   );
 };

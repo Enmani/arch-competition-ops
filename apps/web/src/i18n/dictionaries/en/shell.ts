@@ -18,6 +18,7 @@ export const shell = {
   },
   utility: {
     support: "Support",
+    about: "About",
     pricing: "Pricing",
     login: "Log in",
     logout: "Log out",

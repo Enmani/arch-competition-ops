@@ -16,6 +16,7 @@ export const shell = {
   },
   utility: {
     support: "支持",
+    about: "关于",
     pricing: "价格",
     login: "登录",
     logout: "退出",

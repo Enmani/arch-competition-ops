@@ -13,6 +13,8 @@ import { taxonomy } from "./taxonomy";
 import { status } from "./status";
 import { meta } from "./meta";
 import { mcp } from "./mcp";
+import { legal } from "./legal";
+import { about } from "./about";
 
 export const en = {
   common,
@@ -29,4 +31,6 @@ export const en = {
   status,
   meta,
   mcp,
+  legal,
+  about,
 } satisfies AppDictionary;
