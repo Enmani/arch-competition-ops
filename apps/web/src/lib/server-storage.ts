@@ -61,5 +61,5 @@ export const getStorage = async (): Promise<Storage> => {
 };
 
 /** Used by the opportunity image route (owned by the preview pipeline). */
-export const getWebOpportunityFeedItemBySlug = async (slug: string) =>
-  (await getStorage()).opportunities.getBySlug(slug);
+export const getWebOpportunityLocation = async (slug: string) =>
+  (await getStorage()).opportunities.getLocation(slug);

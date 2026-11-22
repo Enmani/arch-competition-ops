@@ -6,12 +6,23 @@ import { HttpError, PUBLIC_DETAIL_CACHE_CONTROL, PUBLIC_LIST_CACHE_CONTROL, guar
 /** Public, read-only discover feed. Filtering, sorting and paging happen in SQL. */
 export const createOpportunitiesHandlers = (deps: Pick<AuthDeps, "getStorage">) => ({
   GET: guarded("GET /api/opportunities", async (request: Request) => {
-    const parsed = parseDiscoverQuery(searchParamsToRecord(new URL(request.url).searchParams), "strict");
+    const params = new URL(request.url).searchParams;
+    const parsed = parseDiscoverQuery(searchParamsToRecord(params), "strict");
     if (!parsed.ok) {
       throw new HttpError("invalid_request", `Invalid query. ${parsed.issues.slice(0, 3).join("; ")}`);
     }
 
-    const { opportunities, total } = await (await deps.getStorage()).opportunities.discover(parsed.filters);
+    const storage = (await deps.getStorage()).opportunities;
+    const continuation = params.get("continuation");
+    if (continuation !== null) {
+      const opportunities = await storage.continue(parsed.filters, continuation);
+      if (!opportunities) {
+        throw new HttpError("conflict", "The discover snapshot expired or changed. Reload the first page.");
+      }
+      return jsonResponse({ opportunities });
+    }
+
+    const { opportunities, total } = await storage.list(parsed.filters);
     return jsonResponse(
       {
         filters: {

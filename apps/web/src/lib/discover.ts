@@ -80,11 +80,11 @@ export const buildDiscoverSearchParams = (filters: StoredOpportunityQuery): Disc
   if (filters.maxEstimatedValueEur !== undefined) {
     searchParams.maxEstimatedValueEur = filters.maxEstimatedValueEur.toString();
   }
-  if (filters.licensedArchitectRequired === true) {
-    searchParams.licensedArchitectRequired = "true";
+  if (filters.licensedArchitectRequired !== undefined) {
+    searchParams.licensedArchitectRequired = String(filters.licensedArchitectRequired);
   }
-  if (filters.includeExpired === true) {
-    searchParams.includeExpired = "true";
+  if (filters.includeExpired !== undefined) {
+    searchParams.includeExpired = String(filters.includeExpired);
   }
   if (filters.limit !== undefined) {
     searchParams.limit = filters.limit.toString();

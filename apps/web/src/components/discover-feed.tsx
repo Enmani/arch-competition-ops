@@ -16,15 +16,14 @@ import {
   appendFeedPage,
   createFeedState,
   hasMoreItems,
-  type FeedPage,
   type FeedState,
 } from "@/lib/feed-pagination";
 
 type DiscoverFeedProps = {
+  continuation: string | null;
   copy: DiscoverFeedCopy;
   filters: StoredOpportunityQuery;
   initialItems: StoredOpportunityFeedItem[];
-  initialNextOffset: number;
   initialTotal: number;
   initialWatchedIds: string[];
   locale: AppLocale;
@@ -41,10 +40,10 @@ type DiscoverFeedProps = {
  * restore the same depth.
  */
 export const DiscoverFeed = ({
+  continuation,
   copy,
   filters,
   initialItems,
-  initialNextOffset,
   initialTotal,
   initialWatchedIds,
   locale,
@@ -52,7 +51,7 @@ export const DiscoverFeed = ({
   signedIn,
 }: DiscoverFeedProps) => {
   const [feed, setFeed] = useState<FeedState<StoredOpportunityFeedItem>>(() =>
-    createFeedState(initialItems, initialTotal, initialNextOffset),
+    createFeedState(initialItems, initialTotal),
   );
   const [watchedIds, setWatchedIds] = useState(() => new Set(initialWatchedIds));
   const [isLoading, setIsLoading] = useState(false);
@@ -104,10 +103,18 @@ export const DiscoverFeed = ({
     setIsLoading(true);
     setFailure(null);
 
-    const search = serializeSearchParams(
-      buildDiscoverSearchParams({ ...filters, limit: DISCOVER_PAGE_SIZE, offset: feedRef.current.nextOffset }),
+    const search = serializeSearchParams({
+      ...buildDiscoverSearchParams({ ...filters, limit: DISCOVER_PAGE_SIZE, offset: feedRef.current.nextOffset }),
+      ...(continuation === null ? {} : { continuation }),
+    });
+    const result = await requestJson<{ opportunities: StoredOpportunityFeedItem[]; total?: number }>(
+      `/api/opportunities${search}`,
     );
-    const result = await requestJson<FeedPage<StoredOpportunityFeedItem>>(`/api/opportunities${search}`);
+    if (!result.ok && continuation !== null && result.failure.status === 409) {
+      window.scrollTo(0, 0);
+      window.location.replace(`${routeBase}${serializeSearchParams(buildDiscoverPageSearchParams(filters))}`);
+      return;
+    }
 
     inFlightRef.current = false;
     setIsLoading(false);
@@ -116,7 +123,10 @@ export const DiscoverFeed = ({
       return;
     }
 
-    const next = appendFeedPage(feedRef.current, result.data);
+    const next = appendFeedPage(feedRef.current, {
+      opportunities: result.data.opportunities,
+      total: result.data.total ?? feedRef.current.total,
+    });
     feedRef.current = next;
     setFeed(next);
     // Remember the depth without a navigation: reload and back keep the same number of items.

@@ -6,7 +6,6 @@ import { OpportunityMedia } from "@/components/opportunity-media";
 import WatchToggleButton from "@/components/watch-toggle-button";
 import { buildLocalePath, type AppLocale } from "@/i18n/config";
 import type { DiscoverFeedCopy } from "@/i18n/slices";
-import { loadOpportunityDetail } from "@/lib/opportunity-detail-client";
 import { getOpportunityDisplayMeta } from "@/lib/opportunity-display";
 
 type OpportunityStreamItemProps = {
@@ -40,8 +39,7 @@ export const OpportunityStreamItem = ({
   return (
     <article className="opportunity-tile" style={{ ["--tile-index" as string]: index }}>
       {/* A plain click opens the side sheet from the data already on screen; the link itself stays for
-          new tabs, middle clicks, copying the address and crawlers. Hover or focus starts the
-          detail request, so the AI overview is usually there by the time the sheet opens. */}
+          new tabs, middle clicks, copying the address and crawlers. */}
       <Link
         className="opportunity-tile-link"
         href={localizedRecordLink}
@@ -52,8 +50,7 @@ export const OpportunityStreamItem = ({
           event.preventDefault();
           onOpen(opportunity);
         }}
-        onFocus={() => void loadOpportunityDetail(opportunity.slug)}
-        onPointerEnter={() => void loadOpportunityDetail(opportunity.slug)}
+        prefetch={false}
       >
         <OpportunityMedia slug={opportunity.slug} />
 
