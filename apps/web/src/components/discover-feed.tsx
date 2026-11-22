@@ -105,7 +105,7 @@ export const DiscoverFeed = ({
 
     const search = serializeSearchParams({
       ...buildDiscoverSearchParams({ ...filters, limit: DISCOVER_PAGE_SIZE, offset: feedRef.current.nextOffset }),
-      ...(continuation === null ? {} : { continuation }),
+      ...(continuation === null ? { live: "1" } : { continuation }),
     });
     const result = await requestJson<{ opportunities: StoredOpportunityFeedItem[]; total?: number }>(
       `/api/opportunities${search}`,

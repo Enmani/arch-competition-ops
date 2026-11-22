@@ -118,9 +118,14 @@ export function runInto(workspace, options = {}) {
 }
 
 export function executeFiles(database, result) {
+  const totalChanges = database.prepare("SELECT total_changes() AS n");
+  let dataChanges = 0;
   for (const file of result.files) {
-    database.exec(file.content);
+    const before = totalChanges.get().n;
+    database.transaction(() => database.exec(file.content))();
+    if (file.table !== "discover_publication") dataChanges += totalChanges.get().n - before;
   }
+  return dataChanges;
 }
 
 export function dumpTable(database, table, orderBy) {

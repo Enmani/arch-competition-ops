@@ -41,7 +41,11 @@ apps/web/migrations/*.sql   the only schema authority
 
 ## Capability Summary
 
-The read model is computed in SQL: filters, sort, `LIMIT/OFFSET`, a separate `COUNT` and filter options (`GROUP BY` / `json_each`) are one three-statement `batch()` per discover render. Detail lookup is a primary-key read, the dashboard resolves watched ids with one `IN` query per 90 ids, `LIKE` terms are escaped, numeric inputs are clamped (`limit` default 24, max 100) and dates must be real ISO calendar dates.
+Discover reads one exact aggregate for the total and seven option groups, and one ordered page. Both use the same database snapshot and UTC time. The default view uses the published daily aggregate when available. The deadline sort uses a partial index over notices that are neither archived nor discarded. The query still checks whether the current AI recommendation excludes each notice.
+
+The public list API reads the exact count and requested page. A browser continuation carries the publication version, normalized filters and an expiry. A matching continuation reads the page and checks the version in one batch. A conflict reloads the first page and removes the restored depth from the URL. The reload path for an explicit `loaded` value reads that depth and its total and options in one snapshot.
+
+The image fallback reads the fields used by the locator renderer in one primary-key query. Detail loads the record and its current AI assessment. The dashboard resolves watched IDs in groups of 90. List inputs keep their existing bounds. Short search terms escape LIKE wildcards. Longer patterns use literal substring matching under the same case rules.
 
 Accounts are real: each user has a private workspace (`user:<id>`), the `/ops` surface and `/api/ops/**` are administrator-only, passwords use one self-describing scrypt format on every runtime, sessions are rotated and slide, and every state-changing request is same-origin checked.
 
@@ -201,9 +205,13 @@ Registration answers every "cannot register" case that could reveal an existing 
 
 `StoredOpportunityFeedItem` still carries English `*Label` fallbacks (status, procedure, fee, deadline...) because current components and the JSON API use them. Remove them when every consumer localises from the `*Key` fields.
 
-### 12. Cloudflare D1 limits that SQLite does not enforce
+### 12. Cloudflare D1 query limits
 
-D1 accepts at most 5 terms in a compound SELECT and 100 bound parameters per statement; plain SQLite accepts far more, so tests on the local adapter cannot find violations by themselves. The facet queries are therefore split in two statements (4 and 3 terms) and `opportunities-query.test.ts` pins both limits for the worst-case query. The full stack (OpenNext bundle, D1 binding, `json_each`, `batch`, scrypt through `node:crypto`, middleware) was smoke-tested on a local workerd with `wrangler dev`; that is where the compound-term limit was found. Repeat such a smoke test after changing SQL.
+The exact aggregate deduplicates stored option values during one scan. The read layer applies the shared taxonomy order and procedure aliases to those values. An aggregate above the D1 size limit falls back to the exact count and two grouped queries in a fresh batch with the page. These grouped queries use four and three compound SELECT terms, below D1's limit of five. Tests cover the statement parameter budget and the 50-byte LIKE pattern limit.
+
+### 13. Publishing the default discover summary
+
+The sync sets a marker before the first import and publishes a new version after retention and optional pruning. Its last file computes the current and next UTC days from the final remote data, including records retained for a watchlist. The two daily summaries share the active version and a format number in a single row. An absent, expired or incompatible summary uses the exact live aggregate. During an import or after an interrupted import, requests read the live data in a single transaction and existing browser continuations expire. See the [deploy runbook](../../CLOUDFLARE_DEPLOY_RUNBOOK.md) for the migration and sync order.
 
 ## Extension Points
 

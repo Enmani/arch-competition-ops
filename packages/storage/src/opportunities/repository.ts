@@ -12,6 +12,7 @@ import {
   buildPageStatement,
   normalizeQuery,
 } from "./query";
+import { readPublishedDefault, usesDefaultSummary } from "./summary-publication";
 import type { OpportunityRow, StoredDiscoverSurfaceData, StoredOpportunityFeedItem } from "./types";
 
 /** A paged list for APIs that do not need filter options or the total. */
@@ -63,6 +64,16 @@ export const getDiscoverSurfaceData = async (
   const clock = { now: () => now };
   const pageQuery = restoredLimit === undefined ? query : { ...query, limit: restoredLimit };
   const page = buildPageStatement(pageQuery, clock);
+  if (usesDefaultSummary(query)) {
+    const published = await readPublishedDefault(context, now.toISOString().slice(0, 10), page);
+    if (published) {
+      return {
+        ...unpackAggregate(published.payload, query),
+        continuation: issueContinuation(published.version, now, query),
+        opportunities: pageItems(context, published.pageRows),
+      };
+    }
+  }
   try {
     const { version, rows: [summary, pageRows] } = await readWithPublication(context, [
       buildAggregateStatement(query, clock),

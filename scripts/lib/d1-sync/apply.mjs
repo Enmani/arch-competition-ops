@@ -32,7 +32,7 @@ function remoteCompetitionCount(wrangler, env, repoRoot) {
 
 /**
  * Run the generated files against remote D1 in order and stop at the first failure (every file is
- * idempotent, so the same directory can simply be re-run). Output is counts only: wrangler's own
+ * retryable from the syncing marker). Output is counts only: wrangler's own
  * output is never echoed, a failure prints one short, secret-masked line.
  */
 export function applyExport({ wrangler, env, repoRoot, outputDir, files, manifest, log }) {
@@ -47,7 +47,7 @@ export function applyExport({ wrangler, env, repoRoot, outputDir, files, manifes
     if (!result.ok) {
       throw new ApplyError(
         `${file.name} failed (${applied} of ${files.length} file(s) applied): ${describeFailure(result, env)}. ` +
-          "Fix the cause and re-run this command; every file is idempotent.",
+          "Fix the cause and re-run this command from the start.",
       );
     }
     applied += 1;

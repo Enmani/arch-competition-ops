@@ -20,12 +20,16 @@ const aggregateValues = (column: string) => {
     END END)`;
 };
 
-export const buildAggregateStatement = (query: NormalizedQuery, clock: Clock): SqlStatement => {
+export const buildAggregateStatement = (
+  query: NormalizedQuery,
+  clock: Clock,
+  maxBytes = MAX_AGGREGATE_BYTES,
+): SqlStatement => {
   const { clause, parameters } = buildWhere(query, clock);
   const groups = facetSources.map(({ column }) => `'${column}', ${aggregateValues(column)}`).join(",\n      ");
   return {
     parameters,
-    sql: `SELECT CASE WHEN length(CAST(payload AS BLOB)) < ${MAX_AGGREGATE_BYTES} THEN payload END AS payload
+    sql: `SELECT CASE WHEN length(CAST(payload AS BLOB)) < ${maxBytes} THEN payload END AS payload
       FROM (SELECT json_object('total', COUNT(*), ${groups}) AS payload FROM competitions ${clause})`,
   };
 };

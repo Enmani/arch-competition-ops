@@ -78,7 +78,9 @@ Enter the addresses when prompted, for example `first@example.com,second@example
 
 Before the first deploy that contains migration `0005`, apply it with `npm run d1:migrate:remote` (Case 3). It signs every user out once (session token hashes changed encoding) and removes duplicate saved searches. Passwords are unaffected; old hashes are upgraded on each user's next login. Measure scrypt CPU time with `wrangler tail` after the first logins (see `docs/structures/2026-10-21-storage-auth-api-architecture.md`, decision 2).
 
-Before deploying code that contains migration `0006`, apply it through Case 3 as well. Discovery queries use its `ai_screening_results` table. The worker's API key, full prompts and local spend ledger stay on the ingestion backend; D1 receives only published screening advice.
+Before deploying code that contains migration `0006`, apply it through Case 3 as well. Discovery queries use its `ai_screening_results` table. The worker's API key, full prompts and local spend ledger stay on the ingestion backend. D1 receives only published screening advice.
+
+For the discover read-budget rollout, apply migrations `0011` and `0012` first. Deploy the Worker code second. Run the new D1 sync third to publish the first summary. The Worker reads exact live results until the summary is ready. Use the new exporter for every sync after rollout so imports invalidate the published summary before changing records.
 
 ## Case 1: Code Or UI Changed
 
@@ -115,7 +117,7 @@ npm run d1:export-data
 ```
 
 The exporter prints the exact `wrangler d1 execute` commands and writes them to `manifest.json`.
-Run them one by one, in the printed order (`0001-...sql`, `0002-...sql`, ..., and `0099-prune.sql` only when `--prune` was used):
+Run the files in the printed order. `0000-syncing.sql` marks the import as in progress. The data files follow, then retention and pruning when requested. `0100-publish.sql` publishes the new version and computes the default total and options for today and tomorrow in UTC using the remote records.
 
 ```powershell
 npm --workspace apps/web exec -- wrangler d1 execute arch-competition-ops --remote --file ../../artifacts/d1-sync/<UTC-timestamp>/0001-competitions.sql
@@ -130,7 +132,8 @@ How the sync behaves:
 - The local database is read from `ARCH_COMPETITION_OPS_DB` (relative paths resolve against the repository root; default `data/competitions.sqlite`).
 - Before writing anything the exporter checks that the local database has exactly the columns defined by `apps/web/migrations/*.sql` for the synced tables. On any difference it prints the diff, exits with code 1 and writes no files. Fix the local database (run the Python worker migration or apply the missing migration) and retry.
 - Each file is capped at about 500 statements and 1 MB, and each statement at 90 KB (D1 rejects statements over 100 KB).
-- Every file is idempotent. If one file fails, fix the cause and re-run that file (or the whole list) from the same directory; do not regenerate in between unless the local data changed.
+- Upserts write only when a sync-owned value changes, including title and AI fields. Existing human review fields stay protected.
+- If a file fails, fix the cause and rerun from `0000-syncing.sql`. Readers use live queries until a complete sync publishes successfully. If another export takes ownership, older data files are rejected. Run only one sync at a time.
 
 Optional `--prune` (off by default):
 
@@ -138,7 +141,7 @@ Optional `--prune` (off by default):
 npm run d1:export-data -- --prune
 ```
 
-`--prune` adds a last file, `0099-prune.sql`, that deletes remote `competitions` rows whose `id` no longer exists in the local database. It uses a scratch table (`_sync_competition_ids`, dropped at the end) because the script never connects to the remote database. Competitions on any user's watchlist are never deleted, so they can remain on D1 even though they are gone locally. The exporter refuses `--prune` when the local `competitions` table is empty. Risk: a local database that is incomplete (for example a partial crawl or the wrong `ARCH_COMPETITION_OPS_DB`) will delete the missing public records from production. Check the row counts printed by the exporter before running `0099-prune.sql`, and run it only after all upsert files succeeded.
+`--prune` adds `0099-prune.sql` before publication. It deletes remote `competitions` rows whose `id` no longer exists in the local database. It uses a scratch table (`_sync_competition_ids`, dropped at the end) because the script never connects to the remote database. Competitions on any user's watchlist are never deleted, so they can remain on D1 even though they are gone locally. The exporter refuses `--prune` when the local `competitions` table is empty. Risk: a local database that is incomplete (for example a partial crawl or the wrong `ARCH_COMPETITION_OPS_DB`) will delete the missing public records from production. Check the row counts printed by the exporter before running `0099-prune.sql`, and run it only after all upsert files succeeded.
 
 Two more flags exist for the unattended cloud run (see [Cloud daily run](#cloud-daily-run)):
 
@@ -294,7 +297,7 @@ in `apps/web/wrangler.jsonc`.
 ### D1 Import Rejects Transactions
 
 `scripts/export-d1-data.mjs` must not emit `BEGIN TRANSACTION`, `COMMIT`, `SAVEPOINT` or `ROLLBACK`.
-Remote D1 imports reject explicit transaction statements, so the sync is split into many small idempotent upsert files instead of one transaction. A failed file can simply be re-run; `tests/export-d1-data.test.mjs` guards this rule.
+D1 imports apply each file separately. The syncing marker keeps readers on the live path until the final file publishes two days of summaries together. An interrupted import leaves the marker in place. The export tests cover retries, file ownership and publication after pruning.
 
 ### Multiple Cloudflare Accounts
 
@@ -396,7 +399,8 @@ From then on the cloud state is the master copy. To ingest locally again, run `n
 - Actions tab, workflow "Daily ingest": the run summary shows counts only (batch line from the CLI, failed source ids, ledger/results/cost before and after, D1 rows upserted, remote competition count before and after, pushed generation). Nothing is uploaded as an artifact and no notice titles are logged, because logs of a public repository are world-readable.
 - `gh run list --workflow daily-ingest.yml --repo Enmani/arch-competition-ops`, and `gh run view <id> --log` for the full log.
 - A red run with a green "Sync to D1" and "Push state to R2" means only that some sources failed; the data and state were still saved. A red "Pull state from R2" means nothing was changed and nothing was spent: fix the bucket or token and run again. A red "Sync to D1" means the state was pushed but D1 is behind; re-run the workflow (the upserts are idempotent and the next ingest finds nothing new, so it costs nothing).
-- Verify production: `curl.exe -s "https://arch-competition.com/api/opportunities?limit=1"`.
+- Verify production with `curl.exe -s "https://arch-competition.com/api/opportunities?limit=1"` and load page two from discover after a sync.
+- In the Cloudflare dashboard, compare two complete UTC days for D1 rows read and written and Worker requests. Inspect query statistics for the default page, page two, filtered searches and MCP. Confirm a successful publish returns default summaries and an interrupted sync uses live results. Check Worker CPU percentiles, CPU and quota errors, and image requests by path. Review anonymous MCP 429/503 alongside D1 writes.
 
 ### Restore an earlier state generation
 

@@ -67,7 +67,7 @@ if (args[0] === "d1" && args[1] === "execute") {
       if (process.env.FAKE_FAIL_FILE && path.basename(file).includes(process.env.FAKE_FAIL_FILE)) {
         fail("D1_ERROR: simulated SQL failure");
       }
-      database.exec(readFileSync(file, "utf8"));
+      database.transaction(() => database.exec(readFileSync(file, "utf8")))();
     } else {
       const rows = database.prepare(flag("--command")).all();
       console.log(JSON.stringify([{ results: rows, success: true }]));
