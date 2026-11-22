@@ -52,6 +52,7 @@ const searchVariants = (term: string) => {
   return [...new Set([term, lower, capitalised])];
 };
 
+const MAX_D1_LIKE_BYTES = 50;
 const SEARCH_COLUMNS = ["title", "authority_name", "organizer", "source_name", "official_notice_id"] as const;
 
 const classificationCondition = (column: string, values: string[], parameters: SqlParameter[]) => {
@@ -76,9 +77,11 @@ export const buildWhere = (query: NormalizedQuery, clock: Clock) => {
   if (query.search) {
     const clauses: string[] = [];
     for (const variant of searchVariants(query.search)) {
+      const pattern = likeContains(variant);
+      const useInstr = new TextEncoder().encode(pattern).length > MAX_D1_LIKE_BYTES;
       for (const column of SEARCH_COLUMNS) {
-        clauses.push(`${column} LIKE ? ESCAPE '\\'`);
-        parameters.push(likeContains(variant));
+        clauses.push(useInstr ? `instr(lower(${column}), lower(?)) > 0` : `${column} LIKE ? ESCAPE '\\'`);
+        parameters.push(useInstr ? variant : pattern);
       }
     }
     conditions.push(`(${clauses.join(" OR ")})`);

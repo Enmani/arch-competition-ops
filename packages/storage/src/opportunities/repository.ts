@@ -2,6 +2,7 @@ import { aiAssessmentSchema, noticeDetailSchema, type DiscoverFilters } from "@a
 
 import type { StorageContext } from "../context";
 import { MAX_BOUND_PARAMETERS, chunk, placeholders, readBatch, readRows } from "../driver/sql";
+import { buildAggregateStatement, isOversizeAggregate, unpackAggregate } from "./aggregate";
 import { issueContinuation, readContinuation, readWithPublication } from "./continuation";
 import { buildFacetStatements, buildFilterOptions, type FacetRow } from "./facets";
 import { toOpportunityFeedItem, toOpportunityLocation } from "./mapper";
@@ -60,12 +61,28 @@ export const getDiscoverSurfaceData = async (
   const now = context.clock.now();
   const clock = { now: () => now };
   const pageQuery = restoredLimit === undefined ? query : { ...query, limit: restoredLimit };
+  const page = buildPageStatement(pageQuery, clock);
+  try {
+    const { version, rows: [summary, pageRows] } = await readWithPublication(context, [
+      buildAggregateStatement(query, clock),
+      page,
+    ]);
+    const { payload } = summary[0] as { payload: string | null };
+    if (payload !== null) {
+      return {
+        ...unpackAggregate(payload, query),
+        continuation: issueContinuation(version, now, query),
+        opportunities: pageItems(context, pageRows),
+      };
+    }
+  } catch (error) {
+    if (!isOversizeAggregate(error)) throw error;
+  }
   const { version, rows: [countRows, pageRows, ...facetRowGroups] } = await readWithPublication(context, [
     buildCountStatement(query, clock),
-    buildPageStatement(pageQuery, clock),
+    page,
     ...buildFacetStatements(query, clock),
   ]);
-
   return {
     continuation: issueContinuation(version, now, query),
     filterOptions: buildFilterOptions(facetRowGroups.flat() as FacetRow[], query),
