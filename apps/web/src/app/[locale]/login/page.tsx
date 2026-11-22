@@ -42,7 +42,8 @@ const LocalizedLoginPage = async ({ params, searchParams }: LocalizedLoginPagePr
     dictionary,
     readSearchValue(resolvedSearchParams, "error"),
   );
-  // The return path is re-validated by the API route; it is only carried through as a hidden field.
+  // The return path is re-validated by the API route; it is only carried through (hidden field,
+  // and the link to the other form) so switching between sign-in and sign-up keeps it.
   const next = readSearchValue(resolvedSearchParams, "next");
 
   return (
@@ -89,7 +90,7 @@ const LocalizedLoginPage = async ({ params, searchParams }: LocalizedLoginPagePr
 
         <p className="auth-secondary">
           {dictionary.auth.login.secondaryPrompt}{" "}
-          <Link className="auth-link" href={buildLocalePath(locale, "/register")}>
+          <Link className="auth-link" href={`${buildLocalePath(locale, "/register")}${next ? `?next=${encodeURIComponent(next)}` : ""}`}>
             {dictionary.auth.login.secondaryAction}
           </Link>
         </p>

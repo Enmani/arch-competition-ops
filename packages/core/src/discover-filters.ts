@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PARTICIPATION_FEE_FILTERS } from "./participation-fee";
 
 import {
   BUILDING_CATEGORIES,
@@ -6,6 +7,7 @@ import {
   OPPORTUNITY_SORTS,
   PROJECT_MODES,
   PROJECT_TYPES,
+  REGIONS,
   includesValue,
   type BuildingCategory,
   type DesignScope,
@@ -47,10 +49,12 @@ export type DiscoverFilters = {
   minEstimatedValueEur?: number;
   minQualificationScore?: number;
   offset?: number;
+  participationFee?: (typeof PARTICIPATION_FEE_FILTERS)[number];
   procedureType?: string;
   projectModes?: ProjectMode[];
   projectTypes?: ProjectType[];
   publishedWithinDays?: number;
+  region?: (typeof REGIONS)[number];
   search?: string;
   sort?: OpportunitySort;
 };
@@ -91,6 +95,7 @@ const clampedNumber = (min: number, max: number, integer: boolean) =>
       .optional(),
   );
 
+const optionalFlag = z.boolean().optional();
 const booleanFlag = z.preprocess(
   (value) => {
     const scalar = blankToUndefined(firstValue(value));
@@ -98,24 +103,25 @@ const booleanFlag = z.preprocess(
     if (scalar === "false" || scalar === false) return false;
     return scalar === undefined ? undefined : "invalid";
   },
-  z.boolean().optional(),
+  optionalFlag,
 );
 
-const boundedText = (max: number) =>
-  z.preprocess(
-    (value) => {
-      const scalar = blankToUndefined(firstValue(value));
-      return typeof scalar === "string" ? scalar.replace(/\s+/g, " ").trim() || undefined : scalar;
-    },
-    z.string().max(max).optional(),
-  );
+const optionalText = z.string().max(DISCOVER_MAX_TEXT_LENGTH).optional();
+const boundedText = z.preprocess(
+  (value) => {
+    const scalar = blankToUndefined(firstValue(value));
+    return typeof scalar === "string" ? scalar.replace(/\s+/g, " ").trim() || undefined : scalar;
+  },
+  optionalText,
+);
 
+const calendarDate = z.string().refine(isIsoDate, "must be a calendar date formatted YYYY-MM-DD").optional();
 const isoDate = z.preprocess(
   (value) => {
     const scalar = blankToUndefined(firstValue(value));
     return typeof scalar === "string" ? scalar.trim() : scalar;
   },
-  z.string().refine(isIsoDate, "must be a calendar date formatted YYYY-MM-DD").optional(),
+  calendarDate,
 );
 
 const toList = (value: unknown) => {
@@ -126,15 +132,22 @@ const toList = (value: unknown) => {
 
 const unique = <T>(values: T[]) => [...new Set(values)];
 
+const typedList = <T extends string>(values: readonly T[]) => z.array(z.enum(values as readonly [T, ...T[]]))
+  .max(DISCOVER_MAX_MULTI_VALUES).transform(unique).optional();
+
+/** Typed JSON inputs. The URL parser below adds coercion around the same validators. */
+export const competitionFilterFields = {
+  deadlineAfter: calendarDate, deadlineBefore: calendarDate,
+  jurisdiction: optionalText, licensedArchitectRequired: optionalFlag,
+  participationFee: z.enum(PARTICIPATION_FEE_FILTERS).optional(),
+  projectTypes: typedList(PROJECT_TYPES), region: z.enum(REGIONS).optional(), search: optionalText,
+};
+
 const enumList = <T extends string>(values: readonly T[], strict: boolean) =>
   z.preprocess(
     toList,
     strict
-      ? z
-          .array(z.enum(values as readonly [T, ...T[]]))
-          .max(DISCOVER_MAX_MULTI_VALUES)
-          .transform(unique)
-          .optional()
+      ? typedList(values)
       : z
           .array(z.unknown())
           .transform((items) => unique(items.filter((item): item is T => includesValue(values, item))))
@@ -147,20 +160,22 @@ const buildSchema = (strict: boolean) =>
     deadlineAfter: isoDate,
     deadlineBefore: isoDate,
     designScopes: enumList(DESIGN_SCOPES, strict),
-    implementationPath: boundedText(DISCOVER_MAX_TEXT_LENGTH),
+    implementationPath: boundedText,
     includeExpired: booleanFlag,
-    jurisdiction: boundedText(DISCOVER_MAX_TEXT_LENGTH),
+    jurisdiction: boundedText,
     licensedArchitectRequired: booleanFlag,
     limit: clampedNumber(1, DISCOVER_MAX_LIMIT, true),
     maxEstimatedValueEur: clampedNumber(0, DISCOVER_MAX_VALUE_EUR, false),
     minEstimatedValueEur: clampedNumber(0, DISCOVER_MAX_VALUE_EUR, false),
     minQualificationScore: clampedNumber(0, 100, false),
     offset: clampedNumber(0, DISCOVER_MAX_OFFSET, true),
-    procedureType: boundedText(DISCOVER_MAX_TEXT_LENGTH),
+    participationFee: competitionFilterFields.participationFee,
+    procedureType: boundedText,
     projectModes: enumList(PROJECT_MODES, strict),
     projectTypes: enumList(PROJECT_TYPES, strict),
     publishedWithinDays: clampedNumber(1, DISCOVER_MAX_PUBLISHED_WITHIN_DAYS, true),
-    search: boundedText(DISCOVER_MAX_TEXT_LENGTH),
+    region: competitionFilterFields.region,
+    search: boundedText,
     sort: z.preprocess(
       (value) => blankToUndefined(firstValue(value)),
       strict

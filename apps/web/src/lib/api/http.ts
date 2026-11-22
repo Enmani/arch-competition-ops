@@ -13,6 +13,7 @@ export const PUBLIC_LIST_CACHE_CONTROL = "public, max-age=0, s-maxage=60, stale-
 export const PUBLIC_DETAIL_CACHE_CONTROL = "public, max-age=60, s-maxage=300, stale-while-revalidate=3600";
 
 const STATUS_BY_CODE: Record<ApiErrorCode, number> = {
+  billing_unavailable: 503,
   conflict: 409,
   csrf_rejected: 403,
   forbidden: 403,

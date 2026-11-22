@@ -9,6 +9,14 @@
  *
  * The order of every list is the display order used by filter controls.
  */
+export const REGIONS = [
+  "global", "europe", "asia", "north_america", "oceania", "australia", "canada", "china",
+  "italy", "france", "germany", "new_zealand", "netherlands", "norway", "poland", "sweden",
+  "portugal", "belgium", "spain", "switzerland", "united_kingdom", "austria", "iberia",
+  "nordics", "middle_east", "united_arab_emirates", "saudi_arabia", "qatar", "oman",
+  "bahrain", "kuwait", "jordan", "turkiye", "egypt",
+] as const;
+
 export const PROJECT_TYPES = [
   "urban_regeneration",
   "environment_design",

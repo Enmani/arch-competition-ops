@@ -2,6 +2,8 @@ export * from "./ai-assessment";
 export * from "./api-contract";
 export * from "./discover-filters";
 export * from "./logger";
+export * from "./mcp-contract";
 export * from "./taxonomy";
 export * from "./participation-fee";
 export * from "./notice-details";
+export * from "./mcp-access-contract";

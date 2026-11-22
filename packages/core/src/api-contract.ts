@@ -4,6 +4,7 @@ import { OPS_REVIEW_REASON_CODES, OPS_REVIEW_STATUSES } from "./taxonomy";
 
 /** Shared API error envelope: `{ error: { code, message } }`. */
 export const API_ERROR_CODES = [
+  "billing_unavailable",
   "invalid_request",
   "unauthenticated",
   "forbidden",

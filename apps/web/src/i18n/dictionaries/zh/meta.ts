@@ -28,6 +28,14 @@ export const meta = {
       title: "注册",
       description: "创建账号，保存观察列表和筛选。",
     },
+    connect: {
+      title: "接入 AI",
+      description: "把竞赛数据接入 Claude、Cursor、VS Code 等 AI 助手，无需注册即可试用。",
+    },
+    pricing: {
+      title: "MCP 额度与价格",
+      description: "匿名、免费 Key 与 Pro 三档的调用额度和价格。",
+    },
   },
   /** Detail page description: `{facts}` is the joined authority, place and deadline. */
   detailDescription: "{facts}。来源：官方公告与可追溯链接。",

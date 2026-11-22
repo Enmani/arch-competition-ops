@@ -19,10 +19,12 @@ const KEY_ORDER = [
   "maxEstimatedValueEur",
   "minEstimatedValueEur",
   "minQualificationScore",
+  "participationFee",
   "procedureType",
   "projectModes",
   "projectTypes",
   "publishedWithinDays",
+  "region",
   "search",
   "sort",
 ] as const;

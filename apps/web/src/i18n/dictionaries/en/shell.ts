@@ -7,15 +7,18 @@ export const shell = {
     dashboard: "Internal review, tagging, and follow-up.",
     ops: "Source, parsing, and storage status.",
     auth: "Practice account access.",
+    connect: "Competition search inside your AI assistant.",
     fallback: "Public design opportunity interface.",
   },
   nav: {
     radar: "Opportunities",
     workspace: "Workspace",
     pipeline: "Ops",
+    connect: "Connect AI",
   },
   utility: {
     support: "Support",
+    pricing: "Pricing",
     login: "Log in",
     logout: "Log out",
   },

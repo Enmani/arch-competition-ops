@@ -12,6 +12,7 @@ import { support } from "./support";
 import { taxonomy } from "./taxonomy";
 import { status } from "./status";
 import { meta } from "./meta";
+import { mcp } from "./mcp";
 
 export const en = {
   common,
@@ -27,4 +28,5 @@ export const en = {
   taxonomy,
   status,
   meta,
+  mcp,
 } satisfies AppDictionary;

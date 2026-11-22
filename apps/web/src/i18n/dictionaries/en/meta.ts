@@ -30,6 +30,14 @@ export const meta = {
       title: "Register",
       description: "Create an account to keep a watchlist and saved searches.",
     },
+    connect: {
+      title: "Connect AI",
+      description: "Add competition data to Claude, Cursor, VS Code and other AI assistants. Try it without an account.",
+    },
+    pricing: {
+      title: "MCP limits and pricing",
+      description: "Call limits and prices for the anonymous, free-key and Pro tiers.",
+    },
   },
   detailDescription: "{facts}. Source: official notice and traceable links.",
   detailFallbackTitle: "Opportunity details",

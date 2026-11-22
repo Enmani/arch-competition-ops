@@ -11,6 +11,7 @@ import { support } from "./support";
 import { taxonomy } from "./taxonomy";
 import { status } from "./status";
 import { meta } from "./meta";
+import { mcp } from "./mcp";
 
 export const zh = {
   common,
@@ -26,4 +27,5 @@ export const zh = {
   taxonomy,
   status,
   meta,
+  mcp,
 };

@@ -51,6 +51,8 @@ export const buildDiscoverSearchParams = (filters: StoredOpportunityQuery): Disc
   if (filters.jurisdiction) {
     searchParams.jurisdiction = filters.jurisdiction;
   }
+  if (filters.region) searchParams.region = filters.region;
+  if (filters.participationFee) searchParams.participationFee = filters.participationFee;
   if (filters.publishedWithinDays !== undefined) {
     searchParams.publishedWithinDays = filters.publishedWithinDays.toString();
   }
@@ -147,6 +149,8 @@ export const countActiveDiscoverFilters = (filters: StoredOpportunityQuery) => {
 
   if (filters.search) total += 1;
   if (filters.jurisdiction) total += 1;
+  if (filters.region) total += 1;
+  if (filters.participationFee) total += 1;
   if (filters.publishedWithinDays !== undefined) total += 1;
   if (filters.deadlineAfter) total += 1;
   if (filters.deadlineBefore) total += 1;

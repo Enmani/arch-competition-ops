@@ -74,5 +74,5 @@ export const middleware = (request: NextRequest) => {
 };
 
 export const config = {
-  matcher: ["/((?!api/auth|api/opportunities/.+/image|_next/static|_next/image|favicon.ico|icon.svg).*)"],
+  matcher: ["/((?!mcp(?:/|$)|api/auth|api/opportunities/.+/image|_next/static|_next/image|favicon.ico|icon.svg).*)"],
 };

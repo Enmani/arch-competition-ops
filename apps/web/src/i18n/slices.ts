@@ -96,3 +96,34 @@ export const pickDashboardTableCopy = (dictionary: Dictionary): DashboardTableCo
   taxonomy: dictionary.taxonomy,
   workspace: { watchlist: dictionary.workspace.watchlist },
 });
+
+/** The connect page: address, client tabs, inline key creation and the new-key dialog. */
+export type ConnectCopy = Pick<Dictionary["mcp"], "connect" | "copy" | "quota"> & {
+  created: Dictionary["mcp"]["account"]["created"];
+  errors: Dictionary["mcp"]["account"]["errors"];
+  actions: Dictionary["mcp"]["account"]["actions"];
+  defaultKeyName: string;
+  closeLabel: string;
+};
+
+export const pickConnectCopy = (dictionary: Dictionary): ConnectCopy => ({
+  actions: dictionary.mcp.account.actions,
+  closeLabel: dictionary.shell.closeLabel,
+  connect: dictionary.mcp.connect,
+  copy: dictionary.mcp.copy,
+  created: dictionary.mcp.account.created,
+  defaultKeyName: dictionary.mcp.account.keys.defaultName,
+  errors: dictionary.mcp.account.errors,
+  quota: dictionary.mcp.quota,
+});
+
+/** The account sections on the dashboard: keys, usage and plan. */
+export type McpAccountCopy = Pick<Dictionary["mcp"], "account" | "copy" | "plans" | "quota"> & { closeLabel: string };
+
+export const pickMcpAccountCopy = (dictionary: Dictionary): McpAccountCopy => ({
+  account: dictionary.mcp.account,
+  closeLabel: dictionary.shell.closeLabel,
+  copy: dictionary.mcp.copy,
+  plans: dictionary.mcp.plans,
+  quota: dictionary.mcp.quota,
+});

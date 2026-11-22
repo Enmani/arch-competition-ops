@@ -33,8 +33,8 @@ const columnsOf = (connection: Database.Database, table: string) =>
 
 /**
  * Builds a database exactly like the Python worker's ensure_schema does: from its SCHEMA_SQL.
- * The worker keeps the constant somewhere under storage/ (it was database.py, now schema.py), so
- * search the package instead of hard-coding one file name.
+ * Search the worker storage package for the SQL literal so this test follows the same mirror
+ * after a file move.
  */
 const readPythonSchemaSql = () => {
   const storageDirectory = path.join(findRepoRoot(), "apps", "worker", "src", "arch_competition_ops", "storage");

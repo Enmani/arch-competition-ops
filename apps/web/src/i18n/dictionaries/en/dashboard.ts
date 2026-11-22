@@ -3,6 +3,7 @@ import type { AppDictionary } from "../types";
 export const dashboard = {
   eyebrow: "Workspace",
   title: "Practice workspace",
+  watchlistTitle: "Watchlist",
   description: "Review watched opportunities and continue qualification, teaming, and delivery screening.",
   table: {
     competition: "Competition",
