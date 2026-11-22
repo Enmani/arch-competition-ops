@@ -5,15 +5,18 @@ export const shell = {
     dashboard: "用于内部筛选、标记和跟进。",
     ops: "用于查看抓取、解析和入库状态。",
     auth: "用于进入个人工作台。",
+    connect: "在 AI 助手里查询竞赛。",
     fallback: "公共设计机会界面。",
   },
   nav: {
     radar: "机会",
     workspace: "工作台",
     pipeline: "运维",
+    connect: "接入 AI",
   },
   utility: {
     support: "支持",
+    pricing: "价格",
     login: "登录",
     logout: "退出",
   },

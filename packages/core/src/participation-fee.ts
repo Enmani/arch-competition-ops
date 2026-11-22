@@ -6,6 +6,9 @@
  * label from this function and the web app builds its localised label from the same
  * result, so the rule cannot drift between layers again.
  */
+/** Search by whether a participant is known to owe a fee, even if only one amount is known. */
+export const PARTICIPATION_FEE_FILTERS = ["free", "paid", "unknown"] as const;
+
 export type ParticipationFee =
   | { kind: "pending" }
   | { kind: "free" }

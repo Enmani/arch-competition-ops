@@ -37,10 +37,15 @@ export const SiteShell = ({ authCopy, authUserEmail, children, copy, locale, sho
   const navigation = [
     { href: buildLocalePath(locale, "/discover"), label: copy.nav.radar },
     { href: buildLocalePath(locale, "/dashboard"), label: copy.nav.workspace },
+    // The setup page, not the protocol endpoint: `/mcp` answers MCP clients only.
+    { href: buildLocalePath(locale, "/connect"), label: copy.nav.connect },
     // The pipeline view is administrator-only (ARCH_OPS_ADMIN_EMAILS); hide the link for everyone else.
     ...(showOpsLink ? [{ href: buildLocalePath(locale, "/ops"), label: copy.nav.pipeline }] : []),
   ];
-  const utilityLinks = [{ href: buildLocalePath(locale, "/support"), label: copy.utility.support }];
+  const utilityLinks = [
+    { href: buildLocalePath(locale, "/pricing"), label: copy.utility.pricing },
+    { href: buildLocalePath(locale, "/support"), label: copy.utility.support },
+  ];
 
   // Sign out without leaving the page: post the same form, then refresh the server components.
   // Without JavaScript the form posts normally and lands on the sign-in page.
@@ -72,6 +77,9 @@ export const SiteShell = ({ authCopy, authUserEmail, children, copy, locale, sho
     }
     if (authSurface) {
       return copy.captions.auth;
+    }
+    if (barePathname.startsWith("/connect")) {
+      return copy.captions.connect;
     }
     if (discoverSurface) {
       return copy.captions.discover;

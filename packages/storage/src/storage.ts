@@ -1,3 +1,7 @@
+import { applyStripeEvent, claimCheckout, findBillingAccount, hasStripeEvent, saveCheckoutSession, setBillingCustomer } from "./mcp/billing";
+import { authenticateMcpKey, createMcpKey, listMcpKeys, revokeMcpKey } from "./mcp/keys";
+import { getMcpUsage, reserveMcpCall, type McpCallPrincipal } from "./mcp/usage";
+
 import type { DiscoverFilters } from "@arch-competition/core";
 
 import { createStorageContext, type StorageContextOptions } from "./context";
@@ -55,6 +59,22 @@ export const createStorage = (options: StorageContextOptions) => {
       getSession: (token: string | null | undefined) => getSession(context, token),
       recordAttempt: (subject: Parameters<typeof recordAuthAttempt>[1]) => recordAuthAttempt(context, subject),
       register: (credentials: Parameters<typeof registerUser>[1]) => registerUser(context, credentials),
+    },
+    mcp: {
+      authenticateKey: (key: string) => authenticateMcpKey(context, key),
+      createKey: (userId: string, name: string) => createMcpKey(context, userId, name),
+      listKeys: (userId: string) => listMcpKeys(context, userId),
+      revokeKey: (userId: string, id: string) => revokeMcpKey(context, userId, id),
+      getUsage: (userId: string) => getMcpUsage(context, userId),
+      reserveCall: (principal: McpCallPrincipal) => reserveMcpCall(context, principal),
+    },
+    mcpBilling: {
+      applyEvent: (input: Parameters<typeof applyStripeEvent>[1]) => applyStripeEvent(context, input),
+      claimCheckout: (input: Parameters<typeof claimCheckout>[1]) => claimCheckout(context, input),
+      findAccount: (account: Parameters<typeof findBillingAccount>[1]) => findBillingAccount(context, account),
+      hasEvent: (eventId: string) => hasStripeEvent(context, eventId),
+      saveCheckoutSession: (userId: string, attemptId: string, sessionId: string) => saveCheckoutSession(context, userId, attemptId, sessionId),
+      setCustomer: (userId: string, customerId: string) => setBillingCustomer(context, userId, customerId),
     },
     opportunities: {
       discover: (filters?: DiscoverFilters) => getDiscoverSurfaceData(context, filters),

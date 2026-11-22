@@ -15,5 +15,8 @@
 @import "./styles/tiles.css";
 @import "./styles/auth.css";
 @import "./styles/support.css";
+@import "./styles/mcp.css";
+@import "./styles/mcp-account.css";
+@import "./styles/pricing.css";
 @import "./styles/utilities.css";
 @import "./styles/states.css";

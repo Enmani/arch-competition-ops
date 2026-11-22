@@ -13,6 +13,7 @@ import {
   PROCEDURE_TYPES,
   PROJECT_MODES,
   PROJECT_TYPES,
+  REGIONS,
 } from "@arch-competition/core";
 
 import { findRepoRoot } from "./node/paths";
@@ -50,6 +51,7 @@ const sorted = (values: readonly string[]) => [...values].sort();
 const taxonomy = readTaxonomy();
 
 test("TypeScript vocabularies match config/taxonomy.yml", () => {
+  assert.deepEqual(sorted(REGIONS), sorted(taxonomy.regions));
   assert.deepEqual(sorted(PROJECT_TYPES), sorted(taxonomy.project_types));
   assert.deepEqual(sorted(BUILDING_CATEGORIES), sorted(taxonomy.building_categories));
   assert.deepEqual(sorted(COMPETITION_STATUSES), sorted(taxonomy.competition_statuses));

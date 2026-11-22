@@ -87,6 +87,15 @@ export const buildWhere = (query: NormalizedQuery, clock: Clock) => {
     conditions.push("jurisdiction = ?");
     parameters.push(query.jurisdiction);
   }
+  if (query.region) {
+    conditions.push(classificationCondition("regions", [query.region], parameters));
+  }
+  // Keep partial evidence: a positive component proves a fee; free requires two recorded zeros.
+  if (query.participationFee) {
+    conditions.push(`(CASE WHEN registration_fee_eur > 0 OR submission_fee_eur > 0 THEN 'paid'
+      WHEN registration_fee_eur = 0 AND submission_fee_eur = 0 THEN 'free' ELSE 'unknown' END) = ?`);
+    parameters.push(query.participationFee);
+  }
   if (query.procedureType) {
     const values = resolveProcedureFilterValues(query.procedureType);
     if (values.length === 0) {
@@ -130,7 +139,10 @@ export const buildWhere = (query: NormalizedQuery, clock: Clock) => {
     conditions.push("(deadline_at IS NULL OR deadline_at >= ?)");
     parameters.push(today);
   }
-  if (query.deadlineBefore) {
+  if (query.deadlineBefore === "9999-12-31") {
+    // The day after the final four-digit ISO year sorts before it as "+010000-01-01".
+    conditions.push("deadline_at IS NOT NULL");
+  } else if (query.deadlineBefore) {
     conditions.push("deadline_at < ?");
     parameters.push(nextDay(query.deadlineBefore));
   }

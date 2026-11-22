@@ -1,0 +1,94 @@
+/* Pricing page: three tiers side by side, each a ruled column; stacks on narrow screens. */
+
+.pricing-page {
+  max-width: 64rem;
+}
+
+.pricing-tiers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 0 var(--space-2xl);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pricing-tier {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: var(--space-md);
+  padding: var(--space-lg) 0 var(--space-xl);
+  border-top: 1px solid var(--line-strong);
+}
+
+.pricing-tier.is-pro {
+  border-top: 2px solid var(--accent);
+}
+
+.pricing-tier h2 {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: 600;
+}
+
+.pricing-tier dl {
+  display: grid;
+  align-content: start;
+  margin: 0;
+}
+
+.pricing-tier dl div {
+  display: grid;
+  gap: 0.125rem;
+  padding: var(--space-sm) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.pricing-tier dt {
+  color: var(--ink-faint);
+  font-size: var(--fs-sm);
+}
+
+.pricing-tier dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.pricing-saving {
+  display: block;
+  color: var(--ink-soft);
+  font-size: var(--fs-sm);
+}
+
+.pricing-tier .button,
+.pricing-current {
+  justify-self: start;
+}
+
+.pricing-current {
+  display: inline-flex;
+  align-items: center;
+  height: var(--control-h);
+  color: var(--accent);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.pricing-notes {
+  display: grid;
+  gap: var(--space-xs);
+  color: var(--ink-soft);
+  font-size: var(--fs-sm);
+}
+
+.pricing-notes p {
+  margin: 0;
+}
+
+.pricing-legal {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-lg);
+  padding-top: var(--space-lg);
+  border-top: 1px solid var(--line);
+}

@@ -51,6 +51,8 @@
   /* Appended after the next/font families so Chinese glyphs do not fall to the OS default. */
   --font-cjk-fallback: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC",
     "Source Han Sans SC";
+  /* Code, commands and keys only. */
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, "Liberation Mono", monospace;
 }
 
 /* Dark theme: the same paper-and-ink system with the values inverted. Only base colours are

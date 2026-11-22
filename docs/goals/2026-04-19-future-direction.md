@@ -1,7 +1,7 @@
 ---
 title: Future Direction
 status: done
-updated_at: 2026-04-19
+updated_at: 2026-11-22
 vision_doc: vision.md
 related_docs:
   - docs/ARCHITECTURE.md
@@ -29,6 +29,7 @@ Build an AI-first procurement intelligence product for licensed architects and d
 ## What To Do
 
 - Focus on official-source-first opportunity discovery
+- Let architects browse on the website or ask their AI assistant to search the same public records and return the source evidence. The assistant connects through the [read-only Model Context Protocol endpoint](../structures/2026-10-21-storage-auth-api-architecture.md#public-access-for-ai-assistants).
 - Expand cross-border procurement and design opportunity coverage
 - Invest in normalization, evidence trace, and qualification scoring
 - Help teams decide `bid / no-bid`, not just browse listings
@@ -69,6 +70,8 @@ It should win by being:
 ## Near-Term Direction
 
 - Deepen the current intelligence product
+- Let architects try the assistant connection anonymously and evaluate it with a free key. Keep source evidence accessible at every tier and build the paid tier around functions such as deadline alerts.
+- Keep the path short: an architect can copy the address and get a first answer without an account, and move from a free key to Pro in at most three clicks.
 - Charge studios for better filtering, alerting, and decision support
 - Build operator-grade review flows before opening any external submission channel
 

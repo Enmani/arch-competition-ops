@@ -90,6 +90,8 @@ test("saved searches store canonical filters and ignore paging fields", async ()
       filters: {
         buildingCategories: ["housing", "education"],
         jurisdiction: "france",
+        region: "europe",
+        participationFee: "free",
         limit: 36,
         offset: 72,
         sort: "latest",
@@ -102,6 +104,8 @@ test("saved searches store canonical filters and ignore paging fields", async ()
     assert.deepEqual(saved.filters, {
       buildingCategories: ["education", "housing"],
       jurisdiction: "france",
+      region: "europe",
+      participationFee: "free",
       sort: "latest",
     });
 

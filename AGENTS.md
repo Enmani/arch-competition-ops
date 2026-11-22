@@ -51,12 +51,17 @@ This repository is a competition-intelligence monorepo. Agents should favor evid
 4. Missing fields must stay empty or `unknown`; do not infer them unless the evidence is explicit.
 5. Do not write raw browsing output into canonical records without normalization.
 6. Keep runtime outputs inside `data/`, `artifacts/`, or `reports/`; do not mix them with source code.
-7. Reuse the existing modes, config files, and storage layer instead of adding parallel workflows.
+7. Reuse the existing modes, config files, and storage layer instead of adding parallel workflows. Prefer mature frameworks and official SDKs over hand-written code; build only what is unique to this product. Add a new structure only if it lowers overall complexity.
 8. Treat the website as a consumer of normalized records, not as the place where source facts are invented.
 9. Preserve the procurement-first product direction for licensed architects; do not drift into generic competition-gallery logic or styling.
 10. All new product UI copy must follow the repository i18n contract and ship in both `zh` and `en`.
 11. Do not let `docs/changelog/**` get ahead of canonical docs; if a round changes roadmap, goal, structure, plan, or governance truth, update the owning doc in the same round and use changelog only as the dated trace.
 12. Keep the web app on port `3400` unless the user explicitly changes the repo standard.
+13. Soft rules are user preferences and screening judgment (`config/filters.yml`, the screening skill); the user may rewrite them at any time, so never hard-code them. Authentication, quotas, billing and permissions are hard rules enforced in code, never in prompts or config prose.
+14. Group pipeline failures by one failure class and fix the class, not each source with its own patch.
+15. Mark official fields and AI screening conclusions as separate in every output (web, API, MCP). Wording on these surfaces, including MCP tool descriptions, stays neutral and plain with no filler; `official_url`, `source_url` and `evidence_note` are never dropped for brevity.
+16. The MCP entry exposes read-only tools only, and every tool is annotated read-only. Writes (saved searches, watchlists, review) stay in the web app behind login.
+17. When a new standard replaces an old one, rewrite the owning text in place instead of stacking patches.
 
 ## Routing
 

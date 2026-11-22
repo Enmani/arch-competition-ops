@@ -1,0 +1,407 @@
+/* MCP entry: the connect page, the AI-access section of the account page and pricing.
+   Same paper-and-rule language as the rest: no shadows except the modal, one accent. */
+
+/* ------------------------------ shared ------------------------------ */
+
+.mcp-page {
+  display: grid;
+  gap: var(--space-xl);
+  max-width: 48rem;
+  padding: var(--space-3xl) 0;
+}
+
+.mcp-intro {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.mcp-intro h1 {
+  margin: 0;
+  font-family: var(--font-display), var(--font-cjk-fallback), sans-serif;
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  line-height: 1.25;
+  text-wrap: balance;
+}
+
+.mcp-intro p {
+  margin: 0;
+  color: var(--ink-soft);
+  text-wrap: pretty;
+}
+
+.mcp-note {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
+
+.copy-control {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+/* Wide enough for "Copied" / "已复制", so the label change does not move anything. */
+.copy-button {
+  min-width: 5.5rem;
+}
+
+.copy-failed,
+.mcp-field-error {
+  color: var(--danger-ink);
+  font-size: var(--fs-sm);
+}
+
+.mcp-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm) var(--space-lg);
+  padding: var(--space-md) var(--space-lg);
+  border: 1px solid var(--accent-line);
+  background: var(--accent-wash);
+}
+
+.mcp-notice p {
+  margin: 0;
+  color: var(--ink);
+}
+
+.mcp-notice.is-error {
+  border-color: var(--danger-line);
+  background: var(--danger-wash);
+}
+
+.mcp-notice.is-error p {
+  color: var(--danger-ink);
+}
+
+.mcp-notice.is-pending {
+  border-color: var(--line-strong);
+  background: var(--surface-alt);
+}
+
+.mcp-code,
+.mcp-endpoint-url,
+.mcp-key-prefix,
+.mcp-key-value {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+}
+
+/* ------------------------------ connect ------------------------------ */
+
+.mcp-endpoint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm) var(--space-md);
+  padding: var(--space-lg) 0;
+  border-top: 1px solid var(--line-strong);
+  border-bottom: 1px solid var(--line);
+}
+
+.mcp-endpoint-label {
+  flex-basis: 100%;
+  color: var(--ink-faint);
+  font-size: var(--fs-sm);
+}
+
+.mcp-endpoint-url {
+  flex: 1 1 16rem;
+  min-width: 0;
+  color: var(--ink);
+  font-size: var(--fs-lg);
+  overflow-wrap: anywhere;
+}
+
+.mcp-quota {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: var(--fs-sm);
+}
+
+.mcp-key-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-md) var(--space-lg);
+  padding-bottom: var(--space-lg);
+  border-bottom: 1px solid var(--line);
+}
+
+.mcp-key-lead,
+.mcp-key-inuse {
+  flex: 1 1 14rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.mcp-key-inuse {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+}
+
+.mcp-key-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.mcp-key-strip > .mcp-notice {
+  flex-basis: 100%;
+}
+
+.mcp-paste {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.mcp-paste label,
+.mcp-create label {
+  color: var(--ink-faint);
+  font-size: var(--fs-sm);
+}
+
+.mcp-paste input,
+.mcp-create input {
+  flex: 1 1 12rem;
+  min-width: 0;
+  height: var(--control-h);
+  padding: 0 var(--control-px);
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.mcp-paste input[aria-invalid="true"],
+.mcp-create input[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+
+.mcp-paste input:focus-visible,
+.mcp-create input:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.mcp-paste .mcp-field-error {
+  flex-basis: 100%;
+}
+
+.mcp-clients {
+  display: grid;
+}
+
+.mcp-tabs {
+  display: flex;
+  gap: var(--space-xs);
+  overflow-x: auto;
+  border-bottom: 1px solid var(--line);
+  scrollbar-width: none;
+}
+
+.mcp-tab {
+  flex: none;
+  height: var(--control-h);
+  padding: 0 var(--space-sm);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  transition:
+    color 180ms var(--ease-out-quart),
+    border-color 180ms var(--ease-out-quart);
+}
+
+.mcp-tab:hover {
+  color: var(--ink);
+}
+
+.mcp-tab[aria-selected="true"] {
+  border-bottom-color: var(--accent);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* Inset, because the scrolling tab row would clip an outer ring. */
+.mcp-tab:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: -3px;
+}
+
+.mcp-panel {
+  display: grid;
+  gap: var(--space-md);
+  padding: var(--space-lg) 0;
+}
+
+.mcp-panel p {
+  margin: 0;
+}
+
+.mcp-steps {
+  display: grid;
+  gap: var(--space-sm);
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.mcp-install {
+  justify-self: start;
+}
+
+.mcp-snippet {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-sm);
+}
+
+.mcp-code {
+  margin: 0;
+  padding: var(--space-md);
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  background: var(--surface-alt);
+  color: var(--ink);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.mcp-facts {
+  display: grid;
+  gap: var(--space-sm);
+  margin: 0;
+}
+
+.mcp-facts div {
+  display: grid;
+  grid-template-columns: minmax(7rem, auto) 1fr;
+  gap: var(--space-md);
+}
+
+.mcp-facts dt {
+  color: var(--ink-faint);
+  font-size: var(--fs-sm);
+}
+
+.mcp-facts dd {
+  margin: 0;
+}
+
+.mcp-examples h2 {
+  margin: 0 0 var(--space-sm);
+  font-size: var(--fs-lg);
+  font-weight: 600;
+}
+
+.mcp-examples ul {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-bottom: 1px solid var(--line);
+}
+
+.mcp-examples li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-lg);
+  padding: var(--space-md) 0;
+  border-top: 1px solid var(--line);
+}
+
+/* ------------------------------ dialogs ------------------------------ */
+
+.mcp-dialog {
+  width: min(calc(100vw - 2rem), 32rem);
+  max-width: none;
+  margin: auto;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 1.5rem 3rem color-mix(in oklch, var(--ink) 18%, transparent);
+}
+
+.mcp-dialog::backdrop {
+  background: color-mix(in oklch, var(--ink) 30%, transparent);
+}
+
+.mcp-dialog-card {
+  position: relative;
+  display: grid;
+  gap: var(--space-lg);
+  padding: var(--space-2xl);
+}
+
+.mcp-dialog-card h2 {
+  margin: 0;
+  padding-right: calc(var(--control-h) + var(--space-sm));
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.mcp-dialog-card p {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+.mcp-key-value {
+  display: block;
+  padding: var(--space-md);
+  border: 1px solid var(--accent-line);
+  background: var(--accent-wash);
+  font-size: var(--fs-md);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.mcp-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.button.is-danger {
+  border-color: var(--danger-line);
+  color: var(--danger-ink);
+}
+
+.button.is-danger:hover {
+  border-color: var(--danger);
+}
+
+@media (max-width: 640px) {
+  .mcp-page {
+    padding: var(--space-xl) 0;
+  }
+
+  .mcp-snippet {
+    grid-template-columns: 1fr;
+  }
+
+  .mcp-snippet .copy-control {
+    justify-self: start;
+  }
+
+  .mcp-examples li {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: var(--space-sm);
+  }
+}

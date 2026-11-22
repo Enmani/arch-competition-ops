@@ -1,6 +1,7 @@
 export const dashboard = {
   eyebrow: "工作台",
   title: "事务所工作台",
+  watchlistTitle: "观察列表",
   description: "查看已观察机会，并继续资格、组队与落地路径筛查。",
   table: {
     competition: "项目",

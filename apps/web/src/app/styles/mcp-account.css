@@ -1,0 +1,305 @@
+/* The AI-access section of the account page: keys, usage meters and the plan.
+   Same paper-and-rule language as the rest; one accent, danger only for a reached limit. */
+
+.dashboard-page {
+  display: grid;
+  gap: var(--space-xl);
+  padding-top: var(--space-2xl);
+}
+
+.dashboard-page > .content-grid {
+  padding-top: 0;
+}
+
+.dashboard-header {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.dashboard-header h1 {
+  margin: 0;
+  font-family: var(--font-display), var(--font-cjk-fallback), sans-serif;
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.mcp-account {
+  gap: var(--space-lg);
+}
+
+.mcp-account .panel-header {
+  margin-bottom: 0;
+}
+
+.mcp-account-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(16rem, 1fr);
+  gap: var(--space-xl) var(--space-2xl);
+}
+
+.mcp-account-side {
+  display: grid;
+  align-content: start;
+  gap: var(--space-xl);
+}
+
+.mcp-block {
+  display: grid;
+  align-content: start;
+  gap: var(--space-md);
+}
+
+.mcp-account-side .mcp-block + .mcp-block,
+.mcp-account-side .mcp-notice + .mcp-block {
+  padding-top: var(--space-lg);
+  border-top: 1px solid var(--line);
+}
+
+.mcp-block-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.mcp-block-head h3 {
+  margin: 0;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.mcp-block-head h3:focus {
+  outline: none;
+}
+
+.mcp-meta {
+  color: var(--ink-faint);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.mcp-create {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.mcp-create label {
+  flex-basis: 100%;
+}
+
+.mcp-create .mcp-note {
+  flex-basis: 100%;
+}
+
+.mcp-empty {
+  margin: 0;
+  padding: var(--space-lg) 0;
+  border-top: 1px solid var(--line);
+  color: var(--ink-soft);
+}
+
+.mcp-key-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-bottom: 1px solid var(--line);
+}
+
+.mcp-key-row {
+  display: grid;
+  grid-template-columns: minmax(6rem, 1fr) auto auto;
+  grid-template-areas:
+    "name status action"
+    "prefix prefix prefix"
+    "dates dates dates";
+  align-items: center;
+  gap: var(--space-xs) var(--space-md);
+  padding: var(--space-md) 0;
+  border-top: 1px solid var(--line);
+}
+
+.mcp-key-row.is-revoked {
+  grid-template-columns: minmax(6rem, 1fr) auto;
+  grid-template-areas:
+    "name status"
+    "prefix prefix"
+    "dates dates";
+  color: var(--ink-faint);
+}
+
+.mcp-key-name {
+  grid-area: name;
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.mcp-key-prefix {
+  grid-area: prefix;
+  color: var(--ink-soft);
+  overflow-wrap: anywhere;
+}
+
+.mcp-key-dates {
+  display: flex;
+  flex-wrap: wrap;
+  grid-area: dates;
+  gap: 0 var(--space-lg);
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: var(--fs-sm);
+}
+
+.mcp-key-dates div {
+  display: flex;
+  gap: var(--space-xs);
+}
+
+.mcp-key-dates dd {
+  min-width: 6ch;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.mcp-key-status {
+  grid-area: status;
+  color: var(--ink-faint);
+  font-size: var(--fs-sm);
+}
+
+.mcp-key-status.is-active {
+  color: var(--accent);
+}
+
+.mcp-key-row .button {
+  grid-area: action;
+}
+
+.mcp-meter {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.mcp-meter-head,
+.mcp-meter-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.mcp-meter-count {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.mcp-meter-foot {
+  min-height: 1.5em;
+  color: var(--ink-faint);
+  font-size: var(--fs-sm);
+}
+
+.mcp-meter-track {
+  height: 0.375rem;
+  overflow: hidden;
+  background: var(--surface-strong);
+}
+
+.mcp-meter-track span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 320ms var(--ease-out-quart);
+}
+
+.mcp-meter.is-full .mcp-meter-track span {
+  background: var(--danger);
+}
+
+.mcp-meter.is-near .mcp-meter-state {
+  color: var(--ink);
+}
+
+.mcp-meter.is-full .mcp-meter-state {
+  color: var(--danger-ink);
+}
+
+.mcp-upgrade {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-sm);
+}
+
+.mcp-upgrade-title {
+  margin: 0;
+}
+
+.mcp-upgrade-title span {
+  color: var(--ink-soft);
+  font-size: var(--fs-sm);
+}
+
+/* Segmented control built on radio inputs: one group, arrow keys move between options. */
+.mcp-interval {
+  display: inline-flex;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+}
+
+.mcp-interval label {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  height: var(--control-h);
+  padding: 0 var(--space-lg);
+  color: var(--ink-soft);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.mcp-interval label + label {
+  border-left: 1px solid var(--line-strong);
+}
+
+.mcp-interval label.is-selected {
+  background: var(--ink);
+  color: var(--surface);
+}
+
+.mcp-interval input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.mcp-interval label:has(input:focus-visible) {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.mcp-price {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+@media (max-width: 960px) {
+  .mcp-account-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .mcp-account.panel {
+    padding: var(--space-lg);
+  }
+}

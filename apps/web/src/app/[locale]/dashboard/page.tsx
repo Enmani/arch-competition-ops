@@ -1,13 +1,17 @@
 import type { Metadata } from "next";
 
+import { MCP_MAX_ACTIVE_KEYS } from "@arch-competition/core";
 import { workspaceKeyForUser } from "@arch-competition/storage";
+
+import { McpAccountPanel } from "@/components/mcp-account-panel";
 
 import { SavedSearchesPanel } from "@/components/saved-searches-panel";
 import WatchlistDashboardTable, { type WatchlistDashboardRow } from "@/components/watchlist-dashboard-table";
 import { buildLocalePath } from "@/i18n/config";
-import { pickDashboardTableCopy, pickSavedSearchCopy } from "@/i18n/slices";
+import { pickDashboardTableCopy, pickMcpAccountCopy, pickSavedSearchCopy } from "@/i18n/slices";
 import { getDictionary, resolveLocaleOrNotFound } from "@/i18n/server";
 import { requirePageUser } from "@/lib/auth";
+import { readBillingReturn } from "@/lib/mcp-account";
 import { buildPageMetadata } from "@/lib/page-metadata";
 import { getStorage } from "@/lib/server-storage";
 
@@ -15,15 +19,16 @@ export const dynamic = "force-dynamic";
 
 type LocalizedDashboardPageProps = {
   params: Promise<{ locale: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
-export const generateMetadata = async ({ params }: LocalizedDashboardPageProps): Promise<Metadata> => {
+export const generateMetadata = async ({ params }: Pick<LocalizedDashboardPageProps, "params">): Promise<Metadata> => {
   const locale = resolveLocaleOrNotFound((await params).locale);
   // Private page: titled for the tab, but kept out of search indexes.
   return buildPageMetadata(locale, "dashboard", "/dashboard", { index: false });
 };
 
-const LocalizedDashboardPage = async ({ params }: LocalizedDashboardPageProps) => {
+const LocalizedDashboardPage = async ({ params, searchParams }: LocalizedDashboardPageProps) => {
   const { locale: rawLocale } = await params;
   const locale = resolveLocaleOrNotFound(rawLocale);
   const dictionary = getDictionary(locale);
@@ -31,9 +36,12 @@ const LocalizedDashboardPage = async ({ params }: LocalizedDashboardPageProps) =
   const user = await requirePageUser(locale, buildLocalePath(locale, "/dashboard"));
   const storage = await getStorage();
   const workspaceKey = workspaceKeyForUser(user.id);
-  const [watchlistEntries, savedSearches] = await Promise.all([
+  const billing = (await searchParams).billing;
+  const [watchlistEntries, savedSearches, mcpKeys, mcpUsage] = await Promise.all([
     storage.watchlist.list({ limit: 24, workspaceKey }),
     storage.savedSearches.list({ limit: 20, workspaceKey }),
+    storage.mcp.listKeys(user.id),
+    storage.mcp.getUsage(user.id),
   ]);
   // One IN query for all entries instead of one query per entry.
   const watchedOpportunities = await storage.opportunities.getByIds(
@@ -46,32 +54,48 @@ const LocalizedDashboardPage = async ({ params }: LocalizedDashboardPageProps) =
   });
 
   return (
-    <main className="content-grid" style={{ paddingTop: 28 }}>
-      <section className="panel">
-        <div className="panel-header">
-          <div>
-            <span className="eyebrow">{dictionary.dashboard.eyebrow}</span>
-            <h1>{dictionary.dashboard.title}</h1>
-            <p>{dictionary.dashboard.description}</p>
-          </div>
-        </div>
-        <WatchlistDashboardTable copy={pickDashboardTableCopy(dictionary)} initialRows={rows} locale={locale} />
-      </section>
+    <main className="dashboard-page">
+      <header className="dashboard-header">
+        <span className="eyebrow">{dictionary.dashboard.eyebrow}</span>
+        <h1>{dictionary.dashboard.title}</h1>
+      </header>
 
-      <aside className="panel">
-        <div className="panel-header">
-          <div>
-            <span className="eyebrow">{dictionary.workspace.savedSearches.eyebrow}</span>
-            <h2>{dictionary.workspace.savedSearches.title}</h2>
-            <p>{dictionary.workspace.savedSearches.description}</p>
+      <McpAccountPanel
+        billingReturn={readBillingReturn(typeof billing === "string" ? billing : null)}
+        connectHref={buildLocalePath(locale, "/connect")}
+        copy={pickMcpAccountCopy(dictionary)}
+        initialKeys={mcpKeys}
+        initialUsage={mcpUsage}
+        locale={locale}
+        maxActiveKeys={MCP_MAX_ACTIVE_KEYS}
+      />
+
+      <div className="content-grid">
+        <section className="panel">
+          <div className="panel-header">
+            <div>
+              <h2>{dictionary.dashboard.watchlistTitle}</h2>
+              <p>{dictionary.dashboard.description}</p>
+            </div>
           </div>
-        </div>
-        <SavedSearchesPanel
-          copy={pickSavedSearchCopy(dictionary)}
-          initialItems={savedSearches}
-          locale={locale}
-        />
-      </aside>
+          <WatchlistDashboardTable copy={pickDashboardTableCopy(dictionary)} initialRows={rows} locale={locale} />
+        </section>
+
+        <aside className="panel">
+          <div className="panel-header">
+            <div>
+              <span className="eyebrow">{dictionary.workspace.savedSearches.eyebrow}</span>
+              <h2>{dictionary.workspace.savedSearches.title}</h2>
+              <p>{dictionary.workspace.savedSearches.description}</p>
+            </div>
+          </div>
+          <SavedSearchesPanel
+            copy={pickSavedSearchCopy(dictionary)}
+            initialItems={savedSearches}
+            locale={locale}
+          />
+        </aside>
+      </div>
     </main>
   );
 };

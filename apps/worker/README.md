@@ -51,8 +51,8 @@ Errors are printed as `error: ...` without a traceback; add `-v` for progress lo
 - `normalizers/` dates, money, text, identity keys, and the evidence-based confidence formula.
 - `http/` the one HTTP client (retries for GET, per-host rate limit, size cap, SSRF guards,
   charset detection, optional raw-response archive under `artifacts/html`).
-- `storage/` SQLite: `schema.py` (mirror of `apps/web/migrations`), `competitions.py` (field-level
-  merge upsert), `runs.py`, `review.py`.
+- `storage/` SQLite: `schema.py` initializes the database using `schema_sql.py`, the mirror of
+  `apps/web/migrations`. The folder also holds `competitions.py` for field-level merges, `runs.py` and `review.py`.
 - `postprocess/` per-source maintenance tasks registered by `source_id` (ANAC, GETS).
 - `ingest.py`, `maintenance.py`, `diagnostics.py`, `demo.py` the command implementations.
 - `locking.py` cross-process lock for ingest batches.

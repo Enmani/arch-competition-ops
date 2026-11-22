@@ -80,7 +80,8 @@ test("every filter the form submits survives a parse and serialize round trip", 
     "search=school&jurisdiction=italy&publishedWithinDays=30&deadlineBefore=2027-01-31&deadlineAfter=2026-12-01" +
     "&projectType=urban_planning&buildingCategory=education&designScope=scheme&projectMode=renovation" +
     "&minEstimatedValueEur=10000&maxEstimatedValueEur=500000&licensedArchitectRequired=true&includeExpired=true" +
-    "&procedureType=open&implementationPath=direct_award&minQualificationScore=60&sort=latest";
+    "&procedureType=open&implementationPath=direct_award&minQualificationScore=60&sort=latest" +
+    "&region=europe&participationFee=free";
   const result = roundTrip(query);
 
   assert.equal(result.filters.procedureType, "open");
