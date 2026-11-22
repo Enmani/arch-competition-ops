@@ -18,8 +18,9 @@ import type { OpportunityRow, StoredDiscoverSurfaceData, StoredOpportunityFeedIt
 export const queryOpportunityFeed = async (
   context: StorageContext,
   filters: DiscoverFilters = {},
+  asOf = context.clock.now(),
 ): Promise<StoredOpportunityFeedItem[]> => {
-  const statement = buildPageStatement(normalizeQuery(filters), context.clock);
+  const statement = buildPageStatement(normalizeQuery(filters), { now: () => asOf });
   const rows = await readRows<OpportunityRow>(context.reader, statement.sql, statement.parameters);
   return rows.map((row) => toOpportunityFeedItem(row, context.logger));
 };

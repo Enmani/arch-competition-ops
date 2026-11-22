@@ -85,7 +85,7 @@ export const createStorage = (options: StorageContextOptions) => {
       continue: (filters: DiscoverFilters, token: string) => continueOpportunityList(context, filters, token),
       list: (filters?: DiscoverFilters) => getOpportunityList(context, filters),
       getLocation: (slug: string) => getOpportunityLocation(context, slug),
-      feed: (filters?: DiscoverFilters) => queryOpportunityFeed(context, filters),
+      feed: (filters?: DiscoverFilters, asOf?: Date) => queryOpportunityFeed(context, filters, asOf),
       getByIds: (ids: string[]) => getOpportunitiesByIds(context, ids),
       getBySlug: (slug: string) => getOpportunityBySlug(context, slug),
     },
