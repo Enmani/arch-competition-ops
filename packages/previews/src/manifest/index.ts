@@ -5,9 +5,29 @@
 //   manifest.json
 //   images/<file>.jpg
 
+import type { OpportunityPlaceholderInput } from "../placeholder/render";
+import type { PreviewOpportunity } from "../types";
+import { PREVIEW_ALGORITHM_VERSION } from "../version";
+
 export const MANIFEST_SCHEMA_VERSION = 1;
 export const MANIFEST_FILE = "manifest.json";
 export const IMAGES_DIRECTORY = "images";
+export const LOCATORS_DIRECTORY = "locators";
+
+export const previewSourceInput = (opportunity: PreviewOpportunity) => JSON.stringify([
+  PREVIEW_ALGORITHM_VERSION, opportunity.slug, opportunity.title, opportunity.authorityName,
+  opportunity.jurisdictionKey, opportunity.locationLabel, opportunity.officialUrl, opportunity.sourceUrl,
+  opportunity.documentsPortalUrl, opportunity.briefPdfUrl, opportunity.geoLat ?? null, opportunity.geoLng ?? null,
+]);
+
+export const locatorInput = (opportunity: OpportunityPlaceholderInput) => JSON.stringify([
+  opportunity.title, opportunity.authorityName, opportunity.jurisdictionKey,
+  opportunity.locationLabel, opportunity.geoLat ?? null, opportunity.geoLng ?? null,
+]);
+
+export type PreviewLocatorAssets = { input: string; locator: string; inset: string | null };
+
+export const isSafeLocatorFileName = (value: string) => /^[a-f0-9]{24}\.svg$/.test(value);
 
 /** `none`: nothing usable was found; remembered so the generator does not retry on every run. */
 export type PreviewKind = "official-image" | "satellite" | "locator" | "none";
@@ -29,6 +49,7 @@ export type PreviewManifestEntry = {
   kind: PreviewKind;
   /** Where the record is, for the placeholder marker when there is no image. */
   locator?: PreviewLocatorPoint;
+  locatorAssets?: PreviewLocatorAssets;
   /** Hash of the record fields and algorithm version this entry was generated from. */
   sourceHash: string;
 };
@@ -81,6 +102,14 @@ const parseLocator = (value: unknown): PreviewLocatorPoint | undefined => {
   return { label: typeof label === "string" ? label : null, lat, lng, precision };
 };
 
+const parseLocatorAssets = (value: unknown): PreviewLocatorAssets | undefined => {
+  if (!isRecord(value)) return undefined;
+  const { input, locator, inset } = value;
+  if (typeof input !== "string" || typeof locator !== "string" || !isSafeLocatorFileName(locator)) return undefined;
+  if (inset !== null && (typeof inset !== "string" || !isSafeLocatorFileName(inset))) return undefined;
+  return { input, locator, inset };
+};
+
 const parseEntry = (value: unknown): PreviewManifestEntry | null => {
   if (!isRecord(value)) {
     return null;
@@ -99,6 +128,7 @@ const parseEntry = (value: unknown): PreviewManifestEntry | null => {
     return null;
   }
   const locator = parseLocator(value.locator);
+  const locatorAssets = parseLocatorAssets(value.locatorAssets);
   return {
     algorithmVersion,
     attribution: typeof attribution === "string" ? attribution : null,
@@ -106,6 +136,7 @@ const parseEntry = (value: unknown): PreviewManifestEntry | null => {
     generatedAt,
     kind: kind as PreviewKind,
     ...(locator ? { locator } : {}),
+    ...(locatorAssets ? { locatorAssets } : {}),
     sourceHash,
   };
 };
@@ -115,13 +146,10 @@ export const parsePreviewManifest = (input: unknown): PreviewManifest | null => 
   if (!isRecord(input) || input.schemaVersion !== MANIFEST_SCHEMA_VERSION || !isRecord(input.entries)) {
     return null;
   }
-  const entries: Record<string, PreviewManifestEntry> = {};
-  for (const [slug, raw] of Object.entries(input.entries)) {
+  const entries = Object.fromEntries(Object.entries(input.entries).flatMap(([slug, raw]) => {
     const entry = parseEntry(raw);
-    if (entry) {
-      entries[slug] = entry;
-    }
-  }
+    return entry ? [[slug, entry]] : [];
+  }));
   return {
     entries,
     generatedAt: typeof input.generatedAt === "string" ? input.generatedAt : "",

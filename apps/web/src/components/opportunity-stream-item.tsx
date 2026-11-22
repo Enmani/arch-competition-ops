@@ -6,6 +6,7 @@ import { OpportunityMedia } from "@/components/opportunity-media";
 import WatchToggleButton from "@/components/watch-toggle-button";
 import { buildLocalePath, type AppLocale } from "@/i18n/config";
 import type { DiscoverFeedCopy } from "@/i18n/slices";
+import type { OpportunityWithPreview } from "@/lib/opportunity-preview-assets";
 import { getOpportunityDisplayMeta } from "@/lib/opportunity-display";
 
 type OpportunityStreamItemProps = {
@@ -15,7 +16,7 @@ type OpportunityStreamItemProps = {
   locale: AppLocale;
   onOpen?: (opportunity: StoredOpportunityFeedItem) => void;
   onWatchChange?: (isWatched: boolean) => void;
-  opportunity: StoredOpportunityFeedItem;
+  opportunity: OpportunityWithPreview;
   signedIn: boolean;
 };
 
@@ -52,7 +53,7 @@ export const OpportunityStreamItem = ({
         }}
         prefetch={false}
       >
-        <OpportunityMedia slug={opportunity.slug} />
+        <OpportunityMedia key={opportunity.preview?.locator} preview={opportunity.preview} slug={opportunity.slug} />
 
         <div className="opportunity-tile-copy">
           <h2 className="opportunity-tile-title" title={displayTitle === opportunity.title ? undefined : opportunity.title}>

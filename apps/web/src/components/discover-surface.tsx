@@ -14,6 +14,7 @@ import {
   readDiscoverPageState,
   type DiscoverSearchParams,
 } from "@/lib/discover";
+import { withOpportunityPreviews } from "@/lib/opportunity-preview-assets";
 import { getStorage } from "@/lib/server-storage";
 
 type DiscoverSurfaceProps = {
@@ -53,7 +54,7 @@ export const DiscoverSurface = async ({ dictionary, locale, searchParams }: Disc
           copy={pickDiscoverFeedCopy(dictionary)}
           filters={filters}
           continuation={continuation}
-          initialItems={opportunities}
+          initialItems={await withOpportunityPreviews(opportunities)}
           initialTotal={total}
           initialWatchedIds={watchedOpportunityIds}
           key={`${filtersKey}:${user !== null}`}

@@ -4,6 +4,7 @@ import { competitionFilterFields as fields } from "./discover-filters";
 import { PARTICIPATION_FEE_FILTERS } from "./participation-fee";
 import { PROJECT_TYPES, REGIONS } from "./taxonomy";
 
+export const MCP_MAX_RESPONSE_BYTES = 128 * 1024;
 export const MCP_MAX_OFFSET = 1000;
 const paging = {
   limit: z.number().int().min(1).max(25).default(10).describe("Rows per page, 1–25. Default 10."),
@@ -39,6 +40,7 @@ const summarySchema = z.object({
   regions: z.array(z.string()), project_types: z.array(z.enum(PROJECT_TYPES)),
   deadline_at: z.string().nullable(), licensed_architect_required: z.boolean().nullable(),
   registration_fee_eur: z.number().nullable(), submission_fee_eur: z.number().nullable(),
+  official_url: z.string().nullable(), source_url: z.string(), evidence_note: z.string(),
 });
 
 export const competitionPageSchema = z.object({
@@ -47,7 +49,6 @@ export const competitionPageSchema = z.object({
   next_offset: z.number().int().nullable().describe("Offset for the next page, or null when none is available within the offset limit."),
 });
 export const competitionDetailSchema = summarySchema.extend({
-  official_url: z.string().nullable(), source_url: z.string(), evidence_note: z.string(),
   authority_name: z.string(), opportunity_type: z.string(), eligibility_summary: z.string(),
   estimated_contract_value_eur: z.number().nullable(), prize_summary: z.string().nullable(),
   documents_portal_url: z.string().nullable(), brief_pdf_url: z.string().nullable(),

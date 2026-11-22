@@ -3,12 +3,60 @@
 // the manifest simply is not there; the caller answers with the locator placeholder instead.
 import {
   IMAGES_DIRECTORY,
+  LOCATORS_DIRECTORY,
+  locatorInput,
+  previewSourceInput,
   MANIFEST_FILE,
   isSafeImageFileName,
   parsePreviewManifest,
   type PreviewManifest,
   type PreviewManifestEntry,
 } from "../manifest";
+
+import type { OpportunityPlaceholderInput } from "../placeholder/render";
+import type { PreviewOpportunity } from "../types";
+import { PREVIEW_ALGORITHM_VERSION } from "../version";
+
+export type StaticOpportunityPreview = {
+  attribution: string | null;
+  image: string | null;
+  inset: string | null;
+  locator: string;
+};
+
+const sourceEncoder = new TextEncoder();
+
+export const staticOpportunityPreview = async (
+  manifest: PreviewManifest,
+  opportunity: PreviewOpportunity,
+): Promise<StaticOpportunityPreview | undefined> => {
+  const entry = Object.hasOwn(manifest.entries, opportunity.slug) ? manifest.entries[opportunity.slug] : undefined;
+  const assets = entry?.locatorAssets;
+  if (!assets || entry.algorithmVersion !== PREVIEW_ALGORITHM_VERSION || assets.input !== locatorInput(opportunity)) return;
+  const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", sourceEncoder.encode(previewSourceInput(opportunity))));
+  const sourceHash = Array.from(hash.subarray(0, 8), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  if (entry.sourceHash !== sourceHash) return;
+
+  return {
+    attribution: entry.attribution,
+    image: entry.file ? `/previews/${IMAGES_DIRECTORY}/${entry.file}` : null,
+    inset: assets.inset ? `/previews/${LOCATORS_DIRECTORY}/${assets.inset}` : null,
+    locator: `/previews/${LOCATORS_DIRECTORY}/${assets.locator}`,
+  };
+};
+
+export const previewLocatorOverride = (
+  entry: PreviewManifestEntry | undefined,
+  opportunity: OpportunityPlaceholderInput,
+  revision: string,
+) => {
+  const point = entry?.locator;
+  if (!point) return undefined;
+  if (entry.locatorAssets && (entry.algorithmVersion !== revision || entry.locatorAssets.input !== locatorInput(opportunity))) {
+    return undefined;
+  }
+  return { geoLat: point.lat, geoLng: point.lng, locationLabel: point.label };
+};
 
 /** Reads files of a previews directory by relative path ("manifest.json", "images/x.jpg"). */
 export type PreviewAssetSource = {
@@ -93,6 +141,7 @@ export const lookupPreview = async (
   loader: ManifestLoader,
   source: PreviewAssetSource,
   slug: string,
+  readImage = true,
 ): Promise<PreviewLookup | null> => {
   const manifest = await loader();
   if (!manifest) {
@@ -103,7 +152,7 @@ export const lookupPreview = async (
     if (!entry) {
       continue;
     }
-    if (!entry.file || !isSafeImageFileName(entry.file)) {
+    if (!readImage || !entry.file || !isSafeImageFileName(entry.file)) {
       return { entry, image: null };
     }
     return { entry, image: await source.readBinary(`${IMAGES_DIRECTORY}/${entry.file}`) };

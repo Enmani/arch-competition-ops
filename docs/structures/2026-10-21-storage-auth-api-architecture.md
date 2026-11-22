@@ -51,7 +51,7 @@ Accounts are real: each user has a private workspace (`user:<id>`), the `/ops` s
 
 ## Public access for AI assistants
 
-An architect's AI assistant can search the same records as the website through the Model Context Protocol (MCP). For example, it can search for free competitions in Italy, then use a result's slug to retrieve the official notice, publishing source and evidence note.
+An architect's AI assistant can search the same records as the website through the Model Context Protocol (MCP). Both list tools include the official URL, publishing-source URL and evidence note in every result. The slug retrieves the full public record.
 
 | Tool | Public data it reads |
 | --- | --- |
@@ -62,7 +62,7 @@ An architect's AI assistant can search the same records as the website through t
 
 The Next.js route accepts anonymous and API-key Streamable HTTP POST requests at `/mcp`, outside locale and session-cookie middleware. Each request gets its own SDK server and JSON response. An initialized notification returns HTTP 202. GET returns 405. The four tool handlers use only the public feed, slug reader, and controlled values. Requests that call a tool pass through the quota check first. Each tool publishes its core Zod input and output schemas through `tools/list`; the SDK validates tool arguments and structured results against them.
 
-Each POST accepts one message of up to 16 KiB. Lists return 10 rows by default, up to 25, and permit offsets up to 1000. The MCP list tools use one query and fetch at most one extra result to set `hasMore`. The website's discover query still calculates a total. Use `next_offset` to fetch the next page. If it is null and `hasMore` is true, narrow the filters to continue within the offset limit. The complete JSON response is capped at 128 KiB. A result above the cap returns an explicit error so the assistant can request a smaller page. These bounds apply per request. D1 may scan more rows than it returns.
+Each POST accepts one message of up to 16 KiB. Lists return 10 rows by default, up to 25, and permit offsets up to 1000. The MCP list tools use one query and fetch at most one extra result to set `hasMore`. The website's discover query still calculates a total. Use `next_offset` to fetch the next page. If it is null and `hasMore` is true, narrow the filters to continue within the offset limit. The complete JSON response is capped at 128 KiB. Each list returns as many complete records as fit and advances by the number returned. When even the next record is too large, the tool returns an explicit error. These bounds apply per request. D1 may scan more rows than it returns.
 
 The fee filter uses the two recorded amounts in euros. Two explicit zeros qualify as free. Either positive amount qualifies as paid. Other combinations, including one zero and one missing amount, have unknown fee status.
 

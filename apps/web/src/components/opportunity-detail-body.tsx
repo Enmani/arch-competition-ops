@@ -1,6 +1,6 @@
 import Image from "next/image";
 
-import type { StoredOpportunityFeedItem } from "@arch-competition/storage";
+import type { OpportunityWithPreview } from "@/lib/opportunity-preview-assets";
 
 import { ImageryCredit } from "@/components/imagery-credit";
 import WatchToggleButton from "@/components/watch-toggle-button";
@@ -27,7 +27,7 @@ type OpportunityDetailBodyProps = {
   locale: AppLocale;
   now: Date;
   onWatchChange?: (isWatched: boolean) => void;
-  opportunity: StoredOpportunityFeedItem;
+  opportunity: OpportunityWithPreview;
   /** The sheet opened from list data; the AI overview and excerpts are still on their way. */
   pending?: boolean;
   signedIn: boolean;
@@ -69,6 +69,7 @@ export const OpportunityDetailBody = ({
 }: OpportunityDetailBodyProps) => {
   const meta = getOpportunityDisplayMeta(copy, locale, opportunity);
   const { common, detail } = copy;
+  const imageUrl = `/api/opportunities/${opportunity.slug}/image?rev=${opportunityImageRevision}`;
   const isZh = locale === "zh";
   const assessment = opportunity.aiAssessment;
   const hasValue = opportunity.estimatedContractValueEur !== null || Boolean(opportunity.estimatedContractValueText);
@@ -196,10 +197,12 @@ export const OpportunityDetailBody = ({
             alt=""
             fill
             sizes="(max-width: 960px) 100vw, 880px"
-            src={`/api/opportunities/${opportunity.slug}/image?rev=${opportunityImageRevision}`}
+            src={opportunity.preview ? opportunity.preview.image ?? opportunity.preview.locator : imageUrl}
             unoptimized
           />
-          <ImageryCredit url={`/api/opportunities/${opportunity.slug}/image?rev=${opportunityImageRevision}`} />
+          {opportunity.preview
+            ? opportunity.preview.attribution && <p className="imagery-credit">{opportunity.preview.attribution}</p>
+            : <ImageryCredit url={imageUrl} />}
         </div>
         <div className="detail-head-copy">
           <p className="detail-kicker">

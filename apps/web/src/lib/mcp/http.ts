@@ -1,3 +1,4 @@
+import { MCP_MAX_RESPONSE_BYTES } from "@arch-competition/core";
 import { readRequestBody } from "@modelcontextprotocol/sdk/server/requestBody.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { JSONRPCRequestSchema, SUPPORTED_PROTOCOL_VERSIONS } from "@modelcontextprotocol/sdk/types.js";
@@ -68,14 +69,14 @@ export const createMcpHandler = (getReads: GetPublicReads, access: McpAccess, cl
     return rpcError(429, -32029, mcpLimitHint(metered.usage, request, metered.dailyBudgetReached), id, quota);
   }
 
-  const server = createCompetitionServer(getReads, clock);
+  const server = createCompetitionServer(getReads, clock, id);
   const transport = new WebStandardStreamableHTTPServerTransport({ enableJsonResponse: true, sessionIdGenerator: undefined });
   try {
     await server.connect(transport);
     const response = await transport.handleRequest(request, { parsedBody: message });
     if (!response.body) return response;
     const bytes = await response.arrayBuffer();
-    if (bytes.byteLength > 128 * 1024) {
+    if (bytes.byteLength > MCP_MAX_RESPONSE_BYTES) {
       if (isCall) logMcpCall(started, tool, attemptedSubject, "response_too_large");
       return rpcError(200, -32000, "Result exceeds 128 KiB. Reduce the page limit or consult the source notice for an oversized record.", id, quota);
     }

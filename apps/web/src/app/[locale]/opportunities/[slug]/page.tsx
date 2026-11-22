@@ -10,6 +10,7 @@ import { pickDiscoverFeedCopy } from "@/i18n/slices";
 import { getDictionary, resolveLocaleOrNotFound } from "@/i18n/server";
 import { getCurrentAuthUser } from "@/lib/auth";
 import { getOpportunityDisplayMeta } from "@/lib/opportunity-display";
+import { withOpportunityPreviews } from "@/lib/opportunity-preview-assets";
 import { opportunityImageRevision } from "@/lib/opportunity-preview-revision";
 import { composePageMetadata } from "@/lib/page-metadata";
 import { getStorage } from "@/lib/server-storage";
@@ -21,7 +22,10 @@ type LocalizedOpportunityDetailPageProps = {
 };
 
 // generateMetadata and the page both need the record; React's cache makes it one query.
-const loadOpportunity = cache(async (slug: string) => (await getStorage()).opportunities.getBySlug(slug));
+const loadOpportunity = cache(async (slug: string) => {
+  const opportunity = await (await getStorage()).opportunities.getBySlug(slug);
+  return opportunity ? (await withOpportunityPreviews([opportunity]))[0] : undefined;
+});
 
 export const generateMetadata = async ({ params }: LocalizedOpportunityDetailPageProps): Promise<Metadata> => {
   const { locale: rawLocale, slug } = await params;
@@ -40,7 +44,8 @@ export const generateMetadata = async ({ params }: LocalizedOpportunityDetailPag
 
   return composePageMetadata({
     description: fillTemplate(dictionary.meta.detailDescription, { facts }),
-    images: [`/api/opportunities/${opportunity.slug}/image?rev=${opportunityImageRevision}`],
+    images: [opportunity.preview?.image ?? opportunity.preview?.locator ??
+      `/api/opportunities/${opportunity.slug}/image?rev=${opportunityImageRevision}`],
     locale,
     path: `/opportunities/${encodeURIComponent(opportunity.slug)}`,
     title: displayTitle,

@@ -165,3 +165,26 @@ The website and MCP share the Worker request budget. The daily admission limit c
 - `apps/web/src/lib/mcp/access.ts`, `apps/web/src/lib/mcp/http.ts`, `apps/web/src/lib/mcp/server.ts`, `apps/web/src/lib/mcp/access.test.ts`, `apps/web/src/lib/mcp/http.test.ts`
 - `scripts/lib/d1-sync/retention.mjs`, `scripts/export-d1-data.mjs`, `tests/d1-retention-apply.test.mjs`
 - `CLOUDFLARE_DEPLOY_RUNBOOK.md`, `docs/structures/2026-10-21-storage-auth-api-architecture.md`, `docs/changelog/CHANGELOG_2026-11-22.md`
+
+## Discover read budget and MCP evidence
+
+### Changed
+
+Discover uses the sync's published default totals and options when available. Filtered visits compute exact totals and options in one scan, and browser continuation reads the next page for the same publication. Syncs skip unchanged records. Current prebuilt previews serve image files directly. Both MCP lists now include source links and evidence and shorten pages as needed to keep complete records within the response limit.
+
+### Why
+
+The previous discover query scanned the same matching records for each option group. Those repeated reads consumed the shared D1 quota. Serving prebuilt images directly also reduces requests to the Worker.
+
+### Validation
+
+- `npm run test:storage`, `npm run test:tools`, `npm run test:previews` and `npm run test:web`.
+- Local D1 replay compared exact totals, filter options and ID order with the prior implementation. The check used 2,500 synthetic notices and 2,319 AI results.
+- Local Playwright checks covered discover filters, pagination, reload and images on desktop and mobile.
+
+### Modified Files
+
+- `apps/web/migrations/0011_discover_deadline_index.sql`, `apps/web/migrations/0012_discover_publication.sql`, `apps/worker/src/arch_competition_ops/storage/schema_sql.py`
+- `packages/storage/src/opportunities/`, `scripts/lib/d1-sync/`, `scripts/export-d1-data.mjs`
+- `packages/previews/src/`, `packages/core/src/mcp-contract.ts`, `apps/web/src/components/`, `apps/web/src/lib/mcp/`
+- [Storage architecture](../structures/2026-10-21-storage-auth-api-architecture.md), [Preview architecture](../structures/2026-10-21-preview-pipeline-architecture.md), [Deploy runbook](../../CLOUDFLARE_DEPLOY_RUNBOOK.md)
