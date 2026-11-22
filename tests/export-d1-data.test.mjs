@@ -84,7 +84,9 @@ test("generated upserts are idempotent and use ON CONFLICT DO UPDATE", (t) => {
     source_health: dumpTable(remote, "source_health", "source_id"),
     queue: dumpTable(remote, "ops_review_queue_items", "queue_id"),
   };
+  const firstChanges = remote.prepare("SELECT total_changes() AS n").get().n;
   executeFiles(remote, result);
+  assert.equal(remote.prepare("SELECT total_changes() AS n").get().n, firstChanges);
 
   assert.deepEqual(dumpTable(remote, "competitions", "id"), afterFirst.competitions);
   assert.deepEqual(dumpTable(remote, "source_runs", "id"), afterFirst.source_runs);
@@ -135,7 +137,18 @@ test("AI advice is synced after opportunities; prompts and spend ledger stay loc
   assert.doesNotMatch(sql, /ai_screening_runs|private_prompt|local only/);
   const remote = applyMigrations(new Database(":memory:"));
   executeFiles(remote, result);
+  const firstChanges = remote.prepare("SELECT total_changes() AS n").get().n;
   executeFiles(remote, result);
+  assert.equal(remote.prepare("SELECT total_changes() AS n").get().n, firstChanges);
+
+  const local = new Database(workspace.dbPath);
+  local.exec("UPDATE competitions SET display_title_en = 'New display title'");
+  local.exec("UPDATE ai_screening_results SET result_json = '{\"revised\":true}'");
+  local.close();
+  executeFiles(remote, runInto(workspace, { now: new Date("2026-10-22T03:15:00Z") }));
+  assert.equal(remote.prepare("SELECT total_changes() AS n").get().n, firstChanges + 2);
+  assert.equal(dumpTable(remote, "competitions", "id")[0].display_title_en, "New display title");
+  assert.equal(dumpTable(remote, "ai_screening_results", "competition_id")[0].result_json, '{"revised":true}');
   assert.equal(dumpTable(remote, "ai_screening_results", "competition_id").length, 1);
   assert.equal(dumpTable(remote, "ai_screening_runs", "id").length, 0);
   remote.close();
