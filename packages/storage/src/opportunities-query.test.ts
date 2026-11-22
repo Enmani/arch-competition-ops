@@ -221,6 +221,66 @@ test("getByIds batches lookups beyond the bound-parameter limit and keeps reques
   });
 });
 
+test("search switches from D1 LIKE to literal instr for long and heavily escaped terms", async () => {
+  const { storage, raw, cleanup } = createTestStorage();
+  try {
+    const long = "A".repeat(70);
+    const literal = "%_\\".repeat(9);
+    const nonAscii = "öst" + "a".repeat(48);
+    seedOpportunity(raw, { id: "long", title: long.toLowerCase() });
+    seedOpportunity(raw, { id: "literal", title: literal });
+    seedOpportunity(raw, { id: "ost", title: "Öst" + "a".repeat(48) });
+    seedOpportunity(raw, { id: "ss", title: "Straße" });
+    for (const [search, id] of [[long, "long"], [literal, "literal"], [nonAscii, "ost"], ["ß", "ss"], ["Öst", "ost"]]) {
+      const { opportunities, total } = await storage.opportunities.discover({ search });
+      assert.equal(total, 1, search);
+      assert.deepEqual(opportunities.map((item) => item.id), [id]);
+    }
+  } finally {
+    cleanup();
+  }
+});
+
+test("one aggregate preserves legacy json_each options and selected values", async () => {
+  const { storage, raw, cleanup } = createTestStorage();
+  try {
+    seedOpportunity(raw, { id: "object", jurisdiction: "Rare country",
+      project_types: '{"x":"building_project","x":"urban_planning"}',
+      building_categories: '"education"', design_scopes: "null", project_modes: "malformed" });
+    seedOpportunity(raw, { id: "array", jurisdiction: null, design_scopes: '["scheme",42,null,["planning"]]' });
+    const { total, filterOptions } = await storage.opportunities.discover();
+    assert.equal(total, 2);
+    assert.deepEqual(new Set(filterOptions.projectTypes), new Set(["building_project", "urban_planning"]));
+    assert.deepEqual(filterOptions.buildingCategories, ["education"]);
+    assert.deepEqual(filterOptions.designScopes, ["scheme"]);
+    assert.deepEqual(filterOptions.projectModes, []);
+    assert.deepEqual(filterOptions.jurisdictions, ["Rare country"]);
+    const none = await storage.opportunities.discover({ jurisdiction: "Nowhere", projectModes: ["renovation"] });
+    assert.equal(none.total, 0);
+    assert.deepEqual(none.filterOptions.jurisdictions, ["Nowhere"]);
+    assert.deepEqual(none.filterOptions.projectModes, ["renovation"]);
+  } finally {
+    cleanup();
+  }
+});
+
+test("an oversized aggregate falls back to the same exact grouped options", async () => {
+  const { storage, raw, cleanup } = createTestStorage();
+  try {
+    for (let index = 0; index < 5; index += 1) {
+      seedOpportunity(raw, { id: String(index), title: "Large", project_types: JSON.stringify([
+        "building_project", String(index) + "x".repeat(420_000),
+      ]) });
+    }
+    const result = await storage.opportunities.discover({ limit: 1 });
+    assert.equal(result.total, 5);
+    assert.equal(result.opportunities.length, 1);
+    assert.deepEqual(result.filterOptions.projectTypes, ["building_project"]);
+  } finally {
+    cleanup();
+  }
+});
+
 test("every discover statement stays inside Cloudflare D1 limits (compound SELECT terms, bound parameters)", () => {
   const clock = { now: () => new Date("2026-04-19T12:00:00Z") };
   const worstCase = normalizeQuery({
