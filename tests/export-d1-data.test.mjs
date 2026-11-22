@@ -84,9 +84,7 @@ test("generated upserts are idempotent and use ON CONFLICT DO UPDATE", (t) => {
     source_health: dumpTable(remote, "source_health", "source_id"),
     queue: dumpTable(remote, "ops_review_queue_items", "queue_id"),
   };
-  const firstChanges = remote.prepare("SELECT total_changes() AS n").get().n;
-  executeFiles(remote, result);
-  assert.equal(remote.prepare("SELECT total_changes() AS n").get().n, firstChanges);
+  assert.equal(executeFiles(remote, result), 0);
 
   assert.deepEqual(dumpTable(remote, "competitions", "id"), afterFirst.competitions);
   assert.deepEqual(dumpTable(remote, "source_runs", "id"), afterFirst.source_runs);
@@ -137,16 +135,13 @@ test("AI advice is synced after opportunities; prompts and spend ledger stay loc
   assert.doesNotMatch(sql, /ai_screening_runs|private_prompt|local only/);
   const remote = applyMigrations(new Database(":memory:"));
   executeFiles(remote, result);
-  const firstChanges = remote.prepare("SELECT total_changes() AS n").get().n;
-  executeFiles(remote, result);
-  assert.equal(remote.prepare("SELECT total_changes() AS n").get().n, firstChanges);
+  assert.equal(executeFiles(remote, result), 0);
 
   const local = new Database(workspace.dbPath);
   local.exec("UPDATE competitions SET display_title_en = 'New display title'");
   local.exec("UPDATE ai_screening_results SET result_json = '{\"revised\":true}'");
   local.close();
-  executeFiles(remote, runInto(workspace, { now: new Date("2026-10-22T03:15:00Z") }));
-  assert.equal(remote.prepare("SELECT total_changes() AS n").get().n, firstChanges + 2);
+  assert.equal(executeFiles(remote, runInto(workspace, { now: new Date("2026-10-22T03:15:00Z") })), 2);
   assert.equal(dumpTable(remote, "competitions", "id")[0].display_title_en, "New display title");
   assert.equal(dumpTable(remote, "ai_screening_results", "competition_id")[0].result_json, '{"revised":true}');
   assert.equal(dumpTable(remote, "ai_screening_results", "competition_id").length, 1);
@@ -237,14 +232,14 @@ test("--prune is off by default: no prune file and no DELETE statements", (t) =>
   }
 });
 
-test("--prune removes remote-only competitions but keeps watched ones, in the last file", (t) => {
+test("--prune removes remote-only competitions but keeps watched ones, before publication", (t) => {
   const workspace = createWorkspace(t);
   createLocalDatabase(workspace.dbPath, seedWorkerData);
   assert.equal(parseArgs(["--prune"]).prune, true);
 
   const result = runInto(workspace, { prune: true });
   const names = result.files.map((file) => file.name);
-  assert.equal(names.at(-1), "0099-prune.sql");
+  assert.deepEqual(names.slice(-2), ["0099-prune.sql", "0100-publish.sql"]);
   assert.equal(result.manifest.prune, true);
   assert.deepEqual(
     result.files.filter((file) => /\bDELETE\b/.test(file.content)).map((file) => file.name),
@@ -274,6 +269,40 @@ test("--prune removes remote-only competitions but keeps watched ones, in the la
   executeFiles(remote, result);
   assert.equal(dumpTable(remote, "competitions", "id").length, 3);
   remote.close();
+});
+
+test("publication follows the remote rows and a newer sync fences old files", (t) => {
+  const workspace = createWorkspace(t);
+  createLocalDatabase(workspace.dbPath, (db) => {
+    insertCompetition(db, "expires-today", { deadline_at: "2026-10-21", jurisdiction: "Italy" });
+  });
+  const first = runInto(workspace, { prune: true });
+  const retry = runInto(workspace, { prune: true, now: new Date("2026-10-21T03:16:00Z") });
+  const remote = applyMigrations(new Database(":memory:"));
+  t.after(() => remote.close());
+  remote.function("date", { varargs: true }, (_now, modifier) =>
+    modifier === "+1 day" ? "2026-10-22" : "2026-10-21");
+  seedRemoteUserData(remote);
+  const state = () => remote.prepare("SELECT * FROM discover_publication WHERE id = 1").get();
+
+  remote.exec(first.files[0].content);
+  assert.equal(state().syncing, 1);
+  remote.exec(retry.files[0].content);
+  assert.throws(() => remote.exec(first.files[1].content), /sync_owns_publication/);
+  assert.throws(() => remote.exec(first.files.at(-1).content), /sync_owns_publication/);
+  for (const file of retry.files.slice(1, -1)) remote.exec(file.content);
+  assert.equal(state().syncing, 1);
+  remote.exec(retry.files.at(-1).content);
+  const published = state();
+  assert.equal(published.syncing, 0);
+  assert.ok(published.version);
+  assert.equal(published.summary_day, "2026-10-21");
+  assert.equal(published.next_summary_day, "2026-10-22");
+  assert.equal(JSON.parse(published.payload_today).total, 2, "includes a remote-only watched notice");
+  assert.equal(JSON.parse(published.payload_tomorrow).total, 1, "excludes the notice closing today");
+  assert.throws(() => remote.exec(retry.files.at(-1).content), /sync_owns_publication/);
+  executeFiles(remote, retry);
+  assert.notEqual(state().version, published.version, "a replay publishes a fresh version");
 });
 
 test("--prune refuses to run against an empty local competitions table", (t) => {

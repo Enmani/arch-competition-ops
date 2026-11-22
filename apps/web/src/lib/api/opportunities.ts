@@ -34,7 +34,7 @@ export const createOpportunitiesHandlers = (deps: Pick<AuthDeps, "getStorage">) 
         opportunities,
         total,
       },
-      { cacheControl: PUBLIC_LIST_CACHE_CONTROL },
+      { cacheControl: params.get("live") === "1" ? undefined : PUBLIC_LIST_CACHE_CONTROL },
     );
   }),
 });

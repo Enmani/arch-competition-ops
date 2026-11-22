@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
+import { PUBLICATION_TABLE, SYNC_PUBLISH_FILE, SYNC_START_FILE } from "./publication.mjs";
 import { D1_DATABASE_NAME, MAX_DATA_FILES, PRUNE_FILE_NAME, RETENTION_FILE_NAME } from "./table-specs.mjs";
 
 function byteLength(text) {
@@ -56,14 +57,21 @@ function toFile(name, table, statements) {
 
 /**
  * Turn per-table statements (in sync order) plus optional retention and prune statements into the
- * ordered file list: 0001-<table>.sql, 0002-<table>.sql, ..., 0090-retention.sql, 0099-prune.sql.
+ * ordered file list, bracketed by the syncing marker and final publication when present.
  */
-export function planFiles({ tableStatements, retentionStatements = null, pruneStatements, limits }) {
+export function planFiles({ tableStatements, retentionStatements = null, pruneStatements, limits, publication }) {
   const files = [];
+  const guarded = (statements) => publication ? [publication.guard, ...statements] : statements;
+  const dataLimits = publication ? {
+    ...limits,
+    maxFileBytes: limits.maxFileBytes - byteLength(publication.guard) - 1,
+    maxStatementsPerFile: limits.maxStatementsPerFile - 1,
+  } : limits;
+  if (dataLimits.maxStatementsPerFile < 1) throw new Error("D1 export needs space for the publication guard");
   for (const { table, statements } of tableStatements) {
-    for (const batch of splitIntoBatches(table, statements, limits)) {
+    for (const batch of splitIntoBatches(table, statements, dataLimits)) {
       const sequence = String(files.length + 1).padStart(4, "0");
-      files.push(toFile(`${sequence}-${table}.sql`, table, batch));
+      files.push(toFile(`${sequence}-${table}.sql`, table, guarded(batch)));
     }
   }
   if (files.length > MAX_DATA_FILES) {
@@ -74,11 +82,11 @@ export function planFiles({ tableStatements, retentionStatements = null, pruneSt
   }
 
   if (retentionStatements) {
-    files.push(toFile(RETENTION_FILE_NAME, "competitions", retentionStatements));
+    files.push(toFile(RETENTION_FILE_NAME, "competitions", guarded(retentionStatements)));
   }
 
   if (pruneStatements) {
-    const pruneFile = toFile(PRUNE_FILE_NAME, "competitions", pruneStatements);
+    const pruneFile = toFile(PRUNE_FILE_NAME, "competitions", guarded(pruneStatements));
     if (
       pruneFile.statements > limits.maxStatementsPerFile ||
       pruneFile.bytes > limits.maxFileBytes
@@ -89,6 +97,10 @@ export function planFiles({ tableStatements, retentionStatements = null, pruneSt
       );
     }
     files.push(pruneFile);
+  }
+  if (publication) {
+    files.unshift(toFile(SYNC_START_FILE, PUBLICATION_TABLE, publication.start));
+    files.push(toFile(SYNC_PUBLISH_FILE, PUBLICATION_TABLE, guarded(publication.finish)));
   }
   return files;
 }

@@ -96,10 +96,10 @@ test("batching honours the statement-count, byte and single-statement limits", (
 
   const byCount = runInto(workspace, { limits: { ...DEFAULT_LIMITS, maxStatementsPerFile: 2 } });
   const competitionFiles = byCount.files.filter((file) => file.table === "competitions");
-  assert.deepEqual(competitionFiles.map((file) => file.statements), [2, 2, 1]);
+  assert.deepEqual(competitionFiles.map((file) => file.statements), [2, 2, 2, 2, 2]);
   assert.deepEqual(
     byCount.files.map((file) => file.name.slice(0, 5)),
-    byCount.files.map((_, index) => `${String(index + 1).padStart(4, "0")}-`),
+    ["0000-", "0001-", "0002-", "0003-", "0004-", "0005-", "0100-"],
   );
   assert.ok(byCount.files.every((file) => file.statements <= 2));
   const manifest = JSON.parse(readFileSync(path.join(byCount.outputDir, "manifest.json"), "utf8"));

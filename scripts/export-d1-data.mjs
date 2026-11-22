@@ -1,12 +1,13 @@
 // Incremental local SQLite -> Cloudflare D1 sync exporter.
 //
-// Generates batched, idempotent upsert SQL files for the tables the Python worker owns.
+// Generates batched upserts for worker-owned tables, bracketed by discover publication files.
 // It NEVER connects to Cloudflare and never runs wrangler; it only writes files and prints the
 // commands to run, unless --apply is given: then it runs them through lib/wrangler.mjs, in order,
 // stopping at the first failure. It never emits DELETE against user data (workspace_*,
 // ops_review_decisions, auth_*), and never emits BEGIN/COMMIT/SAVEPOINT (remote D1 import rejects them).
 // See CLOUDFLARE_DEPLOY_RUNBOOK.md for the operating procedure.
 
+import { randomUUID } from "node:crypto";
 import { realpathSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,6 +21,7 @@ import {
   writeExport,
 } from "./lib/d1-sync/batching.mjs";
 import { ApplyError, applyExport, prepareApply } from "./lib/d1-sync/apply.mjs";
+import { buildPublicationFiles } from "./lib/d1-sync/publication.mjs";
 import { buildRetentionStatements } from "./lib/d1-sync/retention.mjs";
 import { findSchemaProblems, loadMigratedColumns, SchemaMismatchError } from "./lib/d1-sync/schema-check.mjs";
 import { quoteIdentifier } from "./lib/d1-sync/sql-values.mjs";
@@ -45,8 +47,8 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..
 export const USAGE = `Usage: node scripts/export-d1-data.mjs [--prune] [--retention] [--apply] [--out-dir <dir>] [--help]
 
 Writes batched upsert SQL for competitions, source_runs, source_health, ai_screening_results and
-worker-owned ops_review_queue_items to <out-dir>/<UTC timestamp>/ plus manifest.json, and prints the
-wrangler commands to run. Without --apply nothing is executed against Cloudflare.
+worker-owned ops_review_queue_items to <out-dir>/<UTC timestamp>/ plus manifest.json, with a syncing
+marker first and a discover summary publication last. Prints the wrangler commands to run. Without --apply nothing is executed against Cloudflare.
 
   --prune          also delete remote competitions that no longer exist locally
                    (never deletes ones on a user watchlist). Off by default.
@@ -168,7 +170,8 @@ export function runExport({
   }
 
   const retentionStatements = retention ? buildRetentionStatements(now) : null;
-  const files = planFiles({ tableStatements, retentionStatements, pruneStatements, limits });
+  const publication = buildPublicationFiles(randomUUID());
+  const files = planFiles({ tableStatements, retentionStatements, pruneStatements, limits, publication });
   const outputDir = path.join(outputRoot, utcTimestamp(now));
   const wranglerCommands = buildWranglerCommands({ repoRoot, outputDir, files });
   const relativeDb = path.relative(repoRoot, dbPath);
@@ -228,7 +231,7 @@ export function main(argv = process.argv.slice(2), env = process.env, log = cons
       log(`  ${table}: ${rows} row(s)`);
     }
     log(`Wrote ${manifest.files.length} SQL file(s) + manifest.json to ${path.relative(REPO_ROOT, result.outputDir)}`);
-    log(options.prune ? "--prune: ENABLED (see runbook before running the last file)" : "--prune: off");
+    log(options.prune ? "--prune: ENABLED (see runbook before running 0099-prune.sql)" : "--prune: off");
     log(options.retention ? "--retention: ENABLED (0090-retention.sql)" : "--retention: off");
     if (options.apply) {
       log("\nApplying to remote D1 in order:\n");

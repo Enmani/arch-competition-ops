@@ -91,8 +91,7 @@ test("the public opportunities API validates and bounds its query and sets a sho
 
 test("continuation returns page rows only and asks the browser to reload after a publish", async () => {
   await withContext(async ({ deps, test: { raw, storage } }) => {
-    raw.exec("CREATE TABLE discover_publication (id INTEGER PRIMARY KEY, version TEXT, syncing INTEGER)");
-    raw.exec("INSERT INTO discover_publication VALUES (1, 'first', 0)");
+    raw.exec("INSERT INTO discover_publication (id, sync_id, version, syncing) VALUES (1, 'sync', 'first', 0)");
     seedOpportunity(raw, { id: "a", title: "School A" });
     seedOpportunity(raw, { id: "b", title: "School B" });
     const first = await storage.opportunities.discover({ search: "School", limit: 1 });

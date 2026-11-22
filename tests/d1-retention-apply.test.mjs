@@ -227,7 +227,7 @@ test("retention is off by default and becomes the 0090 file, before 0099-prune, 
   const workspace2 = createWorkspace(t);
   createLocalDatabase(workspace2.dbPath, seedWorkerData);
   const withBoth = runInto(workspace2, { retention: true, prune: true, now: NOW });
-  assert.deepEqual(withBoth.files.slice(-2).map((file) => file.name), ["0090-retention.sql", "0099-prune.sql"]);
+  assert.deepEqual(withBoth.files.slice(-3).map((file) => file.name), ["0090-retention.sql", "0099-prune.sql", "0100-publish.sql"]);
   assert.equal(withBoth.manifest.retention, true);
   assert.equal(withBoth.wranglerCommands.length, withBoth.files.length);
 });
@@ -285,15 +285,16 @@ function openRemote(ctx) {
   return new Database(ctx.remotePath, { readonly: true });
 }
 
-test("--apply runs every file in order, ends with retention, and reports counts", (t) => {
+test("--apply runs every file in order, ends by publishing after retention, and reports counts", (t) => {
   const ctx = applySetup(t);
   const result = runMain(ctx, ["--apply"]);
   assert.equal(result.code, 0, result.err);
 
   const calls = d1Calls(ctx);
   assert.deepEqual(calls, [...calls].sort(), "files run in name order");
-  assert.equal(calls.at(-1), "0090-retention.sql");
-  assert.match(calls[0], /^0001-competitions\.sql$/);
+  assert.deepEqual(calls.slice(-2), ["0090-retention.sql", "0100-publish.sql"]);
+  assert.equal(calls[0], "0000-syncing.sql");
+  assert.match(calls[1], /^0001-competitions\.sql$/);
   assert.match(result.out, /D1 sync complete: \d+ file\(s\) applied\./);
   assert.match(result.out, /d1_rows_upserted competitions=2/);
   assert.match(result.out, /d1_remote_competitions before=2 after=3/); // +comp-1, +comp-2, -stale-remote, comp-watched stays
@@ -315,13 +316,14 @@ test("--apply stops at the first failing file and says which one", (t) => {
   const result = runMain(ctx, ["--apply"]);
 
   assert.equal(result.code, 1);
-  assert.match(result.err, /\d+-source_runs\.sql failed \(1 of \d+ file\(s\) applied\)/);
+  assert.match(result.err, /\d+-source_runs\.sql failed \(2 of \d+ file\(s\) applied\)/);
   assert.match(result.err, /re-run/);
   const calls = d1Calls(ctx);
   assert.equal(calls.at(-1).includes("source_runs"), true);
   assert.ok(!calls.includes("0090-retention.sql"), "nothing runs after the failure");
   const remote = openRemote(ctx);
   assert.ok(ids(remote).includes("stale-remote"), "retention did not run");
+  assert.deepEqual(remote.prepare("SELECT syncing, version FROM discover_publication").get(), { syncing: 1, version: null });
   remote.close();
 
   // The files are idempotent: a re-run after the cause is fixed completes the sync.
