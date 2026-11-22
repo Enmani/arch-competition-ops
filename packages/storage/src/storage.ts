@@ -13,9 +13,12 @@ import {
   recordAuthAttempt,
 } from "./auth/throttle";
 import {
+  continueOpportunityList,
   getDiscoverSurfaceData,
   getOpportunitiesByIds,
   getOpportunityBySlug,
+  getOpportunityList,
+  getOpportunityLocation,
   queryOpportunityFeed,
 } from "./opportunities/repository";
 import { getDuplicatePressureSummary, getOpsSnapshot, getSourceHealth } from "./ops/health";
@@ -77,7 +80,11 @@ export const createStorage = (options: StorageContextOptions) => {
       setCustomer: (userId: string, customerId: string) => setBillingCustomer(context, userId, customerId),
     },
     opportunities: {
-      discover: (filters?: DiscoverFilters) => getDiscoverSurfaceData(context, filters),
+      discover: (filters?: DiscoverFilters, restoredLimit?: number) =>
+        getDiscoverSurfaceData(context, filters, restoredLimit),
+      continue: (filters: DiscoverFilters, token: string) => continueOpportunityList(context, filters, token),
+      list: (filters?: DiscoverFilters) => getOpportunityList(context, filters),
+      getLocation: (slug: string) => getOpportunityLocation(context, slug),
       feed: (filters?: DiscoverFilters) => queryOpportunityFeed(context, filters),
       getByIds: (ids: string[]) => getOpportunitiesByIds(context, ids),
       getBySlug: (slug: string) => getOpportunityBySlug(context, slug),

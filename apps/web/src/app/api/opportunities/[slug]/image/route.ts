@@ -9,7 +9,7 @@ import {
 
 import { createOpportunityImageHandler, type PreviewSource } from "@/lib/opportunity-image-response";
 import { opportunityImageRevision } from "@/lib/opportunity-preview-revision";
-import { getWebOpportunityFeedItemBySlug } from "@/lib/server-storage";
+import { getWebOpportunityLocation } from "@/lib/server-storage";
 
 /**
  * Card image for an opportunity: a prebuilt asset from the preview manifest, else the locator
@@ -54,7 +54,7 @@ const getPreviewSource = async (): Promise<PreviewSource> => {
 
 const handle = createOpportunityImageHandler({
   development,
-  getOpportunity: getWebOpportunityFeedItemBySlug,
+  getOpportunity: getWebOpportunityLocation,
   getPreviewSource,
   revision: opportunityImageRevision,
 });

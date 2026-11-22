@@ -56,6 +56,23 @@ const blankToNull = (value: string | null | undefined) => {
   return trimmed ? trimmed : null;
 };
 
+type LocationRow = Pick<OpportunityRow,
+  "authority_name" | "organizer" | "jurisdiction" | "location_label" | "geo_lat" | "geo_lng" | "title"
+>;
+
+const buyerName = (row: Pick<OpportunityRow, "authority_name" | "organizer">) =>
+  blankToNull(row.authority_name) ?? blankToNull(row.organizer) ?? "";
+
+export const toOpportunityLocation = (row: LocationRow) => ({
+  authorityName: buyerName(row),
+  geoLat: row.geo_lat,
+  geoLng: row.geo_lng,
+  jurisdictionKey: row.jurisdiction,
+  jurisdictionLabel: titleCase(row.jurisdiction),
+  locationLabel: row.location_label,
+  title: row.title,
+});
+
 export const toOpportunityFeedItem = (row: OpportunityRow, logger: Logger): StoredOpportunityFeedItem => {
   const column = (name: keyof OpportunityRow) => parseJsonArray(row[name] as string | null, row, name, logger);
   const competitionTypes = column("competition_types");
@@ -64,7 +81,7 @@ export const toOpportunityFeedItem = (row: OpportunityRow, logger: Logger): Stor
   const projectTypes = known(PROJECT_TYPES, column("project_types"));
   const organizerName = blankToNull(row.organizer);
   // Buyer = authority_name, then organizer. The publishing platform (source_name) is never a buyer.
-  const authorityName = blankToNull(row.authority_name) ?? organizerName ?? "";
+  const authorityName = buyerName(row);
   const procedureLabel = procedure.key
     ? canonicalLabel(procedure.key, procedureLabels, "Procedure pending")
     : "Procedure pending";

@@ -2,8 +2,9 @@ import { aiAssessmentSchema, noticeDetailSchema, type DiscoverFilters } from "@a
 
 import type { StorageContext } from "../context";
 import { MAX_BOUND_PARAMETERS, chunk, placeholders, readBatch, readRows } from "../driver/sql";
+import { issueContinuation, readContinuation, readWithPublication } from "./continuation";
 import { buildFacetStatements, buildFilterOptions, type FacetRow } from "./facets";
-import { toOpportunityFeedItem } from "./mapper";
+import { toOpportunityFeedItem, toOpportunityLocation } from "./mapper";
 import {
   OPPORTUNITY_COLUMNS,
   buildCountStatement,
@@ -22,25 +23,54 @@ export const queryOpportunityFeed = async (
   return rows.map((row) => toOpportunityFeedItem(row, context.logger));
 };
 
-/**
- * Discover page/API payload. Count, page and filter options are independent SELECTs
- * sent as ONE batch (a single D1 subrequest) and all filtered/sorted/paged inside SQL.
- */
+const pageItems = (context: StorageContext, rows: unknown[]) =>
+  (rows as OpportunityRow[]).map((row) => toOpportunityFeedItem(row, context.logger));
+
+const exactTotal = (rows: unknown[]) => Number((rows[0] as { total?: number } | undefined)?.total ?? 0);
+
+/** The original public list contract needs an exact total and a page, with no option groups. */
+export const getOpportunityList = async (context: StorageContext, filters: DiscoverFilters = {}) => {
+  const query = normalizeQuery(filters);
+  const now = context.clock.now();
+  const clock = { now: () => now };
+  const [count, page] = await readBatch(context.reader, [
+    buildCountStatement(query, clock),
+    buildPageStatement(query, clock),
+  ]);
+  return { opportunities: pageItems(context, page), total: exactTotal(count) };
+};
+
+export const continueOpportunityList = async (context: StorageContext, filters: DiscoverFilters, token: string) => {
+  const query = normalizeQuery(filters);
+  const continuation = readContinuation(token, context.clock.now(), query);
+  if (!continuation) return null;
+  const { version, rows: [page] } = await readWithPublication(context, [
+    buildPageStatement(query, { now: () => continuation.asOf }),
+  ]);
+  return version === continuation.version ? pageItems(context, page) : null;
+};
+
+/** Read exact options, total and the requested part of the feed in one snapshot. */
 export const getDiscoverSurfaceData = async (
   context: StorageContext,
   filters: DiscoverFilters = {},
+  restoredLimit?: number,
 ): Promise<StoredDiscoverSurfaceData> => {
   const query = normalizeQuery(filters);
-  const [countRows, pageRows, ...facetRowGroups] = await readBatch(context.reader, [
-    buildCountStatement(query, context.clock),
-    buildPageStatement(query, context.clock),
-    ...buildFacetStatements(query, context.clock),
+  const now = context.clock.now();
+  const clock = { now: () => now };
+  const pageQuery = restoredLimit === undefined ? query : { ...query, limit: restoredLimit };
+  const { version, rows: [countRows, pageRows, ...facetRowGroups] } = await readWithPublication(context, [
+    buildCountStatement(query, clock),
+    buildPageStatement(pageQuery, clock),
+    ...buildFacetStatements(query, clock),
   ]);
 
   return {
+    continuation: issueContinuation(version, now, query),
     filterOptions: buildFilterOptions(facetRowGroups.flat() as FacetRow[], query),
-    opportunities: (pageRows as OpportunityRow[]).map((row) => toOpportunityFeedItem(row, context.logger)),
-    total: Number((countRows[0] as { total?: number } | undefined)?.total ?? 0),
+    opportunities: pageItems(context, pageRows),
+    total: exactTotal(countRows),
   };
 };
 
@@ -55,6 +85,19 @@ const slugCandidates = (slug: string) => {
     // Malformed percent-encoding in a URL is user input, not a fault: look up the raw value only.
   }
   return candidates;
+};
+
+/** Read the inputs for the locator renderer without loading detail or the AI projection. */
+export const getOpportunityLocation = async (context: StorageContext, slug: string) => {
+  const candidates = slugCandidates(slug);
+  const rows = await readRows<Parameters<typeof toOpportunityLocation>[0] & { id: string }>(
+    context.reader,
+    `SELECT id, title, authority_name, organizer, jurisdiction, location_label, geo_lat, geo_lng
+      FROM competitions WHERE id IN (${placeholders(candidates.length)})`,
+    candidates,
+  );
+  const row = candidates.map((id) => rows.find((item) => item.id === id)).find((item) => item !== undefined);
+  return row && toOpportunityLocation(row);
 };
 
 /** Primary-key lookup. Accepts the slug as routed or percent-decoded (non-ASCII ids). */

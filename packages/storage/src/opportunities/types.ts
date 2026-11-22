@@ -180,6 +180,7 @@ export type StoredOpportunityFeedItem = {
 };
 
 export type StoredDiscoverSurfaceData = {
+  continuation: string | null;
   filterOptions: StoredFilterOptions;
   opportunities: StoredOpportunityFeedItem[];
   total: number;

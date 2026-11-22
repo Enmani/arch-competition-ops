@@ -89,6 +89,33 @@ test("the public opportunities API validates and bounds its query and sets a sho
   });
 });
 
+test("continuation returns page rows only and asks the browser to reload after a publish", async () => {
+  await withContext(async ({ deps, test: { raw, storage } }) => {
+    raw.exec("CREATE TABLE discover_publication (id INTEGER PRIMARY KEY, version TEXT, syncing INTEGER)");
+    raw.exec("INSERT INTO discover_publication VALUES (1, 'first', 0)");
+    seedOpportunity(raw, { id: "a", title: "School A" });
+    seedOpportunity(raw, { id: "b", title: "School B" });
+    const first = await storage.opportunities.discover({ search: "School", limit: 1 });
+    assert.ok(first.continuation);
+
+    const { GET } = createOpportunitiesHandlers(deps);
+    const params = new URLSearchParams({ continuation: first.continuation, search: "School", offset: "1", limit: "1" });
+    const ask = () => GET(buildRequest("/api/opportunities?" + params.toString()));
+    const same = await ask();
+    assert.equal(same.status, 200);
+    assert.equal(same.headers.get("cache-control"), "no-store");
+    const body = await same.json() as { opportunities: { id: string }[] };
+    assert.deepEqual(Object.keys(body), ["opportunities"]);
+    assert.deepEqual(body.opportunities.map(({ id }) => id), ["b"]);
+
+    params.set("search", "Different");
+    assert.equal((await ask()).status, 409);
+    params.set("search", "School");
+    raw.exec("UPDATE discover_publication SET version = 'second'");
+    assert.equal((await ask()).status, 409);
+  });
+});
+
 test("one opportunity is served with public caching and an unknown slug is a plain 404", async () => {
   await withContext(async (context) => {
     seedOpportunity(context.test.raw, { id: "known", title: "Known" });
