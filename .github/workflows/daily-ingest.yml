@@ -220,6 +220,9 @@ jobs:
               echo "- ingest exit code: \`${{ steps.ingest.outputs.exit_code }}\`"
               failed="$(sed -n 's/^\[FAIL\] \([^ ]*\) :: .*/\1/p' "$RUNNER_TEMP/ingest.log" | head -n 20 | paste -sd ' ' -)"
               if [ -n "$failed" ]; then echo "- failed sources: $failed"; fi
+              awk '/^\[(OK|PARTIAL)\]/ {source=$2} /^  \[NOTE\] new=/ {
+                sub(/^  \[NOTE\] /, ""); print "- " source " " $0
+              }' "$RUNNER_TEMP/ingest.log"
             fi
             if [ -s "$RUNNER_TEMP/stats-before.txt" ] && [ -s "$RUNNER_TEMP/stats-after.txt" ]; then
               echo

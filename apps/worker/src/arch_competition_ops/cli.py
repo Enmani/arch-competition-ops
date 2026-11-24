@@ -44,7 +44,7 @@ from arch_competition_ops.screening import commands as screening_commands
 from arch_competition_ops.screening.client import ScreeningError
 from arch_competition_ops.settings import Settings
 from arch_competition_ops.storage import list_competitions
-from arch_competition_ops.storage.backlog import requeue_failed
+from arch_competition_ops.storage.backlog import requeue_failed, terminal_notices
 from arch_competition_ops.titles import commands as title_commands
 
 EXIT_FAILURE = 1
@@ -134,7 +134,11 @@ def build_parser() -> argparse.ArgumentParser:
     ingest_parser.add_argument("--limit", type=int, default=20)
     retry = subparsers.add_parser("requeue-failed", help="Retry failed notices from one source")
     retry.add_argument("--source-id", required=True)
-    retry.add_argument("--url")
+    selected = retry.add_mutually_exclusive_group()
+    selected.add_argument("--url")
+    selected.add_argument("--version")
+    report = subparsers.add_parser("backlog-report", help="List terminal notices from one source")
+    report.add_argument("--source-id", required=True)
     ingest_parser.add_argument("--collect-only", action="store_true")
     ingest_parser.add_argument("--publication-date-from")
 
@@ -197,6 +201,12 @@ def _handle_ingest_source(settings: Settings, args: argparse.Namespace) -> int:
     )
     _print_ingest_result(result)
     return EXIT_FAILURE if result.has_failures else 0
+
+
+def _handle_backlog_report(settings, args):
+    for row in terminal_notices(initialize_database(settings), args.source_id):
+        _safe_print(json.dumps({"source_id": args.source_id, **row}, ensure_ascii=False))
+    return 0
 
 
 def _print_batch_result(result: AutomationBatchResult) -> None:
@@ -421,9 +431,11 @@ def _handler_for(args: argparse.Namespace) -> Callable[[Settings, argparse.Names
         "cleanup-expired-competitions": _handle_cleanup,
         "show-sources": _handle_show_sources,
         "show-country-coverage": _handle_show_country_coverage,
+        "backlog-report": _handle_backlog_report,
         "requeue-failed": lambda settings, a: (
             _safe_print(
-                f"Requeued {requeue_failed(initialize_database(settings), a.source_id, a.url)}"
+                "Requeued "
+                + str(requeue_failed(initialize_database(settings), a.source_id, a.url, a.version))
             )
             or 0
         ),

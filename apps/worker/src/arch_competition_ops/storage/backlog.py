@@ -208,10 +208,24 @@ def record_failure(db, source_id, document, error, *, criteria, limit, paused=Fa
         return status[0] if status else None
 
 
-def requeue_failed(db, source_id, url=None):
+def terminal_notices(db, source_id):
+    from arch_competition_ops.screening.notice_urls import public_url
+
+    with connect(db) as cx:
+        for row in cx.execute(
+            "SELECT status,last_error,attempts,source_url,content_hash FROM notice_backlog "
+            "WHERE source_id=? AND status IN ('failed','aged_out','expired_unread') "
+            "ORDER BY first_seen,rowid",
+            (source_id,),
+        ):
+            yield {**dict(row), "source_url": public_url(row["source_url"])}
+
+
+def requeue_failed(db, source_id, url=None, version=None):
     with write_transaction(db) as cx:
         return cx.execute(
             "UPDATE notice_backlog SET attempts=0,status='queued',last_error=NULL,queued_at=? "
-            "WHERE source_id=? AND status='failed' AND (? IS NULL OR source_url=?)",
-            (clock.now_utc().isoformat(), source_id, url, url),
+            "WHERE source_id=? AND status='failed' AND (? IS NULL OR source_url=?) "
+            "AND (? IS NULL OR content_hash=?)",
+            (clock.now_utc().isoformat(), source_id, url, url, version, version),
         ).rowcount

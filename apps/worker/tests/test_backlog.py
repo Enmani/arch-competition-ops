@@ -266,3 +266,22 @@ def test_same_day_repeat_keeps_a_separate_read_allowance_for_each_source(tmp_pat
                 reserve_screening(db, **args)
         else:
             reserve_screening(db, **args)
+
+
+def test_terminal_report_lists_notice_and_supports_targeted_retry(tmp_path):
+    from arch_competition_ops.bootstrap import initialize_database
+    from arch_competition_ops.storage import backlog
+
+    db = initialize_database(Settings(root=tmp_path))
+    docs = [
+        CollectedSourceDocument(f"https://city.example/{i}?token=private", "Library")
+        for i in range(2)
+    ]
+    backlog.enqueue(db, "city", docs, "v", unfinished=0, cap=10)
+    for doc in docs:
+        backlog.record_failure(db, "city", doc, "invalid_output", criteria="v", limit=1)
+    report = list(backlog.terminal_notices(db, "city"))
+    assert len(report) == 2 and "private" not in str(report)
+    assert report[0]["status"] == "failed" and report[0]["last_error"] == "invalid_output"
+    assert backlog.requeue_failed(db, "city", version=report[0]["content_hash"]) == 1
+    assert list(backlog.terminal_notices(db, "city")) == report[1:]
