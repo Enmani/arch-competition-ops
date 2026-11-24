@@ -1,8 +1,4 @@
 {
-  "original_category_positive_label_markers": [
-    ["building_construction", ["房屋建筑", "房建工程", "建筑工程"]],
-    ["design_consulting", ["勘察设计", "建筑设计", "建筑装饰", "装饰装修"]]
-  ],
   "built_asset_type_label_markers": [
     ["interior", ["室内设计", "精装修设计", "建筑室内", "公区"]],
     ["healthcare", ["医院", "病房", "住院楼", "门诊楼", "应急救治中心", "医共体"]],
@@ -56,14 +52,6 @@
   "explicit_new_build_markers": [
     "新建",
     "拟建地块"
-  ],
-  "negative_domain_label_markers": [
-    ["transport", ["道路", "公路", "桥梁", "桥涵", "隧道", "地铁", "轨道", "铁路", "港口", "航道", "交通工程"]],
-    ["underground", ["地下", "地下管网", "管网", "管廊", "综合管廊", "给排水", "污水"]],
-    ["water", ["水利", "水务", "河道", "堤防", "排污口", "防浪消浪", "蓝藻隔离带", "水体透明度恢复", "沉水植物", "生态围网"]],
-    ["ecology_environment", ["生态修复", "污染修复工程", "水污染防治工程", "环境整治"]],
-    ["mining", ["矿山", "矿坑", "矿业工程"]],
-    ["agriculture_rural", ["和美乡村", "农业农村", "农田", "乡村"]]
   ],
   "building_discipline_markers": [
     "建筑行业（建筑工程）",

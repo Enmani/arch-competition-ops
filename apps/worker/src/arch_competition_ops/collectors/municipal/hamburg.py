@@ -8,6 +8,7 @@ from html import unescape
 from urllib.parse import urljoin
 
 from arch_competition_ops.collectors.base import CollectedSourceDocument, deferred_detail
+from arch_competition_ops.collectors.pagination import current_pages, snapshot_items
 from arch_competition_ops.http import HttpError
 from arch_competition_ops.models import SourceDefinition
 from arch_competition_ops.normalizers.dates import parse_date_string
@@ -35,8 +36,9 @@ def collect_hamburg_listing_documents(
     del source, publication_date_from
     documents: list[CollectedSourceDocument] = []
     seen_urls: set[str] = set()
-    for topline_html, href, title_html, paragraph_html in HAMBURG_TEASER_PATTERN.findall(
-        listing_html
+    rows = HAMBURG_TEASER_PATTERN.findall(listing_html)
+    for topline_html, href, title_html, paragraph_html in snapshot_items(
+        rows, len(rows), lambda row: row[1]
     ):
         title = strip_html(title_html)
         authority = strip_html(topline_html)
@@ -63,7 +65,7 @@ def collect_hamburg_listing_documents(
                     exc, detail_url, " ".join([title_html, topline_html, paragraph_html])
                 )
             )
-            if len(documents) >= limit:
+            if not current_pages() and len(documents) >= limit:
                 break
             continue
 
@@ -83,7 +85,7 @@ def collect_hamburg_listing_documents(
                 payload=json.dumps(payload, ensure_ascii=False),
             )
         )
-        if len(documents) >= limit:
+        if not current_pages() and len(documents) >= limit:
             break
 
     return documents

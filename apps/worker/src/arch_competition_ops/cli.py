@@ -204,6 +204,8 @@ def _print_batch_result(result: AutomationBatchResult) -> None:
         f"Batch {result.batch_id} :: sources={result.total_sources} :: "
         f"ingested={result.total_ingested} :: failures={len(result.failed)}"
     )
+    if result.paid_reading_paused:
+        _safe_print("paid_reading_paused=true")
     for run in result.succeeded:
         marker = "PARTIAL" if run.failure_count else "OK"
         _safe_print(

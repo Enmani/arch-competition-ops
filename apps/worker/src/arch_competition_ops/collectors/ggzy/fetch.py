@@ -13,7 +13,6 @@ from urllib.parse import urljoin
 
 from arch_competition_ops.collectors.common import fetch_text_get, fetch_text_post
 from arch_competition_ops.collectors.ggzy.html_text import (
-    extract_original_category_text,
     normalize_space,
 )
 from arch_competition_ops.collectors.pagination import (
@@ -83,16 +82,6 @@ def fetch_page_or_none(url: str, *, fetch_page: PageFetcher) -> str | None:
             raise
         logger.warning("GGZY page %s could not be fetched: %s", url, exc)
         return None
-
-
-def fetch_original_category_text(
-    official_url: str | None, *, fetch_page: PageFetcher
-) -> str | None:
-    normalized_url = normalize_space(official_url)
-    if not normalized_url:
-        return None
-    original_html = fetch_page_or_none(normalized_url, fetch_page=fetch_page)
-    return extract_original_category_text(original_html) if original_html else None
 
 
 def detail_url_from_listing(source: SourceDefinition, raw_url: str | None) -> str:

@@ -147,10 +147,13 @@ jobs:
           fi
           uv "${args[@]}" 2>&1 | tee "$RUNNER_TEMP/ingest.log"
           echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+          if grep -Fxq 'paid_reading_paused=true' "$RUNNER_TEMP/ingest.log"; then
+            echo "paid_reading_paused=true" >> "$GITHUB_OUTPUT"
+          fi
           exit 0
 
       - name: Polish titles
-        if: ${{ steps.ingest.outcome == 'success' && inputs.dry_run != true && inputs.collect_only != true }}
+        if: ${{ steps.ingest.outcome == 'success' && steps.ingest.outputs.paid_reading_paused != 'true' && inputs.dry_run != true && inputs.collect_only != true }}
         continue-on-error: true
         timeout-minutes: 20
         env:
@@ -228,7 +231,7 @@ jobs:
             if [ -s "$RUNNER_TEMP/d1.log" ]; then
               echo
               echo "D1:"
-              grep -E '^(D1 sync complete|d1_rows_upserted|d1_remote_competitions)' "$RUNNER_TEMP/d1.log" | sed 's/^/- /' || true
+              grep -E '^(D1 sync complete|d1_snapshot_rows|Published snapshot unchanged)' "$RUNNER_TEMP/d1.log" | sed 's/^/- /' || true
             fi
             if [ -s "$RUNNER_TEMP/push.log" ]; then echo; echo "- $(head -n 1 "$RUNNER_TEMP/push.log")"; fi
           } >> "$GITHUB_STEP_SUMMARY"

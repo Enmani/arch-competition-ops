@@ -20,6 +20,10 @@ class ScreeningBudgetExceeded(RuntimeError):
     pass
 
 
+class SourceDailyLimitReached(ScreeningBudgetExceeded):
+    """Continue reading other sources with allowance remaining."""
+
+
 def load_screening_candidates(
     db_path: Path, *, limit: int, competition_ids: list[str] | None = None
 ) -> list[dict[str, Any]]:
@@ -67,12 +71,25 @@ def reserve_screening(
     budget_usd: float,
     daily_budget_usd: float = 5,
     run_since: str | None = None,
+    source_id: str | None = None,
+    source_daily_limit: int | None = None,
 ) -> str:
     now = clock.now_utc()
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
     day_start = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
     request_id = str(uuid4())
     with write_transaction(db_path) as connection:
+        if source_daily_limit and source_id:
+            reads = connection.execute(
+                "SELECT count(*) FROM ai_screening_runs r WHERE started_at>=? "
+                "AND coalesce(error_code,'') NOT IN "
+                "('http_429','insufficient_quota','http_401','http_402','http_403') "
+                "AND EXISTS (SELECT 1 FROM notice_backlog b "
+                "WHERE b.source_id=? AND b.source_url=r.source_url)",
+                (day_start, source_id),
+            ).fetchone()[0]
+            if reads >= source_daily_limit:
+                raise SourceDailyLimitReached(f"Daily notice limit reached for {source_id}")
         used = connection.execute(
             "SELECT COALESCE(SUM(cost_usd), 0) FROM ai_screening_runs WHERE started_at >= ?",
             (month_start,),

@@ -112,7 +112,6 @@ def _build_listing_payload(
         "competitionTypes": map_competition_types(features),
         "projectTypes": map_project_types(features),
         "buildingCategories": map_building_categories(features),
-        "officialSectors": sorted(features.official_positive_sectors),
         "builtAssetTypes": sorted(features.built_asset_types),
         "designScopes": sorted(features.design_scopes),
         "projectModes": sorted(features.project_modes),
@@ -137,7 +136,6 @@ def _collect_document(
     features = extract_notice_features(
         combined_text=f"{title.lower()} {body_text.lower()}".strip(),
         classification_text=classification_text_from_notice(title, body_text),
-        original_category_text=None,
     )
     payload = _build_listing_payload(
         source,

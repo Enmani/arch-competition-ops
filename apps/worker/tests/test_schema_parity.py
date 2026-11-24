@@ -80,7 +80,12 @@ def test_the_worker_and_the_web_app_have_the_same_tables() -> None:
     worker, web = _tables(_worker_database()), _tables(_migrated_database())
 
     assert web - worker == WEB_ONLY_TABLES
-    assert worker - web == {"notice_backlog", "collection_resume"}
+    assert worker - web == {
+        "notice_backlog",
+        "collection_resume",
+        "backlog_retention",
+        "collection_coverage_gaps",
+    }
 
 
 def test_every_shared_table_has_identical_columns() -> None:

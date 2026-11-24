@@ -25,8 +25,6 @@ EXPLICIT_NEW_BUILD_MARKERS = _words("explicit_new_build_markers")
 BUILDING_DISCIPLINE_MARKERS = _words("building_discipline_markers")
 
 
-ORIGINAL_CATEGORY_POSITIVE_LABEL_MARKERS = _labelled("original_category_positive_label_markers")
 BUILT_ASSET_TYPE_LABEL_MARKERS = _labelled("built_asset_type_label_markers")
 DESIGN_SCOPE_LABEL_MARKERS = _labelled("design_scope_label_markers")
 PROJECT_MODE_LABEL_MARKERS = _labelled("project_mode_label_markers")
-NEGATIVE_DOMAIN_LABEL_MARKERS = _labelled("negative_domain_label_markers")

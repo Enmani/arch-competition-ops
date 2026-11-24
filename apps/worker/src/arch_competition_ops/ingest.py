@@ -56,6 +56,7 @@ from arch_competition_ops.storage.connection import connect
 from arch_competition_ops.storage.notice_ledger import record_screened
 from arch_competition_ops.storage.screening import (
     ScreeningBudgetExceeded,
+    SourceDailyLimitReached,
     upsert_screened_competitions,
 )
 from arch_competition_ops.titles.rewrite import BATCH_SIZE as TITLE_BATCH_SIZE
@@ -200,7 +201,8 @@ def ingest_source(
         start, end, cursor = backlog.collection_window(
             db_path,
             source_id,
-            publication_date_from or (clock.today() - timedelta(days=7)).isoformat(),
+            publication_date_from
+            or (clock.today() - timedelta(days=settings.discovery_window_days - 1)).isoformat(),
             collection_limit,
             settings.discovery_window_days,
             source.collector
@@ -214,10 +216,6 @@ def ingest_source(
                 "oeffentlichevergabe_ocds",
             },
         )
-        requested_start = start
-        if end is None:
-            floor = (clock.today() - timedelta(days=settings.discovery_window_days - 1)).isoformat()
-            start = max(start, floor)
         try:
             with track_pages(settings.discovery_page_cap, collection_limit, end, cursor) as pages:
                 discovered = (
@@ -243,17 +241,21 @@ def ingest_source(
             discovered,
             criteria_hash,
             unfinished=pages.unfinished
-            or (len(discovered) >= collection_limit and source.collector != "ted_search_api"),
+            or (
+                not pages.complete
+                and len(discovered) >= collection_limit
+                and source.collector != "ted_search_api"
+            ),
             cap=collection_limit,
             cursor=pages.cursor,
             end=end,
             age_days=settings.unread_max_age_days,
         )
-        if start != requested_start:
-            stats += f" live_window_from={start} unavailable_history_from={requested_start}"
         if pages.unfinished or len(discovered) >= collection_limit:
-            stats += (f" discovery_limit source={source_id} pages={pages.used}"
-                      f" items={collection_limit} resume_from={start}")
+            stats += (
+                f" discovery_limit source={source_id} pages={pages.used}"
+                f" items={collection_limit} resume_from={start}"
+            )
         if end and end < clock.today().isoformat():
             stats += f" discovery_window_through={end} backfill_pending=1"
         result.notes.append(stats)
@@ -352,7 +354,7 @@ def ingest_source(
                         limit=settings.ai_notice_max_attempts,
                         paused=True,
                     )
-                result.batch_paused = True
+                result.batch_paused = not isinstance(exc, SourceDailyLimitReached)
                 result.notes.append(str(exc))
                 break
             except Exception as exc:  # noqa: BLE001 - one bad document must not sink the run

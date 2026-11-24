@@ -53,7 +53,8 @@ class Settings(BaseSettings):
     ai_model: str = "claude-haiku-5-5"
     ai_reasoning_effort: Literal["low", "medium", "high", "xhigh", "max"] = "low"
     ai_fetch_details: bool = True
-    # Initial discovery limit per source. The paid reading limit is set on each batch.
+    # The batch sets its paid limits once, before parallel assessments start.
+    _source_daily_limit: int | None = PrivateAttr(default=None)
     _reading_run_since: str | None = PrivateAttr(default=None)
     discovery_page_cap: int = Field(default=40, ge=1, le=200)
     discovery_window_days: int = Field(default=7, ge=1, le=30)

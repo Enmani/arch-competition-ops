@@ -181,6 +181,16 @@ def _apply_schema(db_path: Path) -> None:
                     row[1] for row in connection.execute(f"PRAGMA table_info({table})")
                 }:
                     connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+                    if table == "notice_backlog" and column == "expires_on":
+                        from arch_competition_ops.storage.backlog import listing_deadline
+
+                        rows = connection.execute(
+                            "SELECT rowid,payload FROM notice_backlog WHERE status='queued'"
+                        )
+                        connection.executemany(
+                            "UPDATE notice_backlog SET expires_on=? WHERE rowid=?",
+                            ((listing_deadline(row[1]), row[0]) for row in rows),
+                        )
             _ensure_workspace_watchlist_entry_uniqueness(connection)
         except BaseException:
             connection.execute("ROLLBACK")

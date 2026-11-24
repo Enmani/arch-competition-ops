@@ -28,6 +28,15 @@ def collection_window(db, source_id, date_from, cap, days, supports_end):
             "UPDATE collection_resume SET date_to=?,read_limit=? WHERE source_id=?",
             (end, cap, source_id),
         )
+        if not supports_end:
+            floor = (clock.today() - timedelta(days=days - 1)).isoformat()
+            if start < floor:
+                through = (date.fromisoformat(floor) - timedelta(days=1)).isoformat()
+                cx.execute(
+                    "INSERT OR IGNORE INTO collection_coverage_gaps VALUES(?,?,?)",
+                    (source_id, start, through),
+                )
+            start = max(start, floor)
         return start, end if supports_end else None, cursor
 
 
@@ -78,7 +87,7 @@ def enqueue(
                 "attempts=0,status='queued',last_error=NULL,queued_at=?,criteria_hash=? "
                 "WHERE source_id=? AND status IN ('failed','queued') AND attempts>0 "
                 "AND criteria_hash IS NOT ?",
-                (now.isoformat(),criteria, source_id, criteria),
+                (now.isoformat(), criteria, source_id, criteria),
             )
         for document in documents:
             version = notice_content_hash(document.payload, document.source_url)
@@ -130,7 +139,8 @@ def enqueue(
 
 def queue_stats(cx, source_id, *, new=0, lengths=(), unfinished=1):
     count, oldest = cx.execute(
-        "SELECT count(*),min(coalesce(queued_at,first_seen)) FROM notice_backlog WHERE source_id=? AND status='queued'",
+        "SELECT count(*),min(coalesce(queued_at,first_seen)) FROM notice_backlog "
+        "WHERE source_id=? AND status='queued'",
         (source_id,),
     ).fetchone()
     age = (clock.now_utc() - datetime.fromisoformat(oldest)).days if oldest else 0
@@ -138,6 +148,13 @@ def queue_stats(cx, source_id, *, new=0, lengths=(), unfinished=1):
         f"new={new} text_chars_min/max={min(lengths, default=0)}/{max(lengths, default=0)} "
         f"unfinished_pages_at_least={int(unfinished)} queued={count} oldest_days={age}"
     )
+    gaps = cx.execute(
+        "SELECT min(date_from),max(date_through),count(*) FROM collection_coverage_gaps "
+        "WHERE source_id=?",
+        (source_id,),
+    ).fetchone()
+    if gaps[2]:
+        stats += f" unavailable_windows={gaps[2]} earliest_from={gaps[0]} latest_through={gaps[1]}"
     for state, total in cx.execute(
         "SELECT status,count(*) FROM notice_backlog WHERE source_id=? AND status IN "
         "('expired_unread','aged_out') GROUP BY status",
@@ -196,5 +213,5 @@ def requeue_failed(db, source_id, url=None):
         return cx.execute(
             "UPDATE notice_backlog SET attempts=0,status='queued',last_error=NULL,queued_at=? "
             "WHERE source_id=? AND status='failed' AND (? IS NULL OR source_url=?)",
-            (clock.now_utc().isoformat(),source_id, url, url),
+            (clock.now_utc().isoformat(), source_id, url, url),
         ).rowcount

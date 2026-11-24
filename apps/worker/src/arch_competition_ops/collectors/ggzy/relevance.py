@@ -11,19 +11,15 @@ from arch_competition_ops.collectors.ggzy.markers import (
     CLASSIFICATION_STOP_MARKERS,
     DESIGN_SCOPE_LABEL_MARKERS,
     EXPLICIT_NEW_BUILD_MARKERS,
-    NEGATIVE_DOMAIN_LABEL_MARKERS,
-    ORIGINAL_CATEGORY_POSITIVE_LABEL_MARKERS,
     PROJECT_MODE_LABEL_MARKERS,
 )
 
 
 @dataclass(frozen=True)
 class GGZYNoticeFeatures:
-    official_positive_sectors: frozenset[str]
     built_asset_types: frozenset[str]
     design_scopes: frozenset[str]
     project_modes: frozenset[str]
-    negative_domains: frozenset[str]
     has_building_discipline: bool
 
 
@@ -35,11 +31,7 @@ def map_project_types(features: GGZYNoticeFeatures) -> list[str]:
         project_types.append("urban_planning")
     if "interior_design" in features.design_scopes or "interior" in features.built_asset_types:
         project_types.append("interior_project")
-    if (
-        _has_strong_built_asset(features)
-        or features.has_building_discipline
-        or features.official_positive_sectors
-    ):
+    if _has_strong_built_asset(features) or features.has_building_discipline:
         project_types.append("building_project")
     return list(dict.fromkeys(project_types))
 
@@ -101,19 +93,11 @@ def extract_notice_features(
     *,
     combined_text: str,
     classification_text: str | None,
-    original_category_text: str | None,
 ) -> GGZYNoticeFeatures:
-    category_text = (original_category_text or "").strip()
     feature_text = classification_text or combined_text
-    official_positive_sectors = _collect_feature_labels(
-        category_text, ORIGINAL_CATEGORY_POSITIVE_LABEL_MARKERS
-    )
     built_asset_types = _collect_feature_labels(feature_text, BUILT_ASSET_TYPE_LABEL_MARKERS)
     design_scopes = _collect_feature_labels(feature_text, DESIGN_SCOPE_LABEL_MARKERS)
     project_modes = _collect_feature_labels(feature_text, PROJECT_MODE_LABEL_MARKERS)
-    negative_domains = _collect_feature_labels(
-        f"{category_text} {combined_text}".strip(), NEGATIVE_DOMAIN_LABEL_MARKERS
-    )
     has_building_discipline = any(marker in combined_text for marker in BUILDING_DISCIPLINE_MARKERS)
     if (
         "new_build" in project_modes
@@ -123,16 +107,10 @@ def extract_notice_features(
         project_modes = frozenset(mode for mode in project_modes if mode != "new_build")
     if "interior_design" in design_scopes:
         built_asset_types = frozenset({*built_asset_types, "interior"})
-    if "architectural_design" in design_scopes and (
-        "education" in built_asset_types or "healthcare" in built_asset_types
-    ):
-        built_asset_types = frozenset({*built_asset_types})
     return GGZYNoticeFeatures(
-        official_positive_sectors=official_positive_sectors,
         built_asset_types=built_asset_types,
         design_scopes=design_scopes,
         project_modes=project_modes,
-        negative_domains=negative_domains,
         has_building_discipline=has_building_discipline,
     )
 

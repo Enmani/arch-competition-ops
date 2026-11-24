@@ -7,6 +7,7 @@ from arch_competition_ops.collectors.base import CollectedSourceDocument
 from arch_competition_ops.collectors.common import (
     fetch_text_get,
 )
+from arch_competition_ops.collectors.pagination import snapshot_documents
 from arch_competition_ops.models import SourceDefinition
 from arch_competition_ops.normalizers.dates import parse_date_string
 from arch_competition_ops.normalizers.text import strip_html
@@ -59,7 +60,4 @@ def collect_competitions_archi_documents(
             ensure_ascii=False,
         )
         documents.append(CollectedSourceDocument(source_url=link, payload=payload))
-        if len(documents) >= limit:
-            break
-
-    return documents
+    return snapshot_documents(documents, limit)

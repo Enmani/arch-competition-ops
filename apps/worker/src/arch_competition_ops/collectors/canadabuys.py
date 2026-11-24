@@ -9,6 +9,7 @@ from arch_competition_ops.collectors.base import CollectedSourceDocument
 from arch_competition_ops.collectors.common import (
     fetch_text_get,
 )
+from arch_competition_ops.collectors.pagination import snapshot_documents
 from arch_competition_ops.models import SourceDefinition
 from arch_competition_ops.normalizers.dates import parse_date_string
 
@@ -107,4 +108,4 @@ def collect_canadabuys_documents(
         )
 
     documents.sort(key=lambda item: item[0], reverse=True)
-    return [document for _publication_date, document in documents[:limit]]
+    return snapshot_documents([row[-1] for row in documents], limit)

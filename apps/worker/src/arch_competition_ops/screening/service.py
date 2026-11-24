@@ -90,6 +90,8 @@ def _request_one(
         budget_usd=settings.ai_monthly_budget_usd,
         daily_budget_usd=settings.ai_daily_budget_usd,
         run_since=settings._reading_run_since,
+        source_id=row.get("source_id"),
+        source_daily_limit=settings._source_daily_limit,
     )
     response = read_notice(
         client, settings.ai_provider, json.loads(input_json)["request"], sleep=sleep

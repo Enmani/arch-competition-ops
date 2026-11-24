@@ -23,12 +23,21 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from datetime import date, timedelta
+from itertools import count
 from typing import Any
 from urllib import parse
 
 from arch_competition_ops import clock
 from arch_competition_ops.collectors.base import CollectedSourceDocument
 from arch_competition_ops.collectors.common import build_url, fetch_json_get
+from arch_competition_ops.collectors.pagination import (
+    bounded_pages,
+    current_pages,
+    next_page,
+    page_items,
+    page_position,
+    unfinished_page,
+)
 from arch_competition_ops.models import SourceDefinition
 from arch_competition_ops.normalizers.text import strip_html
 
@@ -150,15 +159,17 @@ def collect_world_bank_documents(
     fetch = fetch_json or _default_fetch_json
     window_start = _window_start(publication_date_from)
     documents: list[CollectedSourceDocument] = []
-    offset = 0
+    offset = page_position(0)
 
-    while len(documents) < limit:
+    for _ in bounded_pages(count()):
+        if limit < 1:
+            break
         response = fetch(_page_url(offset))
         notices = response.get("procnotices") if isinstance(response, dict) else None
         if not isinstance(notices, list) or not notices:
             break
 
-        for notice in notices:
+        for notice in page_items(notices):
             if not isinstance(notice, dict):
                 continue
             published = _parse_notice_date(notice.get("noticedate"))
@@ -183,9 +194,13 @@ def collect_world_bank_documents(
                 )
             )
             if len(documents) >= limit:
+                unfinished_page()
                 return documents
 
+        if (state := current_pages()) and state.unfinished:
+            break
         offset += len(notices)
+        next_page(offset)
         total = response.get("total")
         if isinstance(total, int | str) and str(total).isdigit() and offset >= int(total):
             break

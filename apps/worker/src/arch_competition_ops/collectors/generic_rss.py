@@ -9,6 +9,7 @@ from arch_competition_ops.collectors.base import CollectedSourceDocument
 from arch_competition_ops.collectors.common import (
     fetch_text_get,
 )
+from arch_competition_ops.collectors.pagination import snapshot_documents
 from arch_competition_ops.models import SourceDefinition
 from arch_competition_ops.normalizers.dates import parse_date_string
 from arch_competition_ops.normalizers.text import normalize_text, strip_html
@@ -131,4 +132,4 @@ def collect_generic_rss_documents(
         )
 
     scored_documents.sort(key=lambda item: (item[0], item[1]), reverse=True)
-    return [document for _score, _published_at, document in scored_documents[:limit]]
+    return snapshot_documents([row[-1] for row in scored_documents], limit)

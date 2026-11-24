@@ -69,6 +69,7 @@ class AutomationBatchResult:
     source_ids: list[str]
     publication_date_from: str | None
     limit_per_source: int
+    paid_reading_paused: bool = False
     succeeded: list[AutomationSourceRun] = field(default_factory=list)
     failed: list[AutomationSourceFailure] = field(default_factory=list)
 
@@ -92,6 +93,7 @@ class AutomationBatchResult:
             "limit_per_source": self.limit_per_source,
             "total_sources": self.total_sources,
             "total_ingested": self.total_ingested,
+            "paid_reading_paused": self.paid_reading_paused,
             "has_failures": self.has_failures,
             "succeeded": [asdict(run) for run in self.succeeded],
             "failed": [asdict(failure) for failure in self.failed],
@@ -166,7 +168,7 @@ def resolve_batch_sources(
 def _default_publication_date_from(window_days: int | None) -> str | None:
     if window_days is None:
         return None
-    return (clock.today() - timedelta(days=window_days)).isoformat()
+    return (clock.today() - timedelta(days=window_days - 1)).isoformat()
 
 
 def run_automation_batch(
@@ -203,6 +205,7 @@ def run_automation_batch(
     )
 
     settings = settings.model_copy()
+    settings._source_daily_limit = effective_limit
     settings._reading_run_since = clock.now_utc().isoformat()
 
     def run_sources() -> None:
@@ -283,6 +286,7 @@ def run_automation_batch(
             run.notes.extend(read.notes)
             run.deferred -= min(run.deferred, len(read.ingested_ids) + read.skipped_expired)
             if read.batch_paused:
+                result.paid_reading_paused = True
                 break
 
     if use_lock:

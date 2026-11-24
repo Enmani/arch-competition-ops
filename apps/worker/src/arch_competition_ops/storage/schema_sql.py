@@ -125,9 +125,16 @@ CREATE TABLE IF NOT EXISTS notice_backlog (
     PRIMARY KEY(source_id, content_hash)
 );
 CREATE INDEX IF NOT EXISTS idx_backlog_queue ON notice_backlog(status, first_seen);
+CREATE INDEX IF NOT EXISTS idx_backlog_source_url ON notice_backlog(source_id, source_url);
 CREATE TABLE IF NOT EXISTS backlog_retention (
     id INTEGER PRIMARY KEY CHECK (id=1),
     removed INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS collection_coverage_gaps (
+    source_id TEXT NOT NULL,
+    date_from TEXT NOT NULL,
+    date_through TEXT NOT NULL,
+    PRIMARY KEY(source_id, date_from, date_through)
 );
 CREATE TABLE IF NOT EXISTS collection_resume (
     source_id TEXT PRIMARY KEY,

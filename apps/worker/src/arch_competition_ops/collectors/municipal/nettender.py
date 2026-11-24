@@ -7,6 +7,7 @@ import re
 from urllib.parse import urljoin, urlsplit
 
 from arch_competition_ops.collectors.base import CollectedSourceDocument, deferred_detail
+from arch_competition_ops.collectors.pagination import current_pages, snapshot_items
 from arch_competition_ops.http import HttpError
 from arch_competition_ops.models import SourceDefinition
 from arch_competition_ops.normalizers.dates import parse_date_string
@@ -91,7 +92,8 @@ def collect_nettender_listing_documents(
     post_text: callable,
 ) -> list[CollectedSourceDocument]:
     documents: list[CollectedSourceDocument] = []
-    for oid, category, row_html in NETTENDER_ROW_PATTERN.findall(listing_html):
+    rows = NETTENDER_ROW_PATTERN.findall(listing_html)
+    for oid, category, row_html in snapshot_items(rows, len(rows), lambda row: row[0]):
         title = _extract_td_by_class(row_html, "tender")
         authority = _extract_td_by_class(row_html, "tenderAuthority")
         deadline_raw = _extract_td_by_class(row_html, "tenderDeadline")
@@ -116,7 +118,7 @@ def collect_nettender_listing_documents(
             detail_html = fetch_text(detail_url) if detail_url else ""
         except HttpError as exc:
             documents.append(deferred_detail(exc, detail_url, row_html))
-            if len(documents) >= limit:
+            if not current_pages() and len(documents) >= limit:
                 break
             continue
 
@@ -138,7 +140,7 @@ def collect_nettender_listing_documents(
                 payload=json.dumps(payload, ensure_ascii=False),
             )
         )
-        if len(documents) >= limit:
+        if not current_pages() and len(documents) >= limit:
             break
 
     return documents

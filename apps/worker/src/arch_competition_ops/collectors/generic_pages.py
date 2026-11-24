@@ -5,6 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from arch_competition_ops.collectors.base import CollectedSourceDocument, deferred_detail
+from arch_competition_ops.collectors.pagination import (
+    current_pages,
+    snapshot_pages,
+    unfinished_page,
+)
 from arch_competition_ops.http import HttpError, get_default_client
 from arch_competition_ops.models import SourceDefinition
 
@@ -17,8 +22,13 @@ def collect_generic_notice_pages(
     archive_dir: Path | None = None,
 ) -> list[CollectedSourceDocument]:
     documents = []
-    urls = list(dict.fromkeys(source.url_list or [source.base_url]))[:limit]
-    for url in urls:
+    urls = list(dict.fromkeys(source.url_list or [source.base_url]))
+    for url in snapshot_pages(urls):
+        if len(documents) >= limit:
+            unfinished_page()
+            break
+        if state := current_pages():
+            state.rows += 1
         try:
             response = get_default_client().get(url, archive=archive_dir or False)
         except HttpError as exc:

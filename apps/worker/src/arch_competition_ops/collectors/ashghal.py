@@ -18,6 +18,7 @@ from arch_competition_ops.collectors.mideast_common import (
     page_text,
     window_start,
 )
+from arch_competition_ops.collectors.pagination import current_pages, snapshot_items, snapshot_pages
 from arch_competition_ops.http import HttpError
 from arch_competition_ops.models import SourceDefinition
 
@@ -138,32 +139,45 @@ def collect_ashghal_documents(
     fetch_text: Callable[[str], str] | None = None,
 ) -> list[CollectedSourceDocument]:
     """Collect public notices in the requested publication window."""
+    if limit <= 0:
+        return []
     start = window_start(publication_date_from)
     get = fetch_text or _default_fetch_text
-    rows: list[dict] = []
-    seen: set[str] = set()
-    for kind, url in LISTS:
-        for row in _parse_rows(get(url), kind):
-            published = row["published"]
-            if published is None or published < start:
-                continue
-            if row["url"] in seen:
-                continue
-            seen.add(row["url"])
-            rows.append(row)
-    rows.sort(key=lambda row: (row["published"], row["tenderNumber"]), reverse=True)
+    sources = {url: kind for kind, url in LISTS}
+
+    def listing(url):
+        return [
+            row
+            for row in _parse_rows(get(url), sources[url])
+            if row["published"] and row["published"] >= start
+        ]
+
+    def candidates():
+        if current_pages():
+            for url in snapshot_pages(sources):
+                yield from snapshot_items(listing(url), limit, lambda row: row["url"])
+        else:
+            rows = [row for url in sources for row in listing(url)]
+            rows.sort(key=lambda row: (row["published"], row["tenderNumber"]), reverse=True)
+            yield from rows
 
     documents = []
-    for row in rows[: max(limit, 0)]:
+    seen = set()
+    for row in candidates():
+        if row["url"] in seen:
+            continue
+        seen.add(row["url"])
         detail = None
         try:
             detail = _detail(get(row["url"]))
         except HttpError as exc:  # the list row alone is still a valid record
             if exc.status_code in {403, 429}:
                 documents.append(deferred_detail(exc, row["url"], row["listingText"]))
-                if len(documents) >= limit:
-                    return documents
+                if not current_pages() and len(documents) >= limit:
+                    break
                 continue
             logger.warning("Ashghal tender %s detail not read: %s", row["tenderNumber"], exc)
         documents.append(_build_document(row, detail))
+        if not current_pages() and len(documents) >= limit:
+            break
     return documents

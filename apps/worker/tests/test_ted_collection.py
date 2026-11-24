@@ -23,7 +23,7 @@ def test_ted_ai_query_asks_only_for_notices_that_open_participation() -> None:
         publication_date_from="2026-01-01",
         fetch_json=lambda _url, body: queries.append(body["query"]) or {"notices": []},
     )
-    # Award results would otherwise take most of the newest-first candidate window.
+    # The listing fixture includes award results as well as open notices.
     assert queries == ["publication-date >= 20260101"]
 
 

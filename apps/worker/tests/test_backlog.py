@@ -191,3 +191,78 @@ def test_completed_payload_is_cleared_but_can_be_read_after_rule_change(tmp_path
         assert cx.execute("SELECT payload FROM notice_backlog").fetchone()[0] == ""
     backlog.enqueue(db, "city", [doc], "v2", unfinished=0, cap=1)
     assert queued(db, "city", 1) == [doc]
+
+
+def test_live_source_reports_unavailable_archive_after_resuming(tmp_path):
+    from arch_competition_ops.bootstrap import initialize_database
+    from arch_competition_ops.storage import backlog
+
+    clock.set_today_provider(lambda: date(2026, 6, 1))
+    db = initialize_database(Settings(root=tmp_path))
+    assert backlog.collection_window(db, "live", "2026-05-01", 2, 7, False)[0] == "2026-05-26"
+    for _ in range(2):
+        _, _, stats, _ = backlog.enqueue(db, "live", [], None, unfinished=0, cap=2)
+        assert "earliest_from=2026-05-01 latest_through=2026-05-25" in stats
+
+
+def test_reordered_snapshot_resumes_without_losing_the_tail():
+    from arch_competition_ops.collectors.pagination import snapshot_documents, track_pages
+
+    docs = [CollectedSourceDocument("https://city.example/" + letter, letter) for letter in "abc"]
+    with track_pages(1, 2, None, "") as state:
+        assert snapshot_documents(docs[::-1], 2) == docs[:2]
+        assert state.unfinished
+    with track_pages(1, 2, None, state.cursor) as resumed:
+        assert snapshot_documents(docs, 2) == docs[2:]
+        assert resumed.complete and not resumed.unfinished
+
+
+def test_reading_run_cannot_double_its_budget_at_utc_midnight(tmp_path, monkeypatch):
+    from datetime import UTC, datetime
+
+    from arch_competition_ops.bootstrap import initialize_database
+    from arch_competition_ops.storage.screening import ScreeningBudgetExceeded, reserve_screening
+
+    db = initialize_database(Settings(root=tmp_path))
+    start = datetime(2026, 6, 1, 23, 59, tzinfo=UTC)
+    monkeypatch.setattr(clock, "now_utc", lambda: start)
+    args = dict(
+        competition_id=None,
+        source_url="https://example.org",
+        model="test",
+        input_json="{}",
+        reserve_usd=3,
+        budget_usd=100,
+        daily_budget_usd=5,
+        run_since=start.isoformat(),
+    )
+    reserve_screening(db, **args)
+    monkeypatch.setattr(clock, "now_utc", lambda: datetime(2026, 6, 2, tzinfo=UTC))
+    with pytest.raises(ScreeningBudgetExceeded, match="run"):
+        reserve_screening(db, **args)
+
+
+def test_same_day_repeat_keeps_a_separate_read_allowance_for_each_source(tmp_path):
+    from arch_competition_ops.bootstrap import initialize_database
+    from arch_competition_ops.storage import backlog
+    from arch_competition_ops.storage.screening import SourceDailyLimitReached, reserve_screening
+
+    db = initialize_database(Settings(root=tmp_path))
+    for index, source in enumerate(["A", "B", "A"]):
+        url = "https://example.org/" + source
+        backlog.enqueue(db, source, [CollectedSourceDocument(url, source)], "", unfinished=0, cap=5)
+        args = dict(
+            competition_id=None,
+            source_url=url,
+            model="test",
+            input_json="{}",
+            reserve_usd=0.01,
+            budget_usd=100,
+            source_id=source,
+            source_daily_limit=1,
+        )
+        if index == 2:
+            with pytest.raises(SourceDailyLimitReached):
+                reserve_screening(db, **args)
+        else:
+            reserve_screening(db, **args)

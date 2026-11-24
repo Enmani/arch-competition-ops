@@ -7,6 +7,7 @@ import re
 import xml.etree.ElementTree as ET
 
 from arch_competition_ops.collectors.base import CollectedSourceDocument, deferred_detail
+from arch_competition_ops.collectors.pagination import current_pages, snapshot_items
 from arch_competition_ops.http import HttpError
 from arch_competition_ops.models import SourceDefinition
 from arch_competition_ops.normalizers.dates import parse_date_string
@@ -58,7 +59,9 @@ def collect_feed_documents(
         return []
 
     documents: list[CollectedSourceDocument] = []
-    for item in channel.findall("item"):
+    for item in snapshot_items(
+        channel.findall("item"), len(channel), lambda item: item.findtext("link") or ""
+    ):
         title = (item.findtext("title") or "").strip()
         link = (item.findtext("link") or "").strip()
         description = item.findtext("description") or ""
@@ -87,7 +90,7 @@ def collect_feed_documents(
         except HttpError as exc:
             if exc.status_code in {403, 429}:
                 documents.append(deferred_detail(exc, link, ET.tostring(item, encoding="unicode")))
-                if len(documents) >= limit:
+                if not current_pages() and len(documents) >= limit:
                     break
                 continue
             detail_html = ""
@@ -104,7 +107,7 @@ def collect_feed_documents(
                 payload=json.dumps(payload, ensure_ascii=False),
             )
         )
-        if len(documents) >= limit:
+        if not current_pages() and len(documents) >= limit:
             break
 
     return documents

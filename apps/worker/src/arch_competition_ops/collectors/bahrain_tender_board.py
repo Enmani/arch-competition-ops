@@ -20,6 +20,7 @@ from arch_competition_ops.collectors.mideast_common import (
     window_start,
 )
 from arch_competition_ops.collectors.pagination import (
+    current_pages,
     numbered_pages,
     page_items,
     page_limit,
@@ -187,14 +188,11 @@ def collect_bahrain_tender_board_documents(
     post = post_json or _default_post_json
     get = fetch_text or _default_fetch_text
     pages = post("GetCurrentPublicTenderPageCount", _query(-1)).get("d") or 0
-    if pages > page_limit(MAX_PAGES):
-        unfinished_page()
-        logger.warning(
-            "Bahrain Tender Board lists %s pages; only the first %s are read", pages, MAX_PAGES
-        )
+    if not current_pages() and int(pages) > MAX_PAGES:
+        logger.warning("Bahrain lists %s pages; only the first %s are read", pages, MAX_PAGES)
     documents: list[CollectedSourceDocument] = []
     seen: set[str] = set()
-    for page in numbered_pages(range(1, min(int(pages), page_limit(MAX_PAGES)) + 1)):
+    for page in numbered_pages(range(1, page_limit(MAX_PAGES) + 1), last=int(pages)):
         if len(documents) >= limit:
             break
         rows = _parse_rows(post("GetCurrentPublicTenderByPage", _query(page)).get("d") or "")
