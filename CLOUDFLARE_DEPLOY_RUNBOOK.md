@@ -345,11 +345,11 @@ git push
 `.github/workflows/daily-ingest.yml` runs the daily ingest on a GitHub Actions runner (free for a public repository, 6 hour job limit), so the site updates even when the owner's PC is off. It replaces the Windows scheduled task. Each run:
 
 1. pulls the worker state from the private R2 bucket `arch-competition-state` (`scripts/cloud-state.mjs pull`): `data/competitions.sqlite` (notice ledger, paid-assessment cache, all records) and `data/geocoding-cache.json`;
-2. `cleanup-expired-competitions`, then `ingest-batch --batch-id all_enabled` with AI on, 8 assessments at once, caps of 15 USD a day and 100 USD a month;
+2. `cleanup-expired-competitions`, then `ingest-batch --batch-id all_enabled` with AI on, 8 assessments at once, caps of 5 USD a day and 100 USD a month;
 3. `node scripts/export-d1-data.mjs --apply`: upserts the worker-owned tables into production D1 and deletes expired and excluded records there (`0090-retention.sql`);
 4. pushes the new state as a new generation (`scripts/cloud-state.mjs push`), keeping the newest 14.
 
-The ingestion step defaults to Responses, gpt-6-luna and low reasoning effort. GitHub Actions repository variables AI_PROVIDER, AI_MODEL and AI_REASONING_EFFORT override those defaults. For chat_completions also set AI_CHAT_BASE_URL, AI_CHAT_INPUT_USD_PER_MILLION and AI_CHAT_OUTPUT_USD_PER_MILLION, and supply the separate AI_CHAT_API_KEY secret. Only the ingest step receives model credentials.
+The ingestion step defaults to Anthropic Messages, claude-haiku-5-5 and low effort. The owner has 100 USD in monthly credit, which expires at the end of each month. GitHub Actions repository variables AI_PROVIDER, AI_MODEL and AI_REASONING_EFFORT override those defaults. For OpenAI Responses, select openai, set an OpenAI model and add OPENAI_API_KEY. For openai-compatible also set AI_CHAT_BASE_URL, AI_CHAT_INPUT_USD_PER_MILLION and AI_CHAT_OUTPUT_USD_PER_MILLION, and supply the separate AI_CHAT_API_KEY secret. Only the ingest step receives model credentials.
 
 The state is the expensive part. Losing it, or starting from an empty database, means paying for every assessment again, so `pull` fails when the bucket has no state (only `push --init` creates the first one), and `pull`/`push` refuse to replace a state with one that has fewer `ai_notice_ledger` rows unless `--force`. Steps 3 and 4 still run when the ingest exits non-zero (some sources failing is normal) and never run when the pull failed; the job is then marked failed so the red run is visible.
 
@@ -364,15 +364,14 @@ The state is the expensive part. Losing it, or starting from an empty database, 
    npm --workspace apps/web exec -- wrangler r2 bucket create arch-competition-state
    ```
 
-3. Set the three repository secrets from environment variables, so the values are never typed into the command or echoed (set `$env:OPENAI_API_KEY` the same way as the two above; do not paste a key into a command line that is saved in shell history):
+3. Open the GitHub repository and choose Settings → Secrets and variables → Actions → New repository secret. Name it `ANTHROPIC_API_KEY` and paste the key into the value field. The current key lasts 30 days. Before expiry, create a replacement in the Anthropic account, select the existing GitHub secret and choose Update secret. After the next scheduled ingest succeeds with the replacement, revoke the previous key. Set the two Cloudflare secrets from the environment:
 
    ```powershell
    gh secret set CLOUDFLARE_API_TOKEN  --repo Enmani/arch-competition-ops --body $env:CLOUDFLARE_API_TOKEN
    gh secret set CLOUDFLARE_ACCOUNT_ID --repo Enmani/arch-competition-ops --body $env:CLOUDFLARE_ACCOUNT_ID
-   gh secret set OPENAI_API_KEY        --repo Enmani/arch-competition-ops --body $env:OPENAI_API_KEY
    ```
 
-   These are the only secrets the workflow uses. Clear the variables afterwards (see After Deployment).
+   Clear the variables afterwards (see After Deployment).
 4. Make the local database the first generation. Do it right after the last local ingest, with the Windows task paused, so the ledger and the assessment cache of the cloud start from everything already paid for. The snapshot is taken with SQLite's backup API, so a running ingest does not corrupt it.
 
    ```powershell

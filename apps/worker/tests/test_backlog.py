@@ -47,7 +47,8 @@ def test_collection_resumes_after_outage_and_read_budget(tmp_path, monkeypatch):
         assert cx.execute("SELECT count(*) FROM competitions").fetchone()[0] == 0
 
 
-def test_quota_pauses_all_sources_and_preserves_oldest_notice(tmp_path, monkeypatch):
+@pytest.mark.parametrize("provider", ["openai", "anthropic"])
+def test_quota_pauses_all_sources_and_preserves_oldest_notice(tmp_path, monkeypatch, provider):
     import httpx
     from test_ai_screening import mock_client
 
@@ -59,7 +60,15 @@ def test_quota_pauses_all_sources_and_preserves_oldest_notice(tmp_path, monkeypa
     (tmp_path / "config/automation.yml").write_text(
         "batches:\n  - batch_id: all\n    max_workers: 1\n", encoding="utf8"
     )
-    settings = Settings(root=tmp_path, ai_enabled=True, ai_concurrency=1, ai_fetch_details=False)
+    settings = Settings(
+        root=tmp_path,
+        ai_provider=provider,
+        ai_model="gpt-6-luna" if provider == "openai" else "claude-haiku-5-5",
+        anthropic_api_key="fixture-only",
+        ai_enabled=True,
+        ai_concurrency=1,
+        ai_fetch_details=False,
+    )
     calls = []
 
     def fail(request):
@@ -68,7 +77,20 @@ def test_quota_pauses_all_sources_and_preserves_oldest_notice(tmp_path, monkeypa
             429, json={"error": {"code": "insufficient_quota", "message": "quota"}}
         )
 
-    monkeypatch.setattr(service, "create_client", lambda _: mock_client(fail))
+    if provider == "openai":
+        monkeypatch.setattr(service, "create_client", lambda _: mock_client(fail))
+    else:
+        from test_anthropic_screening import reply
+
+        from arch_competition_ops.screening.anthropic import AnthropicMessages
+
+        def no_credit(self, request, **kwargs):
+            calls.append(request.body)
+            return reply(
+                400, error={"type": "invalid_request_error", "message": "credit balance is too low"}
+            )
+
+        monkeypatch.setattr(AnthropicMessages, "send", no_credit)
     monkeypatch.setattr(
         "arch_competition_ops.ingest.collect_source_documents",
         lambda source, **kwargs: [

@@ -1,12 +1,9 @@
-"""Supported screening models; standard short-context USD prices, checked 2026-10-30.
-
-Source: https://developers.openai.com/api/docs/pricing
-Cached-input discounts are deliberately ignored in the local conservative cost estimate.
-"""
+"""Screening prices in USD per million tokens for short-context requests."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import ceil
 
 
 @dataclass(frozen=True)
@@ -16,16 +13,36 @@ class ScreeningModel:
     output_per_million: float
     purpose: str
 
-    def cost(self, input_tokens: int, output_tokens: int) -> float:
+    provider: str = "openai"
+    cache_read_per_million: float | None = None
+
+    def reservation(self, request_bytes: int, max_output: int) -> float:
+        # Count the full serialized schema and framing before applying the tokenizer allowance.
+        tokens = request_bytes + 4096
+        if self.provider == "anthropic":
+            tokens = ceil(tokens * 1.7)
+        return self.cost(tokens, max_output)
+
+    def cost(self, input_tokens: int, output_tokens: int, cache_read_tokens: int = 0) -> float:
+        discount = 0.0
+        if self.cache_read_per_million is not None and input_tokens <= 100_000:
+            discount = cache_read_tokens * (self.input_per_million - self.cache_read_per_million)
         return round(
-            (input_tokens * self.input_per_million + output_tokens * self.output_per_million)
+            (
+                input_tokens * self.input_per_million
+                + output_tokens * self.output_per_million
+                - discount
+            )
             / 1_000_000,
             8,
         )
 
 
 MODELS = (
-    ScreeningModel("gpt-6-luna", 0.10, 0.50, "Default: economical screening / 默认：低成本筛选"),
+    ScreeningModel(
+        "claude-haiku-5-5", 0.10, 0.50, "Default notice screening / 默认公告筛选", "anthropic", 0.01
+    ),
+    ScreeningModel("gpt-6-luna", 0.10, 0.50, "Economical OpenAI screening / OpenAI 低成本筛选"),
     ScreeningModel(
         "gpt-6.1-terra", 1.00, 5.00, "Efficient analysis and summaries / 高效分析与摘要"
     ),

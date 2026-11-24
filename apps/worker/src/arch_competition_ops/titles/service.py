@@ -73,7 +73,7 @@ def polish_titles(
 ) -> TitleBatchSummary:
     """Clean stale titles, then translate/condense new ones in at most ``max_batches`` requests."""
     summary = TitleBatchSummary()
-    model = get_model(settings.ai_model)
+    model = get_model(settings.ai_model if settings.ai_provider == "openai" else "gpt-6-luna")
     ai_token = ai_source_token(model.id)
     db_path = initialize_database(settings)
 

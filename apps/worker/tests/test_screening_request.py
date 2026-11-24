@@ -10,12 +10,18 @@ from arch_competition_ops.screening.providers import read_notice
 from arch_competition_ops.settings import Settings
 
 
-@pytest.mark.parametrize("provider", ["responses", "chat_completions"])
+@pytest.mark.parametrize("provider", ["openai", "openai-compatible", "anthropic"])
 def test_only_one_original_notice_reaches_the_model(tmp_path, provider):
     skill = tmp_path / "rule.md"
     skill.write_text("---\nmetadata: hidden\n---\nRead the notice.", encoding="utf8")
-    settings = Settings(root=tmp_path, ai_preferences=skill, _env_file=None)
-    settings.ai_provider = provider
+    settings = Settings(
+        root=tmp_path,
+        ai_preferences=skill,
+        ai_provider=provider,
+        ai_model=("claude-haiku-5-5" if provider == "anthropic" else "gpt-6-luna"),
+        anthropic_api_key="fixture-only",
+        _env_file=None,
+    )
     settings.ai_chat_base_url = "https://provider.example/v1"
     row = {
         "source_url": "https://user:password@city.example/n?id=1&signature=secret",
@@ -40,7 +46,20 @@ def test_only_one_original_notice_reaches_the_model(tmp_path, provider):
         .read_text(encoding="utf8")
     )
 
-    if provider == "chat_completions":
+    if provider == "anthropic":
+        from arch_competition_ops.screening.providers import create_screening_client
+
+        schema = expected["text"]["format"]["schema"]
+        del schema["properties"]["relevance_score"]["minimum"]
+        del schema["properties"]["relevance_score"]["maximum"]
+        expected = {
+            "model": "claude-haiku-5-5",
+            "max_tokens": 16000,
+            "system": "Read the notice.",
+            "messages": [{"role": "user", "content": expected["input"]}],
+            "output_config": {"effort": "low", "format": {"type": "json_schema", "schema": schema}},
+        }
+    if provider == "openai-compatible":
         fmt = expected["text"]["format"]
         expected = {
             "model": "gpt-6-luna",
@@ -65,6 +84,26 @@ def test_only_one_original_notice_reaches_the_model(tmp_path, provider):
         sent.append(json.loads(req.content))
         return httpx.Response(400, json={"error": {"message": "fixture"}})
 
+    if provider == "anthropic":
+        from requests import Response
+
+        def send(req, **kwargs):
+            assert req.method == "POST" and req.url == "https://api.anthropic.com/v1/messages"
+            assert req.headers["x-api-key"] == "fixture-only"
+            assert req.headers["anthropic-version"] == "2026-10-21"
+            assert req.headers["content-type"] == "application/json"
+            assert not kwargs["allow_redirects"]
+            sent.append(json.loads(req.body))
+            reply = Response()
+            reply.status_code = 400
+            reply._content = b"{}"
+            return reply
+
+        with create_screening_client(settings) as client:
+            client.send = send
+            read_notice(client, provider, request)
+        assert sent == [expected]
+        return
     with mock_client(capture) as client:
         read_notice(client, provider, request)
     assert sent == [expected]

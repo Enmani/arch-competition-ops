@@ -6,7 +6,7 @@ updated_at: 2026-11-24
 
 ## Changed
 
-The worker saves discovered notices before reading them. Each paid request uses one notice and the owner's screening requirement. Responses and compatible Chat Completions services use the same decision schema.
+The worker saves discovered notices before reading them. Each paid request uses one notice and the owner's screening requirement. Anthropic Messages (the default), OpenAI Responses and compatible Chat Completions services use the same local decision schema.
 
 ## Why
 

@@ -15,7 +15,7 @@ from arch_competition_ops.screening.client import ScreeningError, ScreeningPause
 from arch_competition_ops.storage.connection import connect
 
 
-@pytest.fixture(params=["responses", "chat_completions"])
+@pytest.fixture(params=["openai", "openai-compatible"])
 def configured(ai_workspace, request):  # noqa: F811
     settings, source = ai_workspace
     settings.ai_provider = request.param
@@ -31,7 +31,7 @@ def test_providers_share_decision_usage_and_validation(configured, outcome):
     payload = decision_payload() if outcome != "invalid" else {"decision": "invented"}
 
     def handle(req):
-        if settings.ai_provider == "responses":
+        if settings.ai_provider == "openai":
             body = response(payload).json()
         else:
             assert req.url.path.endswith("/chat/completions")

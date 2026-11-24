@@ -65,7 +65,7 @@ def reserve_screening(
     input_json: str,
     reserve_usd: float,
     budget_usd: float,
-    daily_budget_usd: float = 1,
+    daily_budget_usd: float = 5,
 ) -> str:
     now = clock.now_utc()
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()

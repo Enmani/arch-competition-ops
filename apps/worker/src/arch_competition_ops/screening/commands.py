@@ -25,7 +25,7 @@ def add_parsers(subparsers) -> None:
     analyze.add_argument("--path", required=True)
     analyze.add_argument("--source-url", required=True)
     models = subparsers.add_parser("show-ai-models", help="list screening models and USD prices")
-    models.add_argument("--live", action="store_true", help="check the account model list")
+    models.add_argument("--live", action="store_true", help="check the OpenAI account model list")
     models.add_argument("--json", action="store_true")
     screen = subparsers.add_parser(
         "screen-competitions", help="screen stored opportunities with AI"
@@ -94,16 +94,19 @@ def handle(settings: Settings, args: argparse.Namespace, emit: Callable[[str], N
                 "model": model.id,
                 "input_usd_per_million_tokens": model.input_per_million,
                 "output_usd_per_million_tokens": model.output_per_million,
+                "cache_read_usd_per_million_tokens": model.cache_read_per_million,
                 "purpose": model.purpose,
                 "default": model.id == settings.ai_model,
-                "listed_for_account": model.id in available if available is not None else None,
+                "listed_for_account": model.id in available
+                if available is not None and model.provider == "openai"
+                else None,
             }
             for model in MODELS
         ]
         if args.json:
             emit(json.dumps(rows, ensure_ascii=False, indent=2))
         else:
-            emit("Standard short-context USD / 1M tokens; prices checked 2026-10-30")
+            emit("Standard short-context USD / 1M tokens")
             for row in rows:
                 marker = " (default)" if row["default"] else ""
                 access = f" | listed={row['listed_for_account']}" if args.live else ""

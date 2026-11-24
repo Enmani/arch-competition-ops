@@ -1,20 +1,28 @@
 """The only transport boundary for a paid notice assessment."""
 
-from dataclasses import dataclass
+from threading import Lock
 from urllib.parse import urlsplit
 
 from openai import APIConnectionError, APIError, APIStatusError, OpenAI
-from pydantic import ValidationError
 
+from arch_competition_ops.screening.anthropic import AnthropicMessages
 from arch_competition_ops.screening.catalog import ScreeningModel, get_model
-from arch_competition_ops.screening.client import call_with_rate_limit_retry, create_client
-from arch_competition_ops.screening.models import ScreeningDecision
+from arch_competition_ops.screening.client import (
+    ProviderResult,
+    call_with_rate_limit_retry,
+    create_client,
+)
 from arch_competition_ops.settings import Settings
+
+_sdk_decode_lock = Lock()
 
 
 def provider_identity(settings: Settings) -> str:
-    if settings.ai_provider == "responses":
+    # Persist the protocol identity so selecting the existing service reuses prior paid reads.
+    if settings.ai_provider == "openai":
         return "responses"
+    if settings.ai_provider == "anthropic":
+        return "anthropic"
     url = settings.ai_chat_base_url.rstrip("/")
     parts = urlsplit(url)
     if (
@@ -30,8 +38,11 @@ def provider_identity(settings: Settings) -> str:
 
 
 def screening_model(settings, model_id):
-    if settings.ai_provider == "responses":
-        return get_model(model_id)
+    if settings.ai_provider != "openai-compatible":
+        model = get_model(model_id)
+        if model.provider != settings.ai_provider:
+            raise ValueError(f"{model_id} is not configured for provider {settings.ai_provider}")
+        return model
     input_rate, output_rate = (
         settings.ai_chat_input_usd_per_million,
         settings.ai_chat_output_usd_per_million,
@@ -42,7 +53,9 @@ def screening_model(settings, model_id):
 
 
 def create_screening_client(settings):
-    if settings.ai_provider == "responses":
+    if settings.ai_provider == "anthropic":
+        return AnthropicMessages(settings)
+    if settings.ai_provider == "openai":
         return create_client(settings)
     provider_identity(settings)
     key = settings.ai_chat_api_key.get_secret_value().strip()
@@ -56,23 +69,20 @@ def create_screening_client(settings):
     )
 
 
-@dataclass
-class ProviderResult:
-    decision: ScreeningDecision | None = None
-    error_class: str | None = None
-    response_id: str | None = None
-    input_tokens: int | None = None
-    output_tokens: int | None = None
-    rejected: bool = False
-    pause: bool = False
-
-
 def read_notice(client, provider, request, *, sleep=None) -> ProviderResult:
-    """Send the final single-notice request. Both protocols validate the same response schema."""
-    chat = provider == "chat_completions"
-    call = client.chat.completions.create if chat else client.responses.create
+    """Send one notice and validate the reply against the shared decision schema."""
+    if provider == "anthropic":
+        return client.read_notice(request, sleep=sleep)
+    chat = provider == "openai-compatible"
+    api = client.chat.completions if chat else client.responses
     try:
-        reply = call_with_rate_limit_retry(lambda: call(**request), sleep=sleep)
+        raw_reply = call_with_rate_limit_retry(
+            lambda: api.with_raw_response.create(**request), sleep=sleep
+        )
+        # The SDK lazily builds Pydantic response models. Simultaneous first decodes can
+        # see a half-built schema. Only local decoding is serialized; HTTP stays concurrent.
+        with _sdk_decode_lock:
+            reply = raw_reply.parse()
     except APIStatusError as exc:
         quota = exc.code == "insufficient_quota"
         return ProviderResult(
@@ -98,8 +108,5 @@ def read_notice(client, provider, request, *, sleep=None) -> ProviderResult:
     if not complete:
         result.error_class = "incomplete_response"
     else:
-        try:
-            result.decision = ScreeningDecision.model_validate_json(raw or "")
-        except ValidationError:
-            result.error_class = "invalid_schema"
+        result.parse_decision(raw or "")
     return result

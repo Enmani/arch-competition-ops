@@ -85,7 +85,13 @@ def ai_workspace(tmp_path, monkeypatch):
         (REPO_ROOT / "config" / "taxonomy.yml").read_text(encoding="utf-8"),
         encoding="utf-8",
     )
-    settings = Settings(root=tmp_path, _env_file=None, openai_api_key="test-secret")
+    settings = Settings(
+        root=tmp_path,
+        _env_file=None,
+        ai_provider="openai",
+        ai_model="gpt-6-luna",
+        openai_api_key="test-secret",
+    )
     source = build_source(
         "city",
         name="City",
@@ -400,7 +406,7 @@ def test_daily_budget_reservation_is_durable_and_retains_deleted_record_usage(ai
         source_url="https://city.example/a",
         model="gpt-6-luna",
         input_json="{}",
-        reserve_usd=0.6,
+        reserve_usd=4.6,
         budget_usd=31,
     )
     assert delete_competitions(db, competition_ids=[comp_id]) == 1

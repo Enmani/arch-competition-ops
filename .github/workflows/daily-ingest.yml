@@ -64,7 +64,7 @@ jobs:
       DRY_RUN: ${{ inputs.dry_run == true && 'true' || 'false' }}
       ARCH_COMPETITION_OPS_AI_ENABLED: "1"
       ARCH_COMPETITION_OPS_AI_CONCURRENCY: "8"
-      ARCH_COMPETITION_OPS_AI_DAILY_BUDGET_USD: "15"
+      ARCH_COMPETITION_OPS_AI_DAILY_BUDGET_USD: "5"
       ARCH_COMPETITION_OPS_AI_MONTHLY_BUDGET_USD: "100"
     steps:
       - uses: actions/checkout@v4
@@ -127,9 +127,10 @@ jobs:
         if: ${{ inputs.dry_run != true }}
         timeout-minutes: 290
         env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          ARCH_COMPETITION_OPS_AI_PROVIDER: ${{ vars.AI_PROVIDER || 'responses' }}
-          ARCH_COMPETITION_OPS_AI_MODEL: ${{ vars.AI_MODEL || 'gpt-6-luna' }}
+          ARCH_COMPETITION_OPS_AI_PROVIDER: ${{ vars.AI_PROVIDER || 'anthropic' }}
+          ARCH_COMPETITION_OPS_AI_MODEL: ${{ vars.AI_MODEL || 'claude-haiku-5-5' }}
           ARCH_COMPETITION_OPS_AI_REASONING_EFFORT: ${{ vars.AI_REASONING_EFFORT || 'low' }}
           ARCH_COMPETITION_OPS_AI_CHAT_BASE_URL: ${{ vars.AI_CHAT_BASE_URL }}
           ARCH_COMPETITION_OPS_AI_CHAT_API_KEY: ${{ secrets.AI_CHAT_API_KEY }}

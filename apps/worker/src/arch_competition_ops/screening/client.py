@@ -1,4 +1,4 @@
-"""Official SDK boundary; one request, fixed OpenAI endpoint, no automatic paid retries."""
+"""Shared screening results and backoff, and the OpenAI SDK client."""
 
 from __future__ import annotations
 
@@ -6,16 +6,18 @@ import math
 import random
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import TypeVar
 
 from openai import APIStatusError, OpenAI
+from pydantic import ValidationError
 
+from arch_competition_ops.screening.models import ScreeningDecision
 from arch_competition_ops.settings import Settings
 
 T = TypeVar("T")
 
-# Rate-limit answers (HTTP 429) generate nothing and cost nothing, so they are the one outcome
-# retried automatically. Every other failure keeps its single reservation and ends the request.
+# Both transports cap retries. Anthropic also retries server errors with budget held for each.
 RATE_LIMIT_RETRIES = 3
 RATE_LIMIT_BASE_DELAY_SECONDS = 2.0
 RATE_LIMIT_MAX_DELAY_SECONDS = 60.0
@@ -45,10 +47,10 @@ def create_client(settings: Settings) -> OpenAI:
     )
 
 
-def _rate_limit_delay(exc: APIStatusError, attempt: int) -> float:
+def retry_delay(retry_after: str, attempt: int) -> float:
     """Honour a numeric ``Retry-After`` (capped); otherwise exponential backoff with jitter."""
     try:
-        advised = float(exc.response.headers.get("retry-after", ""))
+        advised = float(retry_after)
     except ValueError:
         advised = math.nan
     if math.isfinite(advised) and advised >= 0:
@@ -77,5 +79,24 @@ def call_with_rate_limit_retry(
                 or getattr(exc, "code", None) == "insufficient_quota"
             ):
                 raise
-            wait(_rate_limit_delay(exc, attempt))
+            wait(retry_delay(exc.response.headers.get("retry-after", ""), attempt))
     raise AssertionError("unreachable")  # the loop either returns or raises
+
+
+@dataclass
+class ProviderResult:
+    decision: ScreeningDecision | None = None
+    error_class: str | None = None
+    response_id: str | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    cache_read_tokens: int = 0
+    uncertain_retries: int = 0
+    rejected: bool = False
+    pause: bool = False
+
+    def parse_decision(self, text: str) -> None:
+        try:
+            self.decision = ScreeningDecision.model_validate_json(text)
+        except ValidationError:
+            self.error_class = "invalid_schema"

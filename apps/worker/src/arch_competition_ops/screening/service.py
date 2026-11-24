@@ -18,8 +18,10 @@ from arch_competition_ops.bootstrap import initialize_database
 from arch_competition_ops.http import HttpError
 from arch_competition_ops.locking import LockHeldError, exclusive_lock
 from arch_competition_ops.models import CompetitionRecord, SourceDefinition
+from arch_competition_ops.screening.anthropic import AnthropicMessages
 from arch_competition_ops.screening.catalog import ScreeningModel
 from arch_competition_ops.screening.client import (
+    RATE_LIMIT_RETRIES,
     ScreeningError,
     ScreeningPaused,
 )
@@ -63,7 +65,7 @@ class ScreeningBatchResult:
 
 
 def _request_one(
-    client: OpenAI,
+    client: OpenAI | AnthropicMessages,
     settings: Settings,
     db_path: Path,
     model: ScreeningModel,
@@ -74,8 +76,10 @@ def _request_one(
     *,
     sleep: Callable[[float], None] | None = None,
 ) -> tuple[ScreeningDecision, float, str]:
-    # A UTF-8 byte is a conservative input-token bound, with headroom for schema/framing.
-    reserve = model.cost(len(input_json.encode("utf-8")) + 4096, settings.ai_max_output_tokens)
+    per_attempt = model.reservation(len(input_json.encode("utf-8")), settings.ai_max_output_tokens)
+    # A 5xx can arrive after generation. Reserve for every potentially billable attempt.
+    attempts = RATE_LIMIT_RETRIES + 1 if settings.ai_provider == "anthropic" else 1
+    reserve = per_attempt * attempts
     request_id = reserve_screening(
         db_path,
         competition_id=row.get("id"),
@@ -89,11 +93,12 @@ def _request_one(
     response = read_notice(
         client, settings.ai_provider, json.loads(input_json)["request"], sleep=sleep
     )
-    cost = None
+    cost = per_attempt
     if response.rejected:
         cost = 0
     elif response.input_tokens is not None and response.output_tokens is not None:
-        cost = model.cost(response.input_tokens, response.output_tokens)
+        cost = model.cost(response.input_tokens, response.output_tokens, response.cache_read_tokens)
+    cost += per_attempt * response.uncertain_retries
     accounting = dict(
         response_id=response.response_id,
         input_tokens=response.input_tokens,
@@ -111,7 +116,7 @@ def _request_one(
             **accounting,
         )
         error = ScreeningPaused if response.pause else ScreeningError
-        raise error(response.error_class, cost_usd=reserve if cost is None else cost)
+        raise error(response.error_class, cost_usd=cost)
     decision = response.decision
     validate_evidence(decision, evidence_fields)
     decision.missing_information.extend(limitations)
@@ -122,7 +127,6 @@ def _request_one(
         result_json=decision.model_dump_json(),
         **accounting,
     )
-    cost = accounting["cost_usd"] if accounting["cost_usd"] is not None else reserve
     return decision, cost, request_id
 
 
@@ -148,7 +152,7 @@ def assess_document(
     source: SourceDefinition,
     source_url: str,
     payload: str,
-    client: OpenAI | None = None,
+    client: OpenAI | AnthropicMessages | None = None,
     force: bool = False,
     source_lock: bool = True,
     sleep: Callable[[float], None] | None = None,
@@ -291,7 +295,7 @@ def screen_competitions(
     dry_run: bool = False,
     source_payloads: dict[str, str] | None = None,
     fetch_source: bool = True,
-    client: OpenAI | None = None,
+    client: OpenAI | AnthropicMessages | None = None,
 ) -> ScreeningBatchResult:
     if not 1 <= limit <= 500:
         raise ValueError("AI screening limit must be between 1 and 500")
@@ -367,6 +371,6 @@ def screen_competitions(
                     if isinstance(exc, ScreeningError):
                         result.cost_usd += exc.cost_usd
                     result.errors.append(f"{row['id']}: {exc}")
-                    # Stop on account, transport, output and budget errors. No paid retry loop.
-                    break
+                    if isinstance(exc, ScreeningPaused | ScreeningBudgetExceeded):
+                        break
     return result

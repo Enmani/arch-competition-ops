@@ -38,7 +38,7 @@ from arch_competition_ops.normalizers.competition import (
     configure_procedure_registry,
 )
 from arch_competition_ops.review_queue import refresh_review_queue
-from arch_competition_ops.screening.client import ScreeningPaused
+from arch_competition_ops.screening.client import ScreeningError, ScreeningPaused
 from arch_competition_ops.screening.fingerprints import (
     notice_content_hash,
     screening_criteria_hash,
@@ -320,6 +320,8 @@ def ingest_source(
                     if getattr(exc, "status_code", None)
                     else type(exc).__name__
                 )
+                if isinstance(exc, ScreeningError):
+                    error_class = str(exc)
                 backlog.record_failure(db_path, source_id, document, error_class)
                 last_error = str(exc)
                 continue

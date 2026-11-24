@@ -11,6 +11,7 @@ from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 
 from arch_competition_ops.http import HttpError, get_default_client
 from arch_competition_ops.normalizers.text import strip_html
+from arch_competition_ops.screening.anthropic import strip_integer_bounds
 from arch_competition_ops.screening.fingerprints import notice_content_hash
 from arch_competition_ops.screening.models import ScreeningDecision, canonical_json
 from arch_competition_ops.screening.preferences import load_screening_instructions
@@ -206,7 +207,18 @@ def prepare_input(
             }
         },
     }
-    if settings.ai_provider == "chat_completions":
+    if settings.ai_provider == "anthropic":
+        request = {
+            "model": request["model"],
+            "max_tokens": settings.ai_max_output_tokens,
+            "system": request["instructions"],
+            "messages": [{"role": "user", "content": request["input"]}],
+            "output_config": {
+                "effort": settings.ai_reasoning_effort,
+                "format": {"type": "json_schema", "schema": strip_integer_bounds(schema)},
+            },
+        }
+    elif settings.ai_provider == "openai-compatible":
         fmt = request["text"]["format"]
         request = {
             "model": request["model"],
