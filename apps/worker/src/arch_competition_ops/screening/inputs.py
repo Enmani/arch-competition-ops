@@ -22,6 +22,9 @@ def enrich_notice_payload(
     payload: str, source_url: str, settings: Settings, *, limitations=None
 ) -> str:
     """API listing summaries often omit the very fields we need; also read the linked notice."""
+    if not payload:
+        # Retention may have cleared a terminal notice before the owner requested another read.
+        payload = json.dumps({"pendingDetailUrl": source_url})
     if not payload.lstrip().startswith("{"):
         return payload
     try:
@@ -67,7 +70,9 @@ def enrich_notice_payload(
         # The existing listing remains usable evidence; its missing fields stay visible.
         return payload
     media = response.headers.get("Content-Type", response.headers.get("content-type", ""))
-    if "pdf" in media.lower():
+    if "pdf" in media.lower() or not response.text.strip():
+        if pending and not envelope.get("rawNotice"):
+            raise HttpError("No readable source text", url=source_url)
         return payload
     if pending and urlsplit(source_url).hostname == "contrataciondelestado.es":
         from arch_competition_ops.collectors.pcsp import _detail_belongs_to, _extract_detail_fields
@@ -84,6 +89,7 @@ def prepare_input(
     model_id: str | None = None,
     source_payload: str | None = None,
     fetch_source: bool = True,
+    original_links: dict[str, set[str]] | None = None,
 ) -> tuple[str, dict[str, str], list[str]]:
     limitations: list[str] = []
     source_url = row["source_url"]
@@ -121,6 +127,11 @@ def prepare_input(
     links = PageLinks(source_url)
     links.feed(source_payload or "")
     links.links.extend(URL.findall(text))
+    candidates = [source_url, *links.links]
+    if original_links is not None:
+        for original in candidates:
+            if clean_url := public_url(original):
+                original_links.setdefault(clean_url, set()).add(original)
     fields = {}
     remaining = settings.ai_max_input_chars
     for name, value in (
@@ -129,7 +140,7 @@ def prepare_input(
         ("notice_text", text),
         (
             "notice_links",
-            "\n".join(dict.fromkeys(filter(None, map(public_url, [source_url, *links.links])))),
+            "\n".join(dict.fromkeys(filter(None, map(public_url, candidates)))),
         ),
     ):
         clean = URL.sub(lambda match: public_url(match[0]), value.replace(r"\/", "/"))

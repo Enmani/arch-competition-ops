@@ -92,12 +92,17 @@ class AnthropicMessages(requests.Session):
             result.error_class = stop
             return result
         content = body.get("content")
-        block = content[0] if isinstance(content, list) and content else None
-        if (
-            not isinstance(block, dict)
-            or block.get("type") != "text"
-            or not isinstance(block.get("text"), str)
-        ):
+        block = (
+            next(
+                (part for part in content if isinstance(part, dict) and part.get("type") == "text"),
+                None,
+            )
+            if isinstance(content, list)
+            else None
+        )
+        if block is None:
+            result.error_class = "missing_text"
+        elif not isinstance(block.get("text"), str):
             result.error_class = "invalid_schema"
         else:
             result.parse_decision(block["text"], output_type)

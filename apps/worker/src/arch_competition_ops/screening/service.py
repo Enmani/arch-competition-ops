@@ -104,16 +104,18 @@ def _request_one(
         cost_usd=cost,
     )
     if response.error_class:
+        outage = response.error_class.startswith("http_5") or response.error_class in {
+            "transport_error",
+            "api_error",
+        }
         finish_screening(
             db_path,
             request_id,
-            status="uncertain"
-            if response.error_class in {"api_error", "transport_error"}
-            else "failed",
+            status="uncertain" if outage else "failed",
             error_code=response.error_class,
             **accounting,
         )
-        error = ScreeningPaused if response.pause else ScreeningError
+        error = ScreeningPaused if response.pause or outage else ScreeningError
         raise error(response.error_class, cost_usd=cost)
     decision = response.decision
     validate_evidence(decision, evidence_fields)
@@ -179,9 +181,11 @@ def assess_document(
         if source_lock
         else nullcontext()
     ):
+        original_links = {}
         input_json, fields, limitations = prepare_input(
             row,
             settings,
+            original_links=original_links,
             source_payload=payload,
             fetch_source=False,
         )
@@ -206,6 +210,7 @@ def assess_document(
         record, _warnings = extract_record(
             decision,
             fields,
+            original_links=original_links,
             source=source,
             source_url=source_url,
             settings=settings,

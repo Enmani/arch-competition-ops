@@ -401,7 +401,7 @@ def test_default_provider_translates_titles_with_isolated_prompt(title_workspace
             {"items": [{"id": 0, "title_en": "Library renovation", "title_zh": "图书馆改造"}]}
         )
         return reply(
-            content=[{"type": "text", "text": text}],
+            content=[{"type": "thinking"}, {"type": "text", "text": text}],
             usage={"input_tokens": 300, "output_tokens": 25},
         )
 

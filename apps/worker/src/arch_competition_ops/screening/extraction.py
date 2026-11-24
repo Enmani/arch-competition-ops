@@ -14,6 +14,7 @@ from arch_competition_ops.models import CompetitionRecord, SourceDefinition
 from arch_competition_ops.normalizers.dates import parse_date, slash_order_for_jurisdiction
 from arch_competition_ops.normalizers.money import MONEY_NUMBER_PATTERN, parse_money_number
 from arch_competition_ops.screening.models import ScreeningDecision, source_quote
+from arch_competition_ops.screening.notice_urls import stored_link
 from arch_competition_ops.settings import Settings
 
 _URL_FIELDS = {"official_url", "brief_pdf_url", "documents_portal_url"}
@@ -36,17 +37,25 @@ _TAXONOMY = {
 }
 
 
+class NoticeValidationError(ValueError):
+    """A source-grounded record could not be produced from this particular notice."""
+
+
 def extract_record(
     decision: ScreeningDecision,
     evidence_fields: dict[str, str],
     *,
+    original_links: dict[str, set[str]] | None = None,
     source: SourceDefinition,
     source_url: str,
     settings: Settings,
 ) -> tuple[CompetitionRecord, list[str]]:
+    source_url, source_redacted = stored_link(source_url)
     updates: dict = {}
     warnings: list[str] = []
     evidence_notes: list[str] = []
+    if source_redacted:
+        evidence_notes.append("Source URL: credential-like parameters removed.")
     taxonomy = load_taxonomy(settings)
     seen: set[str] = set()
     for claim in decision.extracted_fields:
@@ -78,6 +87,15 @@ def extract_record(
                 "/"
             ) == source.base_url.rstrip("/"):
                 valid = False  # The source's collection/landing URL is not a project website.
+            if valid and original_links is not None:
+                originals = original_links.get(value, set())
+                resolved = {stored_link(link) for link in originals}
+                targets = {url for url, _ in resolved}
+                valid = len(targets) == 1
+                if valid:
+                    converted = targets.pop()
+                    if any(redacted for _, redacted in resolved):
+                        evidence_notes.append(f"{field}: credential-like parameters removed.")
         elif field in _MONEY_FIELDS:
             amount = parse_money_number(value)
             cited = [parse_money_number(token) for token in MONEY_NUMBER_PATTERN.findall(quote)]
@@ -131,7 +149,7 @@ def extract_record(
     title = updates.pop("title", "")
     place_components = [updates.pop("location_city", None), updates.pop("location_region", None)]
     if not title:
-        raise ValueError("AI could not extract a source-grounded project title")
+        raise NoticeValidationError("AI could not extract a source-grounded project title")
     record = CompetitionRecord(
         title=title,
         source_url=source_url,

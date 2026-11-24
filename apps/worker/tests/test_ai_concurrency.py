@@ -204,7 +204,7 @@ def test_one_failing_notice_does_not_sink_the_others_or_enter_the_ledger(
 
     def handler(request):
         if reference_in(request) == 2:
-            return httpx.Response(500, json={"error": {"message": "boom"}})
+            return httpx.Response(400, json={"error": {"message": "boom"}})
         return response(decision_payload())
 
     serve(monkeypatch, handler)
@@ -415,7 +415,7 @@ def test_5xx_keeps_its_cost_reservation_as_before(workspace):
 
     with connect(settings.resolve_path(settings.db)) as connection:
         row = connection.execute("SELECT status, cost_usd FROM ai_screening_runs").fetchone()
-    assert row["status"] == "failed" and row["cost_usd"] > 0
+    assert row["status"] == "uncertain" and row["cost_usd"] > 0
 
 
 def test_retry_helper_returns_the_first_success_and_does_not_sleep_without_a_429():

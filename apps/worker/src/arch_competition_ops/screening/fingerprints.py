@@ -29,6 +29,17 @@ def _stable_object(pairs):
     return {k: v for k, v in pairs if k.casefold().replace("_", "") not in volatile}
 
 
+# Only explicitly labelled page metadata is volatile. An unlabelled date is evidence.
+_PAGE_NOISE = re.compile(
+    r"\b(?:(?:page\s+)?generated[\s_-]+(?:at|on)|(?:page|request|server)[\s_-]+timestamp)"
+    r"\s*[:=]?\s*\d{4}[-/]\d{1,2}[-/]\d{1,2}"
+    r"(?:[T ]\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:\s*(?:UTC|GMT|Z|[+-]\d\d:?\d\d))?)?"
+    r"|\b(?:page\s+views|visit(?:or)?\s+count|visits|hit\s+count)\s*[:=]\s*[\d,]+"
+    r"|\b(?:csrf(?:[\s_-]*token)?|nonce|session[\s_-]*(?:id|token))\s*[:=]\s*[\w./+=-]+",
+    re.I,
+)
+
+
 def notice_content_hash(payload: str, url: str) -> str:
     material = notice_evidence(payload)
     # Structured APIs can change property order or page-generation metadata on every poll.
@@ -44,11 +55,9 @@ def notice_content_hash(payload: str, url: str) -> str:
     links = PageLinks(url)
     links.feed(visible)
     text = URL.sub(lambda m: public_url(m[0]), strip_html(visible) or "")
-    return digest(
-        canonical_json(
-            [public_url(url) or url, text, sorted(set(filter(None, map(public_url, links.links))))]
-        )
-    )
+    text = " ".join(_PAGE_NOISE.sub(" ", text).split())
+    targets = sorted({target for link in links.links if (target := public_url(link))})
+    return digest(canonical_json([public_url(url) or url, text, targets]))
 
 
 def screening_criteria_hash(settings: Settings) -> str:

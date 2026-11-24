@@ -23,10 +23,15 @@ def reply(status=200, **body):
     return result
 
 
-def completion(*, stop="end_turn", decision=None):
+def completion(*, stop="end_turn", decision=None, blocks=("thinking", "text")):
     return reply(
         stop_reason=stop,
-        content=[{"type": "text", "text": json.dumps(decision or decision_payload())}],
+        content=[
+            {"type": "text", "text": json.dumps(decision or decision_payload())}
+            if kind == "text"
+            else {"type": kind}
+            for kind in blocks
+        ],
         usage={
             "input_tokens": 12000,
             "cache_read_input_tokens": 500,
@@ -107,8 +112,8 @@ def test_unusable_generation_is_charged_without_publishing(workspace, monkeypatc
     ("status", "kind", "message", "code", "paused", "attempts"),
     [
         (429, "rate_limit_error", "rate", "http_429", True, 4),
-        (529, "overloaded_error", "busy", "http_529", False, 4),
-        (503, "server_error", "unavailable", "http_503", False, 4),
+        (529, "overloaded_error", "busy", "http_529", True, 4),
+        (503, "server_error", "unavailable", "http_503", True, 4),
         (401, "authentication_error", "key", "http_401", True, 1),
         (403, "permission_error", "denied", "http_403", True, 1),
         (
@@ -155,7 +160,7 @@ def test_budget_refuses_ambiguous_retries_before_any_http(workspace, monkeypatch
         service.assess_document(settings, source=source, source_url=source.base_url, payload=NOTICE)
 
 
-@pytest.mark.parametrize("stop", ["refusal", "max_tokens", "invalid_request"])
+@pytest.mark.parametrize("stop", ["refusal", "max_tokens", "invalid_request", "missing_text"])
 def test_failed_notice_stays_queued_while_next_notice_is_published(workspace, monkeypatch, stop):
     import yaml
 
@@ -177,6 +182,8 @@ def test_failed_notice_stays_queued_while_next_notice_is_published(workspace, mo
     first = (
         reply(400, error={"type": "invalid_request_error", "message": "bad field"})
         if stop == "invalid_request"
+        else completion(blocks=("thinking",))
+        if stop == "missing_text"
         else completion(stop=stop)
     )
     replies = iter([first, completion()])
@@ -184,9 +191,23 @@ def test_failed_notice_stays_queued_while_next_notice_is_published(workspace, mo
     result = ingest_source(settings, source_id=source.source_id)
     assert [f.source_url for f in result.failures] == [docs[0].source_url]
     assert len(result.ingested_ids) == 1
-    assert queued(settings.resolve_path(settings.db), source.source_id, 5) == [docs[0]]
+    assert [
+        item.document for item in queued(settings.resolve_path(settings.db), source.source_id, 5)
+    ] == [docs[0]]
     with connect(settings.resolve_path(settings.db)) as db:
         error = db.execute(
             "SELECT last_error FROM notice_backlog WHERE status='queued'"
         ).fetchone()[0]
         assert error == ("http_400" if stop == "invalid_request" else stop)
+
+
+@pytest.mark.parametrize(
+    "blocks", [("text",), ("thinking", "text"), ("redacted_thinking", "text"), ("thinking",)]
+)
+def test_first_text_block_and_reported_usage(workspace, monkeypatch, blocks):
+    result, row, _ = run_fixture(workspace, [completion(blocks=blocks)], monkeypatch)
+    if "text" in blocks:
+        assert result.record.title == "Civic School Design Competition"
+    else:
+        assert str(result) == "missing_text" and row["status"] == "failed"
+    assert row["cost_usd"] > 0 and row["output_tokens"] == 3500
