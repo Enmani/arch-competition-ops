@@ -10,7 +10,7 @@ from urllib.parse import urlsplit
 from arch_competition_ops.http import HttpError, get_default_client
 from arch_competition_ops.normalizers.text import strip_html
 from arch_competition_ops.screening.fingerprints import notice_content_hash
-from arch_competition_ops.screening.models import ScreeningDecision, canonical_json
+from arch_competition_ops.screening.models import ScreeningAnswer, canonical_json
 from arch_competition_ops.screening.notice_urls import URL, PageLinks, public_url
 from arch_competition_ops.screening.preferences import load_screening_instructions
 from arch_competition_ops.screening.providers import provider_identity, structured_request
@@ -148,21 +148,24 @@ def prepare_input(
         if len(clean) > remaining:
             limitations.append("Input was truncated to the configured character limit")
         remaining -= len(fields[name])
-    schema = ScreeningDecision.model_json_schema()
-    schema["required"] = list(schema["properties"])
     request = structured_request(
         settings.ai_provider,
         model_id or settings.ai_model,
         load_screening_instructions(settings),
         canonical_json({"evidence_fields": fields}),
-        schema,
+        ScreeningAnswer.model_json_schema(),
         "competition_screening",
         settings.ai_max_output_tokens,
         settings.ai_reasoning_effort,
     )
     return (
         canonical_json(
-            {"provider": provider_identity(settings), "notice_version": version, "request": request}
+            {
+                "provider": provider_identity(settings),
+                "notice_version": version,
+                "schema_version": ScreeningAnswer.schema_version,
+                "request": request,
+            }
         ),
         fields,
         sorted(set(limitations)),

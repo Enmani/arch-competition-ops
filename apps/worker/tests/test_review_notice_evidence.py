@@ -62,3 +62,17 @@ def test_volatile_page_labels_preserve_substantive_dates():
     assert original == fingerprint("2026-11-25", 500, "def")
     assert original != fingerprint("2026-11-24", 450, "abc", deadline="2026-12-03")
     assert original != fingerprint("2026-11-24", 450, "abc", published="2026-11-02")
+
+
+def test_notice_hash_ignores_page_chrome_but_keeps_article_dates_and_links():
+    def version(counter, deadline, href):
+        html = (
+            f'<nav><a href="/menu/{counter}">Updates {counter}</a></nav>'
+            f"<span hidden>Server {counter}</span><article><p>Design brief</p>"
+            f'<footer>Deadline {deadline} <a href="{href}">Brief</a></footer></article>'
+        )
+        return notice_content_hash(html, "https://city.example/1")
+
+    assert version(1, "2027-01-02", "/a") == version(2, "2027-01-02", "/a")
+    assert version(1, "2027-01-02", "/a") != version(1, "2027-02-02", "/a")
+    assert version(1, "2027-01-02", "/a") != version(1, "2027-01-02", "/b")

@@ -1,11 +1,9 @@
 """Strict JSON Messages transport. Source notices and keys never enter error messages."""
 
-import re
-import time
-
 import requests
 
-from arch_competition_ops.screening.client import RATE_LIMIT_RETRIES, ProviderResult, retry_delay
+from arch_competition_ops.screening.client import ProviderResult, read_with_retries
+from arch_competition_ops.screening.models import ScreeningAnswer
 
 
 def strip_integer_bounds(schema):
@@ -29,27 +27,23 @@ class AnthropicMessages(requests.Session):
         self.headers.update({"x-api-key": key, "anthropic-version": "2026-10-21"})
         self.timeout = settings.ai_timeout_seconds
 
-    def read_notice(self, request, *, sleep, output_type):
-        uncertain = 0
-        for attempt in range(RATE_LIMIT_RETRIES + 1):
-            try:
-                reply = self.post(
-                    "https://api.anthropic.com/v1/messages",
-                    json=request,
-                    timeout=self.timeout,
-                    allow_redirects=False,
-                )
-            except requests.RequestException:
-                return ProviderResult(error_class="transport_error", uncertain_retries=uncertain)
-            status = reply.status_code
-            retryable = status == 429 or 500 <= status < 600
-            if not retryable or attempt == RATE_LIMIT_RETRIES:
-                break
-            if status >= 500:
-                uncertain += 1  # the previous attempt may already have consumed tokens
-            (sleep or time.sleep)(retry_delay(reply.headers.get("retry-after", ""), attempt))
+    def read_notice(self, request, *, sleep=None, output_type=ScreeningAnswer):
+        return read_with_retries(
+            lambda: self._read(request, output_type), sleep=sleep, provider="anthropic"
+        )
 
-        result = ProviderResult(uncertain_retries=uncertain)
+    def _read(self, request, output_type):
+        try:
+            reply = self.post(
+                "https://api.anthropic.com/v1/messages",
+                json=request,
+                timeout=self.timeout,
+                allow_redirects=False,
+            )
+        except requests.RequestException:
+            return ProviderResult(error_class="transport_error")
+        status = reply.status_code
+        result = ProviderResult(retry_after=reply.headers.get("retry-after", ""))
         try:
             body = reply.json()
         except ValueError:
@@ -58,17 +52,11 @@ class AnthropicMessages(requests.Session):
             body = {}
         if status != 200:
             error = body.get("error")
-            quota = (
+            kind = error.get("type") if isinstance(error, dict) else None
+            quota = status == 402 or (
                 status == 400
-                and isinstance(error, dict)
-                and error.get("type") == "invalid_request_error"
-                and re.search(
-                    r"credit balance.{0,32}(?:low|insufficient|exhausted)|"
-                    r"insufficient (?:credits?|balance)|out of credits?|"
-                    r"billing (?:quota|limit).{0,24}(?:exceeded|reached)",
-                    str(error.get("message", "")),
-                    re.IGNORECASE,
-                )
+                and isinstance(kind, str)
+                and bool({"billing", "credit", "credits"}.intersection(kind.split("_")))
             )
             result.error_class = "insufficient_quota" if quota else f"http_{status}"
             result.rejected = 400 <= status < 500

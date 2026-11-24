@@ -75,12 +75,11 @@ def test_ingest_screens_each_listed_notice_once_until_its_content_changes(
             return response(
                 decision_payload(
                     decision="exclude",
-                    evidence=[{"field": "notice_text", "quote": "Stationery supply"}],
+                    evidence=["Stationery supply"],
                     extracted_fields=[
                         {
                             "field": "title",
                             "value": "Stationery supply",
-                            "evidence_field": "notice_text",
                             "quote": "Stationery supply",
                         }
                     ],
@@ -153,3 +152,12 @@ def test_ingest_screens_each_listed_notice_once_until_its_content_changes(
     ingest_source(settings, source_id="city")
     assert len(calls) == before + 2
     assert export_diff(4) == 0
+
+    from arch_competition_ops.screening.models import ScreeningAnswer
+
+    # An output contract change invalidates both the queue judgment and the paid-request cache.
+    monkeypatch.setattr(ScreeningAnswer, "schema_version", ScreeningAnswer.schema_version + 1)
+    for index in (1, 2):
+        ingest_source(settings, source_id="city", limit=1)
+        assert len(calls) == before + 2 + index
+    assert export_diff(5) == 0

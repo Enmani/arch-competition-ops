@@ -9,10 +9,10 @@ from arch_competition_ops.screening.anthropic import AnthropicMessages, strip_in
 from arch_competition_ops.screening.catalog import ScreeningModel, get_model
 from arch_competition_ops.screening.client import (
     ProviderResult,
-    call_with_rate_limit_retry,
     create_client,
+    read_with_retries,
 )
-from arch_competition_ops.screening.models import ScreeningDecision
+from arch_competition_ops.screening.models import ScreeningAnswer
 from arch_competition_ops.settings import Settings
 
 _sdk_decode_lock = Lock()
@@ -71,17 +71,21 @@ def create_screening_client(settings):
 
 
 def read_notice(
-    client, provider, request, *, sleep=None, output_type=ScreeningDecision
+    client, provider, request, *, sleep=None, output_type=ScreeningAnswer
 ) -> ProviderResult:
     """Send one notice and validate the reply against the shared decision schema."""
     if provider == "anthropic":
         return client.read_notice(request, sleep=sleep, output_type=output_type)
+    return read_with_retries(
+        lambda: _read_openai(client, provider, request, output_type), sleep=sleep, provider=provider
+    )
+
+
+def _read_openai(client, provider, request, output_type):
     chat = provider == "openai-compatible"
     api = client.chat.completions if chat else client.responses
     try:
-        raw_reply = call_with_rate_limit_retry(
-            lambda: api.with_raw_response.create(**request), sleep=sleep
-        )
+        raw_reply = api.with_raw_response.create(**request)
         # The SDK lazily builds Pydantic response models. Simultaneous first decodes can
         # see a half-built schema. Only local decoding is serialized; HTTP stays concurrent.
         with _sdk_decode_lock:
@@ -91,6 +95,7 @@ def read_notice(
         return ProviderResult(
             error_class="insufficient_quota" if quota else f"http_{exc.status_code}",
             rejected=400 <= exc.status_code < 500,
+            retry_after=exc.response.headers.get("retry-after", ""),
             pause=quota or exc.status_code in {401, 402, 403, 429},
         )
     except APIConnectionError:

@@ -15,7 +15,6 @@ from arch_competition_ops.normalizers.dates import parse_date, slash_order_for_j
 from arch_competition_ops.normalizers.money import MONEY_NUMBER_PATTERN, parse_money_number
 from arch_competition_ops.screening.models import (
     ScreeningDecision,
-    grounded_extracted_fields,
     source_quote,
 )
 from arch_competition_ops.screening.notice_urls import stored_link
@@ -62,7 +61,7 @@ def extract_record(
         evidence_notes.append("Source URL: credential-like parameters removed.")
     taxonomy = load_taxonomy(settings)
     seen: set[str] = set()
-    for claim in grounded_extracted_fields(decision.extracted_fields, evidence_fields, warnings):
+    for claim in decision.extracted_fields:
         field, value, quote = claim.field, claim.value.strip(), claim.quote
         if field in seen:
             warnings.append(f"{field}: duplicate extracted field")

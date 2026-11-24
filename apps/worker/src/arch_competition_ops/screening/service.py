@@ -21,9 +21,9 @@ from arch_competition_ops.models import CompetitionRecord, SourceDefinition
 from arch_competition_ops.screening.anthropic import AnthropicMessages
 from arch_competition_ops.screening.catalog import ScreeningModel
 from arch_competition_ops.screening.client import (
-    RATE_LIMIT_RETRIES,
     ScreeningError,
     ScreeningPaused,
+    billable_attempt_limit,
 )
 from arch_competition_ops.screening.extraction import extract_record
 from arch_competition_ops.screening.inputs import (
@@ -78,7 +78,7 @@ def _request_one(
 ) -> tuple[ScreeningDecision, float, str]:
     per_attempt = model.reservation(len(input_json.encode("utf-8")), settings.ai_max_output_tokens)
     # A 5xx can arrive after generation. Reserve for every potentially billable attempt.
-    attempts = RATE_LIMIT_RETRIES + 1 if settings.ai_provider == "anthropic" else 1
+    attempts = billable_attempt_limit(settings.ai_provider)
     reserve = per_attempt * attempts
     request_id = reserve_screening(
         db_path,
@@ -117,8 +117,7 @@ def _request_one(
         )
         error = ScreeningPaused if response.pause or outage else ScreeningError
         raise error(response.error_class, cost_usd=cost)
-    decision = response.decision
-    validate_evidence(decision, evidence_fields)
+    decision = validate_evidence(response.decision, evidence_fields)
     decision.missing_information.extend(limitations)
     finish_screening(
         db_path,

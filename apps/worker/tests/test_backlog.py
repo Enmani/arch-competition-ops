@@ -86,9 +86,7 @@ def test_quota_pauses_all_sources_and_preserves_oldest_notice(tmp_path, monkeypa
 
         def no_credit(self, request, **kwargs):
             calls.append(request.body)
-            return reply(
-                400, error={"type": "invalid_request_error", "message": "credit balance is too low"}
-            )
+            return reply(402, error={"type": "billing_error", "message": "payment"})
 
         monkeypatch.setattr(AnthropicMessages, "send", no_credit)
     monkeypatch.setattr(

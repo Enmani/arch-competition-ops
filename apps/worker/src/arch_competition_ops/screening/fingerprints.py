@@ -2,10 +2,8 @@
 
 import hashlib
 import json
-import re
 
-from arch_competition_ops.normalizers.text import strip_html
-from arch_competition_ops.screening.models import ScreeningDecision, canonical_json
+from arch_competition_ops.screening.models import ScreeningAnswer, canonical_json
 from arch_competition_ops.screening.notice_urls import URL, PageLinks, public_url
 from arch_competition_ops.screening.preferences import load_screening_instructions
 from arch_competition_ops.screening.providers import provider_identity
@@ -29,15 +27,61 @@ def _stable_object(pairs):
     return {k: v for k, v in pairs if k.casefold().replace("_", "") not in volatile}
 
 
-# Only explicitly labelled page metadata is volatile. An unlabelled date is evidence.
-_PAGE_NOISE = re.compile(
-    r"\b(?:(?:page\s+)?generated[\s_-]+(?:at|on)|(?:page|request|server)[\s_-]+timestamp)"
-    r"\s*[:=]?\s*\d{4}[-/]\d{1,2}[-/]\d{1,2}"
-    r"(?:[T ]\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:\s*(?:UTC|GMT|Z|[+-]\d\d:?\d\d))?)?"
-    r"|\b(?:page\s+views|visit(?:or)?\s+count|visits|hit\s+count)\s*[:=]\s*[\d,]+"
-    r"|\b(?:csrf(?:[\s_-]*token)?|nonce|session[\s_-]*(?:id|token))\s*[:=]\s*[\w./+=-]+",
-    re.I,
-)
+class _VisibleNotice(PageLinks):
+    """Collect text and links from the same visible portion of the document."""
+
+    def __init__(self, url):
+        super().__init__(url)
+        self.text = []
+        self.skipped = []
+        self.content_depth = 0
+
+    def handle_starttag(self, tag, attrs):
+        attributes = dict(attrs)
+        if tag in {
+            "area",
+            "base",
+            "br",
+            "col",
+            "embed",
+            "hr",
+            "img",
+            "input",
+            "link",
+            "meta",
+            "param",
+            "source",
+            "track",
+            "wbr",
+        }:
+            return
+        if self.skipped:
+            self.skipped.append(tag)
+            return
+        if (
+            tag in {"head", "script", "style", "nav", "template"}
+            or (tag == "footer" and not self.content_depth)
+            or "hidden" in attributes
+            or attributes.get("aria-hidden") == "true"
+            or attributes.get("role") == "navigation"
+        ):
+            self.skipped.append(tag)
+            return
+        if tag in {"article", "main"}:
+            self.content_depth += 1
+        super().handle_starttag(tag, attrs)
+
+    def handle_endtag(self, tag):
+        if self.skipped:
+            if tag in self.skipped:
+                while self.skipped.pop() != tag:
+                    pass
+        elif tag in {"article", "main"}:
+            self.content_depth = max(0, self.content_depth - 1)
+
+    def handle_data(self, data):
+        if not self.skipped:
+            self.text.append(data)
 
 
 def notice_content_hash(payload: str, url: str) -> str:
@@ -51,12 +95,12 @@ def notice_content_hash(payload: str, url: str) -> str:
             pass
         else:
             material = canonical_json(data) + material[end:]
-    visible = re.sub(r"<(script|style)\b[^>]*>.*?</\1>", " ", material, flags=re.I | re.S)
-    links = PageLinks(url)
-    links.feed(visible)
-    text = URL.sub(lambda m: public_url(m[0]), strip_html(visible) or "")
-    text = " ".join(_PAGE_NOISE.sub(" ", text).split())
-    targets = sorted({target for link in links.links if (target := public_url(link))})
+    page = _VisibleNotice(url)
+    page.feed(material)
+    page.close()
+    text = URL.sub(lambda m: public_url(m[0]), " ".join(page.text))
+    text = " ".join(text.split())
+    targets = sorted({target for link in page.links if (target := public_url(link))})
     return digest(canonical_json([public_url(url) or url, text, targets]))
 
 
@@ -65,7 +109,8 @@ def screening_criteria_hash(settings: Settings) -> str:
         canonical_json(
             [
                 load_screening_instructions(settings),
-                ScreeningDecision.model_json_schema(),
+                ScreeningAnswer.schema_version,
+                ScreeningAnswer.model_json_schema(),
                 provider_identity(settings),
                 settings.ai_model,
                 settings.ai_reasoning_effort,

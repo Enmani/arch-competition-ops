@@ -1,67 +1,84 @@
+import json
+
 import pytest
 
-from arch_competition_ops.screening.models import ScreeningDecision, validate_evidence
+from arch_competition_ops.screening.models import (
+    ScreeningAnswer,
+    ScreeningDecision,
+    validate_evidence,
+)
 
 
-def decision_for(field, quote):
-    return ScreeningDecision(
+@pytest.mark.parametrize(
+    ("quote", "expected"),
+    [
+        ("Civic school", "notice_title"),
+        ("Design  brief", "notice_text"),
+        ("https://city.example/1", "notice_url"),
+        ("https://city.example/2", "notice_links"),
+        ("private material", None),
+        ("Design briefs", None),
+        ("Design brief.", None),
+    ],
+)
+def test_program_assigns_each_quote_in_fixed_source_order(quote, expected):
+    fields = {
+        "notice_links": "Civic school Design brief https://city.example/1 https://city.example/2",
+        "notice_url": "https://city.example/1",
+        "notice_text": "Civic school Design brief",
+        "notice_title": "Civic school",
+        "internal": "private material",
+    }
+    answer = ScreeningAnswer(
         decision="exclude",
-        relevance_score=5,
+        relevance_score=2,
         summary_en="",
         summary_zh="",
         reasons_en=[],
         reasons_zh=[],
         missing_information=[],
-        evidence=[{"field": field, "quote": quote}],
-        extracted_fields=[
-            {"field": "title", "value": quote, "quote": quote, "evidence_field": field}
-        ],
-        notice_details=[
-            {"category": "scope", "text": quote, "quote": quote, "evidence_field": field}
-        ],
+        evidence=[quote],
+        extracted_fields=[{"field": "title", "value": quote, "quote": quote}],
+        notice_details=[{"category": "scope", "quote": quote}],
     )
-
-
-@pytest.mark.parametrize(
-    ("cited", "quote", "expected"),
-    [
-        ("description", "supply of hospital beds", "notice_text"),
-        ("lot_description", "supply of  hospital\nbeds", "notice_text"),
-        ("notice_title", "Hospital", "notice_title"),
-        ("notice_text", "Hospital", "notice_text"),
-        ("title", "Hospital", "notice_title"),
-        ("url", "https://city.example/notice", "notice_url"),
-        ("official_url", "https://city.example/brief", "notice_links"),
-        ("summary", "definitely not in the notice", None),
-        ("rawNotice", "supply of hospital desks", None),
-        ("title", "supply of hospital beds.", None),
-        ("internal", "private material", None),
-        ("notice_url", "supply of hospital beds", None),
-    ],
-)
-def test_citation_attribution_for_all_three_outputs(cited, quote, expected):
-    decision = decision_for(cited, quote)
-    fields = {
-        "notice_title": "Hospital",
-        "notice_url": "https://city.example/notice",
-        "notice_text": "Hospital tender for supply of hospital beds",
-        "notice_links": "https://city.example/brief",
-        "internal": "private material",
-    }
-    warnings = validate_evidence(decision, fields)
+    stored = validate_evidence(answer, fields)
     if expected is None:
-        assert warnings and decision.decision == "needs_review"
-        assert (
-            not decision.evidence and not decision.extracted_fields and not decision.notice_details
-        )
+        assert stored.decision == "needs_review" and stored.missing_information
+        assert not stored.evidence and not stored.extracted_fields and not stored.notice_details
         return
-    assert not warnings and decision.decision == "exclude"
-    evidence, fact, detail = (
-        decision.evidence[0],
-        decision.extracted_fields[0],
-        decision.notice_details[0],
-    )
-    assert (evidence.field, fact.evidence_field, detail.evidence_field) == (expected,) * 3
-    original = " ".join(quote.split())
-    assert evidence.quote == fact.quote == detail.quote == detail.text == original
-    assert original in fields[expected]
+    assert stored.decision == "exclude" and not stored.missing_information
+    ev, fact, detail = stored.evidence[0], stored.extracted_fields[0], stored.notice_details[0]
+    assert (ev.field, fact.evidence_field, detail.evidence_field) == (expected,) * 3
+    assert ev.quote == fact.quote == detail.text == detail.quote == " ".join(quote.split())
+
+
+def test_round_trip_preserves_existing_public_json_bytes():
+    # The D1 export compares the serialized result. A schema upgrade alone must not rewrite it.
+    published = {
+        "decision": "recommend",
+        "relevance_score": 85,
+        "summary_zh": "",
+        "summary_en": "",
+        "reasons_zh": [],
+        "reasons_en": [],
+        "missing_information": [],
+        "evidence": [{"field": "notice_text", "quote": "Library design"}],
+        "extracted_fields": [
+            {
+                "field": "title",
+                "value": "Library design",
+                "evidence_field": "notice_text",
+                "quote": "Library design",
+            }
+        ],
+        "notice_details": [
+            {
+                "category": "scope",
+                "text": "Library design",
+                "evidence_field": "notice_text",
+                "quote": "Library design",
+            }
+        ],
+    }
+    old_json = json.dumps(published, separators=(",", ":"))
+    assert ScreeningDecision.model_validate_json(old_json).model_dump_json() == old_json

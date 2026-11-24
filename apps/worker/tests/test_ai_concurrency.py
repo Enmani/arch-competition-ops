@@ -21,7 +21,7 @@ from arch_competition_ops.collectors.base import CollectedSourceDocument
 from arch_competition_ops.ingest import ingest_source
 from arch_competition_ops.screening import service
 from arch_competition_ops.screening.catalog import get_model
-from arch_competition_ops.screening.client import ScreeningError, call_with_rate_limit_retry
+from arch_competition_ops.screening.client import ProviderResult, ScreeningError, read_with_retries
 from arch_competition_ops.screening.service import assess_document, assess_documents
 from arch_competition_ops.settings import Settings
 from arch_competition_ops.storage import ensure_schema
@@ -420,5 +420,6 @@ def test_5xx_keeps_its_cost_reservation_as_before(workspace):
 
 def test_retry_helper_returns_the_first_success_and_does_not_sleep_without_a_429():
     sleeps = []
-    assert call_with_rate_limit_retry(lambda: "ok", sleep=sleeps.append) == "ok"
+    result = ProviderResult(response_id="ok")
+    assert read_with_retries(lambda: result, provider="openai", sleep=sleeps.append) is result
     assert sleeps == []

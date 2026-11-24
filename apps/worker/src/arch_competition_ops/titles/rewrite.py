@@ -23,7 +23,7 @@ from openai import OpenAI
 from pydantic import BaseModel, ConfigDict
 
 from arch_competition_ops.screening.catalog import ScreeningModel
-from arch_competition_ops.screening.client import RATE_LIMIT_RETRIES, ScreeningError
+from arch_competition_ops.screening.client import ScreeningError, billable_attempt_limit
 from arch_competition_ops.screening.models import canonical_json
 from arch_competition_ops.screening.providers import (
     provider_identity,
@@ -166,7 +166,7 @@ def condense_batch(
         batch = TitleBatch.model_validate_json(cached["result_json"])
     else:
         per_attempt = model.reservation(len(input_json.encode()), max_output)
-        attempts = RATE_LIMIT_RETRIES + 1 if settings.ai_provider == "anthropic" else 1
+        attempts = billable_attempt_limit(settings.ai_provider)
         request_id = reserve_screening(
             db_path,
             competition_id=None,

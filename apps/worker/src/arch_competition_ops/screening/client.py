@@ -7,19 +7,21 @@ import random
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TypeVar
 
-from openai import APIStatusError, OpenAI
+from openai import OpenAI
 from pydantic import BaseModel, ValidationError
 
 from arch_competition_ops.settings import Settings
 
-T = TypeVar("T")
-
 # Both transports cap retries. Anthropic also retries server errors with budget held for each.
-RATE_LIMIT_RETRIES = 3
+MAX_PROVIDER_RETRIES = 3
 RATE_LIMIT_BASE_DELAY_SECONDS = 2.0
 RATE_LIMIT_MAX_DELAY_SECONDS = 60.0
+
+
+def billable_attempt_limit(provider):
+    # Retried Anthropic 5xx responses have unknown cost. Rate-limit rejections are unbilled.
+    return MAX_PROVIDER_RETRIES + 1 if provider == "anthropic" else 1
 
 
 class ScreeningError(RuntimeError):
@@ -58,30 +60,6 @@ def retry_delay(retry_after: str, attempt: int) -> float:
     return min(backoff, RATE_LIMIT_MAX_DELAY_SECONDS)
 
 
-def call_with_rate_limit_retry(
-    call: Callable[[], T], *, sleep: Callable[[float], None] | None = None
-) -> T:
-    """Run one provider call, retrying only HTTP 429 up to ``RATE_LIMIT_RETRIES`` times.
-
-    The caller keeps its single cost reservation across attempts. Other 4xx, 5xx and connection
-    errors propagate on the first attempt, as does a 429 that is still returned after the last
-    retry. ``insufficient_quota`` is a 429 too, but waiting a minute does not refill a quota.
-    """
-    wait = sleep or time.sleep
-    for attempt in range(RATE_LIMIT_RETRIES + 1):
-        try:
-            return call()
-        except APIStatusError as exc:
-            if (
-                exc.status_code != 429
-                or attempt == RATE_LIMIT_RETRIES
-                or getattr(exc, "code", None) == "insufficient_quota"
-            ):
-                raise
-            wait(retry_delay(exc.response.headers.get("retry-after", ""), attempt))
-    raise AssertionError("unreachable")  # the loop either returns or raises
-
-
 @dataclass
 class ProviderResult:
     decision: BaseModel | None = None
@@ -90,6 +68,7 @@ class ProviderResult:
     input_tokens: int | None = None
     output_tokens: int | None = None
     cache_read_tokens: int = 0
+    retry_after: str = ""
     uncertain_retries: int = 0
     rejected: bool = False
     pause: bool = False
@@ -107,3 +86,22 @@ class ProviderResult:
             self.decision = output_type.model_validate_json(text)
         except ValidationError:
             self.error_class = "invalid_schema"
+
+
+def read_with_retries(
+    send: Callable[[], ProviderResult], *, provider: str, sleep=None
+) -> ProviderResult:
+    retry_server_errors = billable_attempt_limit(provider) > 1
+    uncertain = 0
+    for attempt in range(MAX_PROVIDER_RETRIES + 1):
+        result = send()
+        server_retry = retry_server_errors and (result.error_class or "").startswith("http_5")
+        if attempt == MAX_PROVIDER_RETRIES or not (
+            result.error_class == "http_429" or server_retry
+        ):
+            result.uncertain_retries = uncertain
+            return result
+        if server_retry:
+            uncertain += 1  # An earlier server failure may already have consumed tokens.
+        (sleep or time.sleep)(retry_delay(result.retry_after, attempt))
+    raise AssertionError("unreachable")

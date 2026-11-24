@@ -69,26 +69,32 @@ def run_fixture(workspace, replies, monkeypatch):
     return outcome, row, waits
 
 
-def test_json_key_citations_are_corrected_before_caching_and_extraction(workspace, monkeypatch):
+def test_model_returns_quotes_and_worker_stores_their_sources(workspace, monkeypatch):
     decision = decision_payload(decision="exclude")
-    decision["evidence"][0]["field"] = "description"
-    decision["evidence"].append({"field": "summary", "quote": "invented"})
-    decision["extracted_fields"][0]["evidence_field"] = "title"
-    decision["notice_details"] = [
+    decision["evidence"] = ["Open to registered architects.", "invented"]
+    decision["extracted_fields"] = [
         {
-            "category": "eligibility",
-            "evidence_field": "lot_description",
-            "quote": "Open to registered architects.",
-            "text": "registered architects",
+            "field": "title",
+            "value": "Civic School Design Competition",
+            "quote": "Civic School Design Competition",
         }
     ]
+    decision["notice_details"] = [{"category": "eligibility", "quote": "registered architects"}]
     result, row, _ = run_fixture(workspace, [completion(decision=decision)], monkeypatch)
     saved = json.loads(row["result_json"])
     assert saved["decision"] == "exclude"
-    assert len(saved["evidence"]) == 1
-    assert saved["evidence"][0]["field"] == "notice_text"
+    assert saved["evidence"] == [
+        {"field": "notice_text", "quote": "Open to registered architects."}
+    ]
     assert saved["extracted_fields"][0]["evidence_field"] == "notice_text"
-    assert saved["notice_details"][0]["evidence_field"] == "notice_text"
+    assert saved["notice_details"] == [
+        {
+            "category": "eligibility",
+            "quote": "registered architects",
+            "text": "registered architects",
+            "evidence_field": "notice_text",
+        }
+    ]
     assert result.record.title == "Civic School Design Competition"
 
 
@@ -100,9 +106,7 @@ def test_default_settings_accounting_and_evidence(workspace, monkeypatch):
         "low",
     )
     assert (settings.ai_daily_budget_usd, settings.ai_monthly_budget_usd) == (5, 100)
-    decision = decision_payload(
-        decision="recommend", evidence=[{"field": "notice_text", "quote": "invented"}]
-    )
+    decision = decision_payload(decision="recommend", evidence=["invented"])
     result, row, waits = run_fixture(workspace, [completion(decision=decision)], monkeypatch)
     assert result.decision.decision == "needs_review" and not result.decision.evidence
     assert result.record.estimated_contract_value_eur == 350000
@@ -139,15 +143,10 @@ def test_unusable_generation_is_charged_without_publishing(workspace, monkeypatc
         (503, "server_error", "unavailable", "http_503", True, 4),
         (401, "authentication_error", "key", "http_401", True, 1),
         (403, "permission_error", "denied", "http_403", True, 1),
-        (
-            400,
-            "invalid_request_error",
-            "Your credit balance is too low",
-            "insufficient_quota",
-            True,
-            1,
-        ),
-        (400, "invalid_request_error", "Insufficient credits", "insufficient_quota", True, 1),
+        (402, "billing_error", "payment", "insufficient_quota", True, 1),
+        (400, "billing_error", "payment", "insufficient_quota", True, 1),
+        (400, "insufficient_credits", "balance", "insufficient_quota", True, 1),
+        (400, "invalid_request_error", "Insufficient credits", "http_400", False, 1),
         (400, "invalid_request_error", "invalid schema", "http_400", False, 1),
         (422, "invalid_request_error", "bad field", "http_422", False, 1),
     ],

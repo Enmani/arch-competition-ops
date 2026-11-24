@@ -12,7 +12,7 @@ from arch_competition_ops import clock
 from arch_competition_ops.models import CompetitionRecord
 from arch_competition_ops.screening.extraction import extract_record
 from arch_competition_ops.screening.inputs import prepare_input
-from arch_competition_ops.screening.models import ScreeningDecision, validate_evidence
+from arch_competition_ops.screening.models import ScreeningAnswer, validate_evidence
 from arch_competition_ops.screening.service import assess_document
 from arch_competition_ops.settings import Settings
 from arch_competition_ops.storage import delete_competitions, upsert_competition
@@ -39,36 +39,32 @@ def decision_payload(**overrides):
         "reasons_zh": ["面向注册建筑师"],
         "reasons_en": ["For registered architects"],
         "missing_information": ["registration_fee"],
-        "evidence": [{"field": "notice_text", "quote": "Open to registered architects."}],
+        "evidence": ["Open to registered architects."],
+        "notice_details": [],
         "extracted_fields": [
             {
                 "field": "title",
                 "value": "Civic School Design Competition",
-                "evidence_field": "notice_text",
                 "quote": "Civic School Design Competition",
             },
             {
                 "field": "location_label",
                 "value": "Via Roma 10, Milano",
-                "evidence_field": "notice_text",
                 "quote": "Project site: Via Roma 10, Milano.",
             },
             {
                 "field": "prize_summary",
                 "value": "Prize fund: EUR 50,000.",
-                "evidence_field": "notice_text",
                 "quote": "Prize fund: EUR 50,000.",
             },
             {
                 "field": "estimated_contract_value_eur",
                 "value": "350000",
-                "evidence_field": "notice_text",
                 "quote": "Contract value: EUR 350,000.",
             },
             {
                 "field": "official_url",
                 "value": "https://city.example/competition",
-                "evidence_field": "notice_links",
                 "quote": "https://city.example/competition",
             },
         ],
@@ -192,12 +188,12 @@ def test_preference_change_invalidates_cached_assessment(ai_workspace):
 
 
 def test_casing_only_quote_is_restored_to_the_actual_source():
-    decision = ScreeningDecision.model_validate(
+    decision = ScreeningAnswer.model_validate(
         decision_payload(
-            evidence=[{"field": "notice_text", "quote": "Registered architects"}],
+            evidence=["Registered architects"],
         )
     )
-    validate_evidence(decision, {"notice_text": "For registered architects only"})
+    decision = validate_evidence(decision, {"notice_text": "For registered architects only"})
     assert decision.evidence[0].quote == "registered architects"
 
 
@@ -209,20 +205,19 @@ def test_ai_classifications_use_existing_labels_and_reject_unknown_ones(ai_works
             {
                 "field": "building_categories",
                 "value": '["education"]',
-                "evidence_field": "notice_text",
                 "quote": "Civic School Design Competition",
             },
             {
                 "field": "project_types",
                 "value": '["invented_category"]',
-                "evidence_field": "notice_text",
                 "quote": "Civic School Design Competition",
             },
         ]
     )
+    fields = {"notice_text": "Civic School Design Competition", "notice_links": ""}
     record, warnings = extract_record(
-        ScreeningDecision.model_validate(output),
-        {"notice_text": "Civic School Design Competition", "notice_links": ""},
+        validate_evidence(ScreeningAnswer.model_validate(output), fields),
+        fields,
         source=source,
         source_url=source.base_url,
         settings=settings,
@@ -234,7 +229,7 @@ def test_ai_classifications_use_existing_labels_and_reject_unknown_ones(ai_works
 
 def test_bad_decision_quote_does_not_discard_valid_source_fields_or_hide_the_record(ai_workspace):
     settings, source = ai_workspace
-    payload = decision_payload(evidence=[{"field": "notice_text", "quote": "Invented evidence"}])
+    payload = decision_payload(evidence=["Invented evidence"])
     with mock_client(lambda _r: response(payload)) as client:
         assessment = assess_document(
             settings,
@@ -295,8 +290,8 @@ def test_exclusion_keeps_its_decision_when_one_quote_is_unsupported(ai_workspace
         decision="exclude",
         relevance_score=3,
         evidence=[
-            {"field": "notice_text", "quote": "Open to registered architects."},
-            {"field": "notice_text", "quote": "Paraphrased, not in the notice"},
+            "Open to registered architects.",
+            "Paraphrased, not in the notice",
         ],
     )
     with mock_client(lambda _r: response(payload)) as client:
@@ -318,8 +313,8 @@ def test_exclusion_without_any_supported_quote_becomes_review_and_recommend_down
     ai_workspace,
 ):
     settings, source = ai_workspace
-    unsupported = {"field": "notice_text", "quote": "Invented evidence"}
-    supported = {"field": "notice_text", "quote": "Open to registered architects."}
+    unsupported = "Invented evidence"
+    supported = "Open to registered architects."
     for decision, evidence, expected in [
         ("exclude", [unsupported], "needs_review"),
         ("recommend", [supported, unsupported], "needs_review"),
@@ -366,21 +361,20 @@ def test_truncated_input_retains_grounded_judgment_and_reports_limitation(ai_wor
 )
 def test_unsupported_amount_currency_url_and_date_stay_unknown(ai_workspace, field, value, quote):
     settings, source = ai_workspace
-    output = decision_payload(decision="recommend")
+    output = decision_payload(decision="recommend", evidence=["Civic School Design Competition"])
     output["extracted_fields"] = [
         output["extracted_fields"][0],
         {
             "field": field,
             "value": value,
             "quote": quote,
-            "evidence_field": "notice_links" if field == "official_url" else "notice_text",
         },
     ]
     fields = {
         "notice_text": "Civic School Design Competition " + quote,
         "notice_links": "https://city.example/competition",
     }
-    decision = ScreeningDecision.model_validate(output)
+    decision = validate_evidence(ScreeningAnswer.model_validate(output), fields)
     record, warnings = extract_record(
         decision,
         fields,
