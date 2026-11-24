@@ -33,4 +33,4 @@ def notice_evidence(payload: str) -> str:
     detail = tail.removeprefix("Source notice detail:\n")
     if detail != tail:
         parts.append(detail)
-    return "\n".join(parts)
+    return "\n".join(parts).replace(r"\/", "/")

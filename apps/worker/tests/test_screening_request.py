@@ -107,3 +107,19 @@ def test_only_one_original_notice_reaches_the_model(tmp_path, provider):
     with mock_client(capture) as client:
         read_notice(client, provider, request)
     assert sent == [expected]
+
+
+def test_signed_links_in_escaped_json_are_sanitized(tmp_path):
+    skill = tmp_path / "rule.md"
+    skill.write_text("Read.", encoding="utf8")
+    settings = Settings(root=tmp_path, ai_preferences=skill, _env_file=None)
+    payload = json.dumps({"rawNotice": r'{"url":"https:\/\/city.example\/a?id=4&token=private"}'})
+    snapshot, _, _ = prepare_input(
+        {
+            "source_url": "https://city.example/b?uri=https%3A%2F%2Fcity.example%2Fa%3Ftoken%3Dprivate"
+        },
+        settings,
+        source_payload=payload,
+    )
+    assert "private" not in snapshot
+    assert "https://city.example/a?id=4" in snapshot

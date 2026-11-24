@@ -48,7 +48,6 @@ def public_url(value: str) -> str:
                 "toid",
                 "category",
                 "function",
-                "uri",
                 "meformsnoticeid",
                 "projectnumber",
                 "docid",

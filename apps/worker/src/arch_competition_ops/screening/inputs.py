@@ -132,7 +132,7 @@ def prepare_input(
             "\n".join(dict.fromkeys(filter(None, map(public_url, [source_url, *links.links])))),
         ),
     ):
-        clean = URL.sub(lambda match: public_url(match[0]), value)
+        clean = URL.sub(lambda match: public_url(match[0]), value.replace(r"\/", "/"))
         fields[name] = clean[:remaining]
         if len(clean) > remaining:
             limitations.append("Input was truncated to the configured character limit")
