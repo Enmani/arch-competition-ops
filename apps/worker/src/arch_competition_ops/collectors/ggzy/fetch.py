@@ -16,8 +16,7 @@ from arch_competition_ops.collectors.ggzy.html_text import (
     extract_original_category_text,
     normalize_space,
 )
-from arch_competition_ops.collectors.ggzy.markers import SEARCH_STRATEGIES
-from arch_competition_ops.collectors.ggzy.relevance import is_allowed_listing, title_score
+from arch_competition_ops.collectors.pagination import page_limit, unfinished_page
 from arch_competition_ops.http import HttpError, HttpStatusError, HttpTransportError
 from arch_competition_ops.models import SourceDefinition
 from arch_competition_ops.normalizers.dates import parse_date_string
@@ -75,6 +74,8 @@ def fetch_page_or_none(url: str, *, fetch_page: PageFetcher) -> str | None:
     try:
         return fetch_page(url)
     except _PAGE_FETCH_ERRORS as exc:
+        if isinstance(exc, HttpError) and exc.status_code in {403, 429}:
+            raise
         logger.warning("GGZY page %s could not be fetched: %s", url, exc)
         return None
 
@@ -101,7 +102,6 @@ def iter_candidate_rows(
     publication_date_from: str | None,
     today: date,
     fetch_list: ListFetcher,
-    include_unclassified: bool = False,
 ) -> list[dict[str, Any]]:
     """Listing rows from every search strategy, de-duplicated and best-title-first."""
     start_date = (
@@ -111,52 +111,53 @@ def iter_candidate_rows(
     seen_ids: set[str] = set()
     candidates: list[dict[str, Any]] = []
 
-    for term, page_limit in SEARCH_STRATEGIES:
-        for page_number in range(1, page_limit + 1):
-            response_text = fetch_list_with_retries(
-                LIST_API_URL,
-                {
-                    "SOURCE_TYPE": "1",
-                    "DEAL_TIME": "02",
-                    "TIMEBEGIN": start_date,
-                    "TIMEEND": end_date,
-                    "FINDTXT": term,
-                    "PAGENUMBER": str(page_number),
-                },
-                fetch_list=fetch_list,
-            )
-            payload = json.loads(response_text)
-            records = payload.get("data", {}).get("records", [])
-            if not isinstance(records, list):
-                break
+    for page_number in range(1, page_limit(200) + 1):
+        response_text = fetch_list_with_retries(
+            LIST_API_URL,
+            {
+                "SOURCE_TYPE": "1",
+                "DEAL_TIME": "02",
+                "TIMEBEGIN": start_date,
+                "TIMEEND": end_date,
+                "FINDTXT": "",
+                "PAGENUMBER": str(page_number),
+            },
+            fetch_list=fetch_list,
+        )
+        payload = json.loads(response_text)
+        records = payload.get("data", {}).get("records", [])
+        if not isinstance(records, list):
+            break
 
-            for record in records:
-                if not isinstance(record, dict):
+        before = len(seen_ids)
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            notice_id = str(record.get("id") or "").strip()
+            if not notice_id or notice_id in seen_ids:
+                continue
+            if publication_date_from:
+                published_at = parse_date_string(
+                    normalize_space(str(record.get("publishTime") or ""))
+                )
+                if published_at and published_at < publication_date_from:
                     continue
-                notice_id = str(record.get("id") or "").strip()
-                if not notice_id or notice_id in seen_ids:
-                    continue
-                if publication_date_from:
-                    published_at = parse_date_string(
-                        normalize_space(str(record.get("publishTime") or ""))
-                    )
-                    if published_at and published_at < publication_date_from:
-                        continue
-                if not include_unclassified and not is_allowed_listing(record):
-                    continue
-                if not str(record.get("title") or "").strip() or not record.get("url"):
-                    continue
-                seen_ids.add(notice_id)
-                candidates.append(record)
+            if not str(record.get("title") or "").strip() or not record.get("url"):
+                continue
+            seen_ids.add(notice_id)
+            candidates.append(record)
 
-            if len(records) < LISTING_PAGE_SIZE:
-                break
+        if len(records) < LISTING_PAGE_SIZE:
+            break
+        if before == len(seen_ids):
+            unfinished_page()
+            break
+
+    else:
+        unfinished_page()
 
     candidates.sort(
-        key=lambda record: (
-            title_score(str(record.get("title") or "")),
-            normalize_space(str(record.get("publishTime") or "")) or "",
-        ),
+        key=lambda record: normalize_space(str(record.get("publishTime") or "")),
         reverse=True,
     )
     return candidates

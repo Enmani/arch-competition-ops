@@ -68,7 +68,11 @@ class FakePortal:
         self.requests.append(fields)
         key = (fields["searchTendTypeCd1"], fields["searchTendTypeCd2"])
         page = int(fields["currentPageNo"])
-        rows = self.rows_by_scope.get(key, [])[(page - 1) * 20 : page * 20]
+        rows = (
+            [r for group in self.rows_by_scope.values() for r in group]
+            if key == ("", "")
+            else self.rows_by_scope.get(key, [])
+        )[(page - 1) * 20 : page * 20]
         return (
             '<input type="hidden" name="_csrf" value="t"/><table>'
             + "".join(row["html"] for row in rows)
@@ -92,7 +96,6 @@ def _fixed_today():
 
 
 def _collect(portal, **kwargs):
-    kwargs.setdefault("include_unclassified", True)
     kwargs.setdefault("limit", 1000)
     return collect_joneps_documents(_source(), search=portal, **kwargs)
 
@@ -106,12 +109,12 @@ def test_searches_the_three_scopes_with_server_side_ranges() -> None:
 
     _collect(portal)
 
-    assert portal.scopes() == [(TECHNICAL, ""), (SERVICES, "EP0218"), (WORKS, "")]
+    assert portal.scopes() == [("", "")]
     fields = portal.requests[0]
     assert fields["searchStartPublicationYmd"] == "08/11/2026"
     assert fields["searchEndPublicationYmd"] == "15/11/2026"
-    assert fields["searchStartSubmDlineDt"] == "15/11/2026"
-    assert fields["searchEndSubmDlineDt"] == "15/11/2027"
+    assert fields["searchStartSubmDlineDt"] == ""
+    assert fields["searchEndSubmDlineDt"] == ""
     # "Opened" means bids opened on this portal; a tender open for bids never matches it.
     assert fields["searchTendStatusCd"] == ""
     assert (fields["currentPageNo"], fields["offSet"]) == ("1", "0")
@@ -124,9 +127,7 @@ def test_pages_until_a_short_page() -> None:
     documents = _collect(portal)
 
     pages = [
-        (f["currentPageNo"], f["offSet"])
-        for f in portal.requests
-        if f["searchTendTypeCd1"] == TECHNICAL
+        (f["currentPageNo"], f["offSet"]) for f in portal.requests if f["searchTendTypeCd1"] == ""
     ]
     assert pages == [("1", "0"), ("2", "20"), ("3", "40")]
     assert len(documents) == 45
@@ -136,7 +137,7 @@ def test_page_cap_stops_a_runaway_search_with_a_warning(caplog) -> None:
     class Endless(FakePortal):
         def __call__(self, fields: dict[str, str]) -> str:
             self.requests.append(fields)
-            if fields["searchTendTypeCd1"] != TECHNICAL:
+            if fields["searchTendTypeCd1"] != "":
                 return '<input name="_csrf" value="t"/>'
             page = int(fields["currentPageNo"])
             return "".join(_row(2026000000 + page * 100 + n)["html"] for n in range(20))
@@ -145,7 +146,7 @@ def test_page_cap_stops_a_runaway_search_with_a_warning(caplog) -> None:
     with caplog.at_level(logging.WARNING, logger=joneps.logger.name):
         documents = _collect(portal)
 
-    technical_pages = [f for f in portal.requests if f["searchTendTypeCd1"] == TECHNICAL]
+    technical_pages = [f for f in portal.requests if f["searchTendTypeCd1"] == ""]
     assert len(technical_pages) == joneps.MAX_PAGES
     assert len(documents) == 20 * joneps.MAX_PAGES
     assert "page cap" in caplog.text
@@ -165,7 +166,7 @@ def test_drops_rows_outside_the_window_or_already_closed() -> None:
 
     documents = _collect(portal)
 
-    assert [json.loads(d.payload)["noticeId"] for d in documents] == ["1"]
+    assert [json.loads(d.payload)["noticeId"] for d in documents] == ["3", "1"]
 
 
 def test_works_are_read_only_for_design_and_build_and_other_scopes_keep_everything() -> None:
@@ -182,10 +183,10 @@ def test_works_are_read_only_for_design_and_build_and_other_scopes_keep_everythi
 
     documents = _collect(portal)
 
-    assert sorted(json.loads(d.payload)["noticeId"] for d in documents) == ["1", "2", "4"]
+    assert sorted(json.loads(d.payload)["noticeId"] for d in documents) == ["1", "2", "3", "4"]
 
 
-def test_plain_mode_keeps_technical_services_and_needs_a_design_word_elsewhere() -> None:
+def test_collection_preserves_unclassified_source_material() -> None:
     portal = FakePortal(
         {
             (TECHNICAL, ""): [_row(1, title="شيء ما")],
@@ -196,10 +197,10 @@ def test_plain_mode_keeps_technical_services_and_needs_a_design_word_elsewhere()
         }
     )
 
-    documents = _collect(portal, include_unclassified=False)
+    documents = _collect(portal)
 
-    assert sorted(json.loads(d.payload)["noticeId"] for d in documents) == ["1", "3"]
-    assert "rawNotice" not in json.loads(documents[0].payload)
+    assert sorted(json.loads(d.payload)["noticeId"] for d in documents) == ["1", "2", "3"]
+    assert "rawNotice" in json.loads(documents[0].payload)
 
 
 def test_one_document_per_tender_number_keeping_the_newest_row() -> None:
@@ -233,7 +234,7 @@ def test_notice_addresses_follow_the_portals_own_detail_routing() -> None:
         }
     )
 
-    documents = _collect(portal, include_unclassified=False)
+    documents = _collect(portal)
 
     paths = {
         json.loads(d.payload)["noticeId"]: parse.urlsplit(d.source_url).path for d in documents

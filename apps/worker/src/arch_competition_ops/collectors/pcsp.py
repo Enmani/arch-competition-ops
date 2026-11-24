@@ -1,24 +1,4 @@
-"""Spain's public sector procurement platform (PCSP), Atom syndication feed.
-
-Checked against the live feed in 2026-11:
-
-* The feed is a chain of files. The first holds the latest few dozen entries; each file's
-  ``<link rel="next">`` names an archive file (``..._YYYYMMDD_HHMMSS[_n].atom``) of about 500
-  entries and 13-17 MB, newest first. A 7-day window (2026-11-08 to 2026-11-14) was 31 files,
-  14,787 entries and 12,754 distinct tenders; the server does not compress them.
-* An entry is one update of a tender: the same tender reappears each time its state changes, so
-  the newest entry in the window is its current state.
-* Each entry embeds the CODICE ``ContractFolderStatus``: ``ContractFolderStatusCode`` (PRE prior
-  notice, PUB open for bids, EV under evaluation, ADJ awarded, RES resolved, ANUL cancelled),
-  ``TenderingProcess/ProcedureCode`` (``8`` = design contest, "concurso de proyectos") and the
-  CPV codes of the project and its lots (``ItemClassificationCode``). Of the 2,960 open tenders
-  in that window, 249 had a CPV code under 71 or 7993, 22 had none (all property leases and
-  sales) and 2 more were design contests outside that CPV scope.
-
-The AI design scope is defined in ``collectors.design_scope`` and applied locally to each entry,
-including design-and-build contracts ("redacción del proyecto y ejecución de las obras") whose
-title names the model whatever their CPV codes.
-"""
+"""Spain's public sector procurement platform (PCSP), Atom syndication feed."""
 
 from __future__ import annotations
 
@@ -31,17 +11,13 @@ from datetime import date, timedelta
 from urllib.parse import parse_qs, urlsplit
 
 from arch_competition_ops import clock
-from arch_competition_ops.collectors.base import CollectedSourceDocument
+from arch_competition_ops.collectors.base import CollectedSourceDocument, deferred_detail
 from arch_competition_ops.collectors.common import (
     DEFAULT_HEADERS,
     parse_money_value,
 )
-from arch_competition_ops.collectors.design_scope import has_design_cpv, is_design_and_build
-from arch_competition_ops.collectors.relevance import (
-    has_built_environment_context,
-    is_design_relevant,
-)
-from arch_competition_ops.http import get_default_client
+from arch_competition_ops.collectors.pagination import page_limit, unfinished_page
+from arch_competition_ops.http import HttpError, get_default_client
 from arch_competition_ops.models import SourceDefinition
 from arch_competition_ops.normalizers.dates import parse_date_string, slash_order_for_jurisdiction
 from arch_competition_ops.normalizers.money import format_money_text
@@ -56,71 +32,10 @@ FEED_MAX_FILES = 80
 # Archive files are 13-17 MB; the cap only stops a runaway response.
 FEED_MAX_BYTES = 50 * 1024 * 1024
 FEED_TIMEOUT_SECONDS = 120.0
-# AI scope (``collectors.design_scope``), or a design contest whatever its CPV code; only tenders
-# still open for bids.
-DESIGN_CONTEST_PROCEDURE_CODE = "8"
-OPEN_FOLDER_STATES = frozenset({"PUB"})
 SUMMARY_FIELD_PATTERN = re.compile(r"\s*([^:;]+):\s*(.*?)(?=(?:;\s*[^:;]+:)|$)")
 LABEL_PATTERN = re.compile(
     r'<span[^>]*id="[^"]*:label_([^"]+)"[^>]*>(.*?)</span>',
     flags=re.IGNORECASE | re.DOTALL,
-)
-LIVE_STATES = {"PUB"}
-DESIGN_CPV_PREFIXES = ("712", "7142")
-PCSP_DESIGN_MARKERS = (
-    "arquitect",
-    "arquitectura",
-    "direccion facultativa",
-    "direccion de obra",
-    "direccion de ejecucion",
-    "redaccion del proyecto",
-    "redaccion de proyecto",
-    "proyecto basico",
-    "proyecto de ejecucion",
-    "proyecto tecnico",
-    "urbaniz",
-    "urbanismo",
-    "planeamiento",
-    "paisaj",
-    "masterplan",
-    "espacio publico",
-    "espacios publicos",
-    "rehabilit",
-    "restauracion",
-)
-PCSP_BUILT_MARKERS = (
-    "biblioteca",
-    "museo",
-    "escuela",
-    "colegio",
-    "instituto",
-    "campus",
-    "hospital",
-    "centro de salud",
-    "edificio",
-    "edificios",
-    "vivienda",
-    "plaza",
-    "parque",
-    "espacio publico",
-    "espacios publicos",
-    "urbaniz",
-    "urbanismo",
-    "rehabilit",
-)
-PCSP_NEGATIVE_MARKERS = (
-    "mantenimiento",
-    "conservacion",
-    "limpieza",
-    "residuos",
-    "agencia de viajes",
-    "microfilmes",
-    "resonancia magnetica",
-    "hemodialisis",
-    "suministro",
-    "reactivos",
-    "formaldehido",
-    "uniform",
 )
 
 
@@ -162,7 +77,7 @@ def _feed_entries(fetcher: FetchText, first_url: str, window_start: str) -> Iter
     """
     url: str | None = first_url
     visited: set[str] = set()
-    for _ in range(FEED_MAX_FILES):
+    for _ in range(page_limit(FEED_MAX_FILES)):
         if url is None or url in visited:
             return
         visited.add(url)
@@ -180,6 +95,7 @@ def _feed_entries(fetcher: FetchText, first_url: str, window_start: str) -> Iter
             return
         url = _feed_link(root, "next")
     if url is not None and url not in visited:
+        unfinished_page()
         logger.warning(
             "PCSP feed paging stopped after %d files; older entries were not read", FEED_MAX_FILES
         )
@@ -205,17 +121,6 @@ def _entry_codes(entry: ET.Element) -> tuple[str | None, str | None, list[str]]:
             if len(code) == 8 and code.isdigit() and code not in cpv_codes:
                 cpv_codes.append(code)
     return status, procedure, cpv_codes
-
-
-def _in_ai_scope(
-    status: str | None, procedure: str | None, cpv_codes: list[str], title: str
-) -> bool:
-    # A missing state or CPV code cannot rule a tender out; only stated facts exclude it.
-    if status is not None and status not in OPEN_FOLDER_STATES:
-        return False
-    if procedure == DESIGN_CONTEST_PROCEDURE_CODE or not cpv_codes:
-        return True
-    return has_design_cpv(cpv_codes) or is_design_and_build(title)
 
 
 def _parse_summary_fields(summary: str) -> dict[str, str]:
@@ -299,45 +204,12 @@ def _pick_deadline(fields: dict[str, str], source: SourceDefinition) -> str | No
     )
 
 
-def _is_candidate_pcsp_notice(title: str, summary: str) -> bool:
-    haystack = normalize_text(f"{title} {summary}")
-    if any(marker in haystack for marker in PCSP_NEGATIVE_MARKERS):
-        return False
-    if any(marker in haystack for marker in PCSP_DESIGN_MARKERS):
-        return True
-    return any(marker in haystack for marker in PCSP_BUILT_MARKERS)
-
-
-def _is_relevant_pcsp_notice(
-    title: str,
-    summary: str,
-    detail_text: str,
-    cpv_codes: list[str],
-) -> bool:
-    haystack = normalize_text(f"{title} {summary} {detail_text}")
-    if any(marker in haystack for marker in PCSP_NEGATIVE_MARKERS):
-        return False
-    if any(code.startswith(DESIGN_CPV_PREFIXES) for code in cpv_codes):
-        return True
-
-    has_design_signal = is_design_relevant(title, summary, detail_text, cpv_codes=cpv_codes) or any(
-        marker in haystack for marker in PCSP_DESIGN_MARKERS
-    )
-    if not has_design_signal:
-        return False
-
-    return has_built_environment_context(title, summary, detail_text) or any(
-        marker in haystack for marker in PCSP_BUILT_MARKERS
-    )
-
-
 def collect_pcsp_documents(
     source: SourceDefinition,
     *,
     limit: int = 20,
     publication_date_from: str | None = None,
     fetch_text: FetchText | None = None,
-    include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
     fetcher = fetch_text or _default_fetch_text
     documents: list[CollectedSourceDocument] = []
@@ -359,17 +231,18 @@ def collect_pcsp_documents(
         if not title or not detail_url or detail_url in seen_urls:
             continue
         seen_urls.add(detail_url)
-        status, procedure, entry_cpv_codes = _entry_codes(entry)
-        state = status or (summary_fields.get("estado") or "").strip().upper()
-        if include_unclassified:
-            # Scope on the entry's structured codes before any detail page is fetched.
-            if not _in_ai_scope(state or None, procedure, entry_cpv_codes, title):
-                continue
-        elif state not in LIVE_STATES or not _is_candidate_pcsp_notice(title, summary):
-            continue
+        _status, procedure, entry_cpv_codes = _entry_codes(entry)
 
         inspected += 1
-        detail_html = fetcher(detail_url)
+        try:
+            detail_html = fetcher(detail_url)
+        except HttpError as exc:
+            documents.append(
+                deferred_detail(exc, detail_url, ET.tostring(entry, encoding="unicode"))
+            )
+            if len(documents) >= limit:
+                break
+            continue
         detail_fields = _extract_detail_fields(detail_html)
         if not _detail_belongs_to(detail_fields, detail_url):
             # Keep the Atom entry as the evidence; an empty page tells enrichment not to refetch.
@@ -378,12 +251,6 @@ def collect_pcsp_documents(
         cpv_codes = (
             extract_cpv_codes(_pick_value(detail_fields, "CPV", "cpv_code")) or entry_cpv_codes
         )
-        if not include_unclassified and (
-            not _is_relevant_pcsp_notice(title, summary, detail_text, cpv_codes)
-        ):
-            if inspected >= max_candidates:
-                break
-            continue
 
         deadline = _pick_deadline(detail_fields, source)
         notice_id = _pick_value(detail_fields, "Expediente", "file") or summary_fields.get(
@@ -408,12 +275,8 @@ def collect_pcsp_documents(
                 or summary_fields.get("organo_de_contratacion"),
                 "noticeId": notice_id,
                 "deadline": deadline,
-                **({"rawNoticeHtml": detail_html} if include_unclassified else {}),
-                **(
-                    {"rawNotice": ET.tostring(entry, encoding="unicode")}
-                    if include_unclassified
-                    else {}
-                ),
+                "rawNoticeHtml": detail_html,
+                "rawNotice": ET.tostring(entry, encoding="unicode"),
                 "summary": strip_html(summary) or detail_text or title,
                 "officialUrl": detail_url,
                 "cpv": cpv_codes,

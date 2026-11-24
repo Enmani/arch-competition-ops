@@ -80,20 +80,20 @@ def test_the_worker_and_the_web_app_have_the_same_tables() -> None:
     worker, web = _tables(_worker_database()), _tables(_migrated_database())
 
     assert web - worker == WEB_ONLY_TABLES
-    assert worker - web == set()
+    assert worker - web == {"notice_backlog", "collection_resume"}
 
 
 def test_every_shared_table_has_identical_columns() -> None:
     worker, web = _worker_database(), _migrated_database()
 
-    for table in sorted(_tables(worker)):
+    for table in sorted(_tables(worker) & _tables(web)):
         assert _columns(worker, table) == _columns(web, table), f"column mismatch in {table}"
 
 
 def test_every_shared_table_has_identical_indexes_and_foreign_keys() -> None:
     worker, web = _worker_database(), _migrated_database()
 
-    for table in sorted(_tables(worker)):
+    for table in sorted(_tables(worker) & _tables(web)):
         worker_indexes = _indexes(worker, table)
         web_indexes = {
             name: definition

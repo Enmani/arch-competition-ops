@@ -1,26 +1,4 @@
-"""Germany's national notice data service (Datenservice Öffentlicher Einkauf).
-
-The service is published at oeffentlichevergabe.de.
-
-One daily bulk export per publication day covers every German e-procurement platform, including
-the below-EU-threshold notices that never reach TED. Two exports of the same day are read and
-joined per notice (checked against the live service in 2026-11):
-
-* ``format=ocds.zip`` holds the procedure-level ``tender.title``, ``tender.description`` and
-  ``buyer.name``. It has no deadlines and no legal basis.
-* ``format=ocds2.zip`` holds ``tender.legalBasis``, ``tender.lots[].tenderPeriod.endDate`` and
-  update tags (``tenderUpdate``), but drops the procedure title, description and buyer name.
-
-Both name each member ``<noticeId>-<noticeVersion>.json`` and wrap one release in a package whose
-``uri`` carries the same notice id and version, which is the join key.
-
-The export of the current day does not exist yet: the service answers HTTP 400 ("The specified
-pubDay exceeds the allowed range. It must lie in the past."), so the newest day read is yesterday.
-
-The design scope is defined in ``collectors.design_scope`` and applied locally; AI mode also keeps
-design-and-build works contracts (``Totalunternehmer``, ``Planungs- und Bauleistungen``) whose
-title or description names the model.
-"""
+"""Germany's national notice data service (Datenservice Öffentlicher Einkauf)."""
 
 from __future__ import annotations
 
@@ -36,8 +14,6 @@ from urllib import parse
 from arch_competition_ops import clock
 from arch_competition_ops.collectors.base import CollectedSourceDocument
 from arch_competition_ops.collectors.common import DEFAULT_HEADERS, build_url
-from arch_competition_ops.collectors.design_scope import has_design_cpv, is_design_and_build
-from arch_competition_ops.collectors.relevance import is_design_relevant
 from arch_competition_ops.http import HttpStatusError, get_default_client
 from arch_competition_ops.models import SourceDefinition
 from arch_competition_ops.normalizers.money import format_money_text
@@ -56,10 +32,6 @@ MAX_EXPORT_BYTES = 50 * 1024 * 1024
 # A single notice JSON is a few kilobytes; larger members are skipped instead of inflated.
 MAX_MEMBER_BYTES = 5 * 1024 * 1024
 
-# Design contests always carry a CPV code and in the data they are 71*; OCDS has no separate
-# design-contest field, so the CPV scope of ``collectors.design_scope`` covers them.
-OPEN_TAGS = frozenset({"tender", "tenderUpdate"})
-CLOSED_TAGS = frozenset({"award", "awardUpdate", "contract", "contractUpdate"})
 EVIDENCE_NOTE = (
     "Official German notice from the national notice data service "
     "(Datenservice Öffentlicher Einkauf, oeffentlichevergabe.de), OCDS export."
@@ -134,38 +106,6 @@ def _read_export(payload: bytes | None) -> dict[tuple[str, str], dict[str, Any]]
                 if key is not None:
                     releases[key] = release
     return releases
-
-
-def _tags(*releases: dict[str, Any] | None) -> set[str]:
-    return {str(tag) for release in releases if release for tag in release.get("tag") or []}
-
-
-def _opens_participation(release: dict[str, Any], detail: dict[str, Any] | None) -> bool:
-    # Contract notices (and their corrections) still invite participation; award, contract and
-    # planning-only releases do not.
-    tags = _tags(release, detail)
-    return bool(tags & OPEN_TAGS) and not tags & CLOSED_TAGS
-
-
-def _is_eu_wide(detail: dict[str, Any] | None) -> bool:
-    """True when the notice was issued under an EU procurement directive, so TED publishes it too.
-
-    ``ocds2`` ``tender.legalBasis.wasDerivedFrom`` (scheme ``CELEX``) is the eForms legal basis
-    (BT-01). EU directives are CELEX numbers in sector 3 (``32014L0024``, ``32014L0025``,
-    ``32014L0023``, ``32009L0081``); national notices carry ``de-vob``, ``de-vol``, ``de-uvgo``,
-    ``de-hhr`` or ``other``. On 2026-11-13, every sampled directive-based notice had a TED
-    publication id in the service's own record (``tedPublication.publicationId``, found on TED)
-    and no national one had. A notice without a legal basis is kept: it cannot be shown to be a
-    TED duplicate.
-    """
-    tender = (detail or {}).get("tender")
-    if not isinstance(tender, dict):
-        return False
-    legal_basis = tender.get("legalBasis")
-    derived = legal_basis.get("wasDerivedFrom") if isinstance(legal_basis, dict) else None
-    if not isinstance(derived, dict) or str(derived.get("scheme") or "").upper() != "CELEX":
-        return False
-    return str(derived.get("id") or "").startswith("3")
 
 
 def _legal_basis(detail: dict[str, Any] | None) -> str | None:
@@ -286,7 +226,6 @@ def _build_document(
     title: str,
     summary: str | None,
     cpv_codes: list[str],
-    include_unclassified: bool,
 ) -> CollectedSourceDocument:
     tender = release.get("tender") or {}
     notice_url = _notice_page_url(*key)
@@ -295,11 +234,8 @@ def _build_document(
         "title": title,
         # The notice page is a script-rendered shell; the releases are the whole notice, so
         # an empty rawNoticeHtml tells AI enrichment not to fetch it.
-        **(
-            {"rawNotice": {"ocds": release, "ocds2": detail}, "rawNoticeHtml": ""}
-            if include_unclassified
-            else {}
-        ),
+        "rawNotice": {"ocds": release, "ocds2": detail},
+        "rawNoticeHtml": "",
         "buyer": _buyer_name(release, detail),
         # The ocid names the procedure, so a later correction of the same notice updates the
         # same record instead of creating another one.
@@ -353,7 +289,6 @@ def collect_oeffentlichevergabe_documents(
     limit: int = 20,
     publication_date_from: str | None = None,
     fetch_bytes: FetchBytes | None = None,
-    include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
     fetch = fetch_bytes or _default_fetch_bytes
     documents: list[CollectedSourceDocument] = []
@@ -367,26 +302,13 @@ def collect_oeffentlichevergabe_documents(
             if procedure in seen_procedures:
                 continue
             seen_procedures.add(procedure)
-            if not _opens_participation(release, detail):
-                continue
             cpv_codes = _cpv_codes(release, detail)
-            if _is_eu_wide(detail):
-                continue
             tender = release.get("tender") or {}
             lots = _lots(detail) or _lots(release)
             title = _first_text(tender.get("title"), *(lot.get("title") for lot in lots)) or ""
             summary = _first_text(
                 tender.get("description"), *(lot.get("description") for lot in lots)
             )
-            # Design scope: a design CPV; in AI mode also a design-and-build contract.
-            if not has_design_cpv(cpv_codes) and not (
-                include_unclassified and is_design_and_build(title, summary)
-            ):
-                continue
-            if not include_unclassified and (
-                not title or not is_design_relevant(title, summary, cpv_codes=cpv_codes)
-            ):
-                continue
             documents.append(
                 _build_document(
                     key,
@@ -395,7 +317,6 @@ def collect_oeffentlichevergabe_documents(
                     title=title or "Untitled oeffentlichevergabe.de notice",
                     summary=summary,
                     cpv_codes=cpv_codes,
-                    include_unclassified=include_unclassified,
                 )
             )
             if len(documents) >= limit:

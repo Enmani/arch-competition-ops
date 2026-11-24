@@ -17,6 +17,8 @@ from arch_competition_ops.collectors import CollectedSourceDocument
 from arch_competition_ops.settings import Settings
 from arch_competition_ops.verifiers.authority_pages import clear_verifier_caches
 
+pytestmark = pytest.mark.usefixtures("offline_assessment")
+
 PDF_URL = (
     "https://www.stadt-zuerich.ch/content/dam/stzh/hbd/hochbau/wettbewerbe/herbstweg-programm.pdf"
 )

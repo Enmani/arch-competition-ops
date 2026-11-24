@@ -1,7 +1,7 @@
 ---
 title: Architecture
 status: done
-updated_at: 2026-11-15
+updated_at: 2026-11-24
 related_docs:
   - vision.md
   - AGENTS.md
@@ -79,7 +79,7 @@ Fee, currency, eligibility, identity and merge rules are in `docs/DATA_CONTRACT.
 
 ## Qualification
 
-`qualification_score` is a professional viability score, not a popularity score. Positive signals: an official notice, an explicit authority and procedure type, a downstream implementation route, architect qualification required, a visible budget and an available brief. Negative signals: participation fees with no implementation path, student-only or open-to-all calls, no identifiable authority or notice id, and rights-heavy publicity contests. The score is computed in the worker (`normalizers/competition.py`) and only displayed by the web app.
+`qualification_score` is a professional viability score, not a popularity score. Positive signals: an official notice, an explicit authority and procedure type, a downstream implementation route, architect qualification required, a visible budget and an available brief. Negative signals: participation fees with no implementation path, student-only or open-to-all calls, no identifiable authority or notice id, and rights-heavy publicity contests. The score does not decide admission. It is computed in the worker (`normalizers/competition.py`) and only displayed by the web app.
 
 ## AI Extraction And Screening
 
@@ -89,11 +89,11 @@ An assessment returns source-language fields with exact quotations, plus a bilin
 
 A notice version includes its URL and content. A finished judgment also identifies the requirement text, response schema, provider, model and reasoning effort. Changes invalidate reuse. The model receives no taxonomy configuration. The response schema names the decision, field and excerpt types needed to validate its answer.
 
-AI mode bypasses source-adapter title, topical classification, notice-type and missing-deadline rejection gates, including GGZY listing validation and municipal/TenderNed candidate checks. Discovery queries and bounded retrieval still determine which notices can be seen; this is not an exhaustive crawl. The shared skill owns semantic matching in both stages. Legacy keyword exclusions and positive-keyword bonuses apply only without AI.
+The worker collects each source before paid reading. Its private SQLite queue preserves pending notices beyond the discovery window. Source failures retain the window start. After a page cap the worker replays the window with a larger limit. A repeated listing does not spend another reading slot. Collection-only runs report new notices, text lengths, a lower bound on unfinished pages and the age of the oldest queued notice.
 
 Adapter-generated classifications and evidence annotations are removed from model notice evidence. Normalized record classifications are also excluded from the evidence fields; they must not create a supposed conflict with an explicit supply/works notice. Collection/landing URLs are retained as discovery trails but cannot establish a project-specific official website.
 
-Where an adapter supplies `rawNoticeHtml` or `rawNotice`, the model receives that original content rather than locally guessed fields. API adapters preserve original records so an upstream field rename cannot silently erase the only usable title or qualification clause. Without original content, the remaining supplied listing fields are still usable, after removing local classifications.
+Where an adapter supplies `rawNoticeHtml` or `rawNotice`, the model receives that original content rather than locally guessed fields. API adapters preserve original records so an upstream field rename cannot silently erase the only usable title or qualification clause. Without a raw envelope only the original listing title and category are eligible.
 
 SIMAP search requires explicit project subtypes. AI mode supplies every subtype from the public search UI, including services and study contracts, rather than restricting retrieval to design contests.
 
@@ -111,7 +111,7 @@ Within one source's ingest the detailed assessments run on `ai_concurrency` thre
 
 `ai_screening_results` is the latest published assessment per opportunity and is exported to D1. Discovery hides `exclude` only while its source revision matches the record; `shortlisted` and `verified` human statuses remain visible. Detail and watchlist lookups keep access to the record. The ledger, full prompts and API key are not exported. A failed assessment is reported as a document failure rather than silently substituting rule-based extraction.
 
-Retention is one daily cleanup (`cleanup-expired-competitions`, at most once per calendar day). It deletes opportunities whose deadline passed more than `expired_competition_retention_days` (7) ago, and opportunities whose current assessment is `exclude` and more than the same 7 days old, together with their cached preview images. `shortlisted` and `verified` records and watchlisted ones are kept; an exclusion made for an older source revision does not count. The notice ledger already marks excluded notices as screened, so deleting the record does not cause a re-screen. The same pass blanks the stored prompt and result (`input_json`, `result_json`) of `ai_screening_runs` rows older than 45 days and keeps the rows, so spend accounting is unchanged; blanked rows no longer serve as cache hits.
+Retention is one daily cleanup (`cleanup-expired-competitions`, at most once per calendar day). It deletes opportunities whose deadline passed more than `expired_competition_retention_days` (7) ago, and opportunities whose current assessment is `exclude` and more than the same 7 days old, together with their cached preview images. Watchlists protect against both cleanup rules. Shortlisted and verified records also survive exclusion cleanup; an exclusion made for an older source revision does not count. The notice ledger already marks excluded notices as screened, so deleting the record does not cause a re-screen. The same pass blanks the stored prompt and result (`input_json`, `result_json`) of `ai_screening_runs` rows older than 45 days and keeps the rows, so spend accounting is unchanged; blanked rows no longer serve as cache hits.
 
 AI supplies quoted project address, city, region and country components, never coordinates. The existing Nominatim geocoder tries the stated location and progressively coarser components, keeping the original address. Unicode location keys preserve Chinese place names. Fallbacks use `nominatim:area` or `nominatim:country` with capped confidence, so the detail page can label the approximate coverage and link to a map. Cache writes merge independent source workers' snapshots atomically. The geocoder is limited to the record's country, so a record whose jurisdiction is not a country used to be skipped without a trace; `countries.py` now reads the country from the notice (see `docs/DATA_CONTRACT.md`) and `get_country_label_for_jurisdiction` / `get_country_code_for_jurisdiction` fall back to the country registry for every country, not only the 41 targeted jurisdictions.
 

@@ -58,7 +58,7 @@ sources:
       - fr
       - es
       - ar
-    notes: Open notices of 32 UN organisations (UNOPS, UNDP, UN-Habitat, UNRWA, UNHCR, UNICEF...) read from the public notice list, no login, filtered server side to UNSPSC engineering, building and facility construction, and urban development codes. Kept disabled because the UNGM terms (section 5) bar storing or republishing its material in another retrieval system without written permission from registry@ungm.org; set enabled to true once that is granted.
+    notes: Open notices of 32 UN organisations (UNOPS, UNDP, UN-Habitat, UNRWA, UNHCR, UNICEF...) read from the public notice list, no login. No procurement-code filter is applied. Kept disabled because the UNGM terms (section 5) bar storing or republishing its material in another retrieval system without written permission from registry@ungm.org; set enabled to true once that is granted.
 
   - source_id: isdb_project_tenders
     name: Islamic Development Bank Project Tenders
@@ -77,7 +77,7 @@ sources:
       - en
       - fr
       - ar
-    notes: Open tenders, prequalifications, expressions of interest and general procurement notices of IsDB-financed projects in its member countries, from the public tender list (about 35 open, a few design-related); awards are skipped. The list has no publication date, so the whole open list is read each run.
+    notes: Open tenders, prequalifications, expressions of interest and general procurement notices of IsDB-financed projects in its member countries, from the public tender list (about 35 open, a few design-related). The list has no publication date, so the whole open list is read each run.
 
   - source_id: competitions_archi
     name: Competitions.archi

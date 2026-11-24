@@ -27,22 +27,20 @@ import json
 import logging
 import re
 from collections.abc import Callable
-from datetime import date, timedelta
+from datetime import date
 from typing import Any
 from urllib import parse
 
 from arch_competition_ops import clock
 from arch_competition_ops.collectors.base import CollectedSourceDocument
 from arch_competition_ops.collectors.common import DEFAULT_HEADERS
-from arch_competition_ops.collectors.design_scope import is_design_and_build
 from arch_competition_ops.collectors.mideast_common import (
     build_paced_client,
     clean_text,
-    has_arabic_design_marker,
     parse_dmy,
     window_start,
 )
-from arch_competition_ops.collectors.relevance import is_design_relevant
+from arch_competition_ops.collectors.pagination import page_limit, unfinished_page
 from arch_competition_ops.models import SourceDefinition
 
 logger = logging.getLogger(__name__)
@@ -54,17 +52,8 @@ LIST_URL = (
 )
 PAGE_SIZE = 20
 MAX_PAGES = 30
-DEADLINE_HORIZON_DAYS = 365
-TECHNICAL_SERVICES = "EP0014"
 SERVICES = "EP0012"
 WORKS = "EP0015"
-CONSULTING_AND_STUDIES = "EP0218"
-# (tender type, sub-type) searches; a sub-type of None searches the whole type.
-SCOPES: tuple[tuple[str, str | None], ...] = (
-    (TECHNICAL_SERVICES, None),
-    (SERVICES, CONSULTING_AND_STUDIES),
-    (WORKS, None),
-)
 PROCEDURE_NAMES = {
     "EP0021": "Public tender",
     "EP0022": "Prequalification",
@@ -123,8 +112,8 @@ def _search_fields(
         "searchTendTypeCd2": sub_type or "",
         "searchStartPublicationYmd": start.strftime(day),
         "searchEndPublicationYmd": today.strftime(day),
-        "searchStartSubmDlineDt": today.strftime(day),
-        "searchEndSubmDlineDt": (today + timedelta(days=DEADLINE_HORIZON_DAYS)).strftime(day),
+        "searchStartSubmDlineDt": "",
+        "searchEndSubmDlineDt": "",
         "searchTendStatusCd": "",
         "recordCountPerPage": str(PAGE_SIZE),
         "currentPageNo": str(page),
@@ -184,23 +173,13 @@ def _parse_rows(page: str) -> list[dict[str, Any]]:
     return rows
 
 
-def _in_scope(row: dict[str, Any], *, include_unclassified: bool) -> bool:
-    if row["tenderType"] == WORKS:
-        return is_design_and_build(row["title"])
-    if include_unclassified:
-        return True
-    if row["tenderType"] == TECHNICAL_SERVICES:
-        return True
-    return has_arabic_design_marker(row["title"]) or is_design_relevant(row["title"])
-
-
-def _build_document(row: dict[str, Any], *, include_unclassified: bool) -> CollectedSourceDocument:
+def _build_document(row: dict[str, Any]) -> CollectedSourceDocument:
     payload = {
         "title": row["title"],
         "buyer": row["buyer"],
         "noticeId": row["tenderNo"],
         "tenderSequence": row["tenderSeq"],
-        "deadline": row["closing"].isoformat(),
+        "deadline": row["closing"].isoformat() if row["closing"] else None,
         "officialUrl": row["url"],
         "publishedAt": row["published"].isoformat(),
         "procedureType": PROCEDURE_NAMES.get(row["method"], row["method"]),
@@ -215,8 +194,6 @@ def _build_document(row: dict[str, Any], *, include_unclassified: bool) -> Colle
                 "rawNotice": {k: str(v) if isinstance(v, date) else v for k, v in row.items()},
                 "rawNoticeHtml": "",
             }
-            if include_unclassified
-            else {}
         ),
     }
     return CollectedSourceDocument(
@@ -230,7 +207,6 @@ def collect_joneps_documents(
     limit: int = 20,
     publication_date_from: str | None = None,
     search: Callable[[dict[str, str]], str] | None = None,
-    include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
     """Open Jordanian tender invitations of the design-relevant types, newest first.
 
@@ -243,9 +219,9 @@ def collect_joneps_documents(
     run_search = search or _Session().search
     kept: list[dict[str, Any]] = []
     seen_numbers: set[str] = set()
-    for tender_type, sub_type in SCOPES:
+    for tender_type, sub_type in (("", None),):
         seen_rows: set[str] = set()
-        for page in range(1, MAX_PAGES + 1):
+        for page in range(1, page_limit(MAX_PAGES) + 1):
             rows = _parse_rows(
                 run_search(
                     _search_fields(tender_type, sub_type, start=start, today=today, page=page)
@@ -254,20 +230,17 @@ def collect_joneps_documents(
             fresh = [row for row in rows if row["url"] not in seen_rows]
             seen_rows.update(row["url"] for row in fresh)
             for row in fresh:
-                published, closing = row["published"], row["closing"]
-                if published is None or published < start or closing is None or closing < today:
+                published = row["published"]
+                if published is None or published < start:
                     continue
                 if row["tenderNo"] in seen_numbers:
                     continue
-                if _in_scope(row, include_unclassified=include_unclassified):
-                    seen_numbers.add(row["tenderNo"])
-                    kept.append(row)
+                seen_numbers.add(row["tenderNo"])
+                kept.append(row)
             if len(rows) < PAGE_SIZE or not fresh:
                 break
         else:
+            unfinished_page()
             logger.warning("JONEPS %s search hit the %s-page cap", tender_type, MAX_PAGES)
     kept.sort(key=lambda row: (row["published"], row["tenderNo"]), reverse=True)
-    return [
-        _build_document(row, include_unclassified=include_unclassified)
-        for row in kept[: max(limit, 0)]
-    ]
+    return [_build_document(row) for row in kept[: max(limit, 0)]]

@@ -83,10 +83,11 @@ def test_collect_tenderned_documents_transforms_design_relevant_service_notices(
     documents = collect_tenderned_documents(
         source,
         limit=5,
+        publication_date_from="2026-04-01",
         fetch_json=lambda url: (list_response if "publicaties?" in url else detail_response),
     )
 
-    assert len(documents) == 1
+    assert len(documents) == 2
     assert documents[0].source_url.endswith("/421000")
 
     payload = json.loads(documents[0].payload)
@@ -171,11 +172,12 @@ def test_collect_doffin_documents_transforms_filtered_notice_hits() -> None:
     documents = collect_doffin_documents(
         source,
         limit=5,
+        publication_date_from="2026-04-01",
         fetch_search_json=lambda _url, _body: search_response,
         fetch_detail_json=lambda url: detail_responses[url],
     )
 
-    assert len(documents) == 1
+    assert len(documents) == 2
     assert documents[0].source_url.endswith("/2026-106919")
 
     payload = json.loads(documents[0].payload)
@@ -272,7 +274,7 @@ def test_collect_pcsp_documents_transforms_public_design_relevant_entries() -> N
         }[url],
     )
 
-    assert len(documents) == 1
+    assert len(documents) == 2
     assert documents[0].source_url.endswith("design123")
 
     payload = json.loads(documents[0].payload)
@@ -294,7 +296,6 @@ def test_collect_pcsp_documents_transforms_public_design_relevant_entries() -> N
         source,
         limit=5,
         publication_date_from="2026-04-19",
-        include_unclassified=True,
         fetch_text=lambda url: feed_xml if url == source.base_url else other_tender,
     )
     payload = json.loads(documents[0].payload)
@@ -392,245 +393,12 @@ def test_ted_collector_reads_every_page_of_the_window() -> None:
         notices, next_token = pages[token]
         return {"notices": notices, "iterationNextToken": next_token}
 
-    documents = collect_ted_documents(
-        source, limit=2000, include_unclassified=True, fetch_json=fetch
-    )
+    documents = collect_ted_documents(source, limit=2000, fetch_json=fetch)
 
     # An empty page ends the window; nothing beyond it is requested.
     assert seen_tokens == [None, "t2", "t3"]
     assert len(documents) == 300
     assert len({d.source_url for d in documents}) == 300
-
-
-def test_ted_ai_query_asks_only_for_notices_that_open_participation() -> None:
-    source = _build_source(
-        "ted_design_notices",
-        collector="ted_search_api",
-        name="TED Design and Procurement Notices",
-        jurisdiction="eu",
-        base_url="https://ted.europa.eu/",
-        scan_method="api",
-        extractor="ted_notice_parser",
-    )
-    queries = []
-    collect_ted_documents(
-        source,
-        publication_date_from="2026-01-01",
-        include_unclassified=True,
-        fetch_json=lambda _url, body: queries.append(body["query"]) or {"notices": []},
-    )
-    # Award results would otherwise take most of the newest-first candidate window.
-    open_types = "notice-type IN (cn-standard cn-social cn-desg pin-cfc-standard pin-cfc-social)"
-    assert queries[0] == (
-        f"(classification-cpv = 71* OR classification-cpv = 7993*) AND {open_types} "
-        "AND publication-date >= 20260101"
-    )
-    # One more query: open works notices whose full text names a design-and-build model.
-    assert len(queries) == 2
-    assert queries[1].startswith(f"classification-cpv = 45* AND {open_types} AND (FT ~ ")
-    assert 'FT ~ "conception réalisation"' in queries[1]
-    assert queries[1].endswith("AND publication-date >= 20260101")
-
-
-def test_ted_ai_mode_merges_confirmed_design_and_build_works_notices_newest_first() -> None:
-    source = _build_source(
-        "ted_design_notices",
-        collector="ted_search_api",
-        name="TED Design and Procurement Notices",
-        jurisdiction="eu",
-        base_url="https://ted.europa.eu/",
-        scan_method="api",
-        extractor="ted_notice_parser",
-    )
-
-    def notice(number: str, published: str, title: str, cpv: str, description: str = "") -> dict:
-        return {
-            "publication-number": number,
-            "publication-date": f"{published}+01:00",
-            "classification-cpv": [cpv],
-            "notice-title": {"eng": title},
-            "description-proc": {"fra": description} if description else {},
-            "links": {"htmlDirect": {"ENG": f"https://ted.europa.eu/en/notice/{number}/html"}},
-        }
-
-    scoped = [
-        notice(
-            "3-2026",
-            "2026-11-13",
-            "France – Architectural services – Maîtrise d'oeuvre",
-            "71200000",
-        ),
-        notice(
-            "1-2026", "2026-11-10", "Spain – Engineering services – Asistencia técnica", "71300000"
-        ),
-    ]
-    works = [
-        notice(
-            "4-2026",
-            "2026-11-14",
-            "France – Construction work – Hôpital Jean Verdier",
-            "45000000",
-            "Marché public global sectoriel de conception-réalisation du Nouvel Hôpital.",
-        ),
-        # A full-text hit deeper in the notice, not confirmed on the title and description.
-        notice(
-            "2-2026",
-            "2026-11-12",
-            "Spain – Construction work – Ejecución de las obras del Proyecto Básico y de Ejecución",
-            "45000000",
-        ),
-        # Also in the design scope: kept once.
-        notice(
-            "3-2026",
-            "2026-11-13",
-            "France – Architectural services – Maîtrise d'oeuvre et appalto integrato",
-            "71200000",
-        ),
-    ]
-
-    def fetch(_url, body):
-        return {"notices": works if "FT ~" in body["query"] else scoped}
-
-    documents = collect_ted_documents(
-        source,
-        limit=2000,
-        publication_date_from="2026-11-08",
-        include_unclassified=True,
-        fetch_json=fetch,
-    )
-
-    assert [d.source_url.rsplit("/", 2)[-2] for d in documents] == ["4-2026", "3-2026", "1-2026"]
-    assert json.loads(documents[1].payload)["title"].endswith("Maîtrise d'oeuvre")
-
-
-def test_ted_source_search_query_skips_the_design_and_build_pass() -> None:
-    source = _build_source(
-        "ted_custom",
-        collector="ted_search_api",
-        name="TED custom scope",
-        jurisdiction="eu",
-        base_url="https://ted.europa.eu/",
-        scan_method="api",
-        extractor="ted_notice_parser",
-    ).model_copy(update={"search_query": "classification-cpv = 71220000"})
-    queries = []
-    collect_ted_documents(
-        source,
-        publication_date_from="2026-01-01",
-        include_unclassified=True,
-        fetch_json=lambda _url, body: queries.append(body["query"]) or {"notices": []},
-    )
-    assert queries == ["(classification-cpv = 71220000) AND publication-date >= 20260101"]
-
-
-def test_collect_boamp_documents_transforms_records_into_parser_payloads() -> None:
-    from arch_competition_ops.collectors.boamp import collect_boamp_documents
-
-    source = _build_source(
-        "boamp_design_notices",
-        collector="boamp_opendatasoft",
-        name="BOAMP Design and Public Procurement Notices",
-        jurisdiction="france",
-        base_url="https://www.boamp.fr/",
-        scan_method="api",
-        extractor="boamp_notice_parser",
-        languages=["fr"],
-    )
-    response = {
-        "results": [
-            {
-                "idweb": "26-38966",
-                "id": "26_38966",
-                "url_avis": "https://www.boamp.fr/pages/avis/?q=idweb:26-38966",
-                "objet": (
-                    "MISSION DE MAITRISE D'OEUVRE RELATIVE A LA RESTRUCTURATION LOURDE D'UN COLLEGE"
-                ),
-                "dateparution": "2026-04-18",
-                "datelimitereponse": "2026-05-18T09:30:00+00:00",
-                "nomacheteur": "Département de la Sarthe",
-                "procedure_libelle": "Procédure Ouverte",
-                "nature_libelle": "Avis de marché",
-                "type_marche": ["SERVICES"],
-                "descripteur_libelle": ["Maîtrise d'oeuvre", "Etude"],
-                "donnees": json.dumps(
-                    {
-                        "cpv": ["71241000"],
-                        "EFORMS": {
-                            "ContractNotice": {
-                                "cac:ProcurementProject": {
-                                    "cac:RequestedTenderTotal": {
-                                        "ext:UBLExtensions": {
-                                            "ext:UBLExtension": {
-                                                "ext:ExtensionContent": {
-                                                    "efext:EformsExtension": {
-                                                        "efbc:FrameworkMaximumAmount": {
-                                                            "@currencyID": "EUR",
-                                                            "#text": "380000",
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        },
-                    },
-                    ensure_ascii=False,
-                ),
-            }
-        ]
-    }
-
-    documents = collect_boamp_documents(
-        source,
-        limit=1,
-        publication_date_from="2026-04-01",
-        fetch_json=lambda _url: response,
-    )
-
-    assert len(documents) == 1
-    # Each record links to its own notice page, never the shared site root.
-    assert documents[0].source_url == "https://www.boamp.fr/pages/avis/?q=idweb:26-38966"
-
-    payload = json.loads(documents[0].payload)
-    assert payload["title"].startswith("MISSION DE MAITRISE D'OEUVRE")
-    assert payload["buyer"] == "Département de la Sarthe"
-    assert payload["officialNoticeId"] == "26_38966"
-    assert payload["deadline"] == "2026-05-18"
-    assert payload["cpv"] == ["71241000"]
-    assert payload["estimatedValueEur"] == 380000
-    assert payload["estimatedValueText"] == "EUR 380,000"
-    assert payload["officialUrl"] == documents[0].source_url
-
-
-def test_collect_boamp_documents_requests_pages_of_100() -> None:
-    from arch_competition_ops.collectors.boamp import collect_boamp_documents
-
-    source = _build_source(
-        "boamp_design_notices",
-        collector="boamp_opendatasoft",
-        name="BOAMP Design and Public Procurement Notices",
-        jurisdiction="france",
-        base_url="https://www.boamp.fr/",
-        scan_method="api",
-        extractor="boamp_notice_parser",
-        languages=["fr"],
-    )
-    captured: dict[str, str] = {}
-
-    def fake_fetch_json(url: str) -> dict:
-        captured["url"] = url
-        return {"results": []}
-
-    documents = collect_boamp_documents(
-        source,
-        limit=20,
-        fetch_json=fake_fetch_json,
-    )
-
-    assert documents == []
-    assert "limit=100" in captured["url"]
 
 
 def test_ted_search_requests_the_value_and_currency_fields() -> None:

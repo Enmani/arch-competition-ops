@@ -131,8 +131,14 @@ batches:
     captured_calls: list[tuple[str, int, str | None]] = []
 
     def fake_ingest_source(
-        settings: Settings, *, source_id: str, limit: int, publication_date_from: str | None
+        settings: Settings,
+        *,
+        source_id: str,
+        limit: int,
+        publication_date_from: str | None,
+        collect_only: bool,
     ):
+        assert collect_only
         del settings
         captured_calls.append((source_id, limit, publication_date_from))
         return IngestResult(

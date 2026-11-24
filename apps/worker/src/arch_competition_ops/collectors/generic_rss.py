@@ -9,7 +9,6 @@ from arch_competition_ops.collectors.base import CollectedSourceDocument
 from arch_competition_ops.collectors.common import (
     fetch_text_get,
 )
-from arch_competition_ops.collectors.relevance import has_built_environment_context
 from arch_competition_ops.models import SourceDefinition
 from arch_competition_ops.normalizers.dates import parse_date_string
 from arch_competition_ops.normalizers.text import normalize_text, strip_html
@@ -19,41 +18,6 @@ RSS_FIELD_PATTERN = re.compile(
     flags=re.IGNORECASE | re.DOTALL,
 )
 RSS_BREAK_PATTERN = re.compile(r"<br\s*/?>", flags=re.IGNORECASE)
-RSS_DESIGN_MARKERS = (
-    "design build",
-    "design builder",
-    "design-builder",
-    "design services",
-    "architectural services",
-    "concept design",
-    "detailed design",
-    "preliminary design",
-    "architectural",
-    "architecture",
-    "architect",
-    "landscape architecture",
-    "landscape design",
-    "urban design",
-    "planning competition",
-    "project competition",
-)
-RSS_BUILT_MARKERS = (
-    "design build",
-    "design builder",
-    "design-builder",
-    "infrastructure",
-    "stormwater",
-    "watermain",
-    "shared path",
-    "boardwalk",
-    "hall",
-    "pavilion",
-    "facility",
-    "facilities",
-    "public realm",
-    "street",
-    "camp",
-)
 RSS_PREANNOUNCEMENT_MARKERS = (
     "advance notice",
     "notice of information",
@@ -104,50 +68,9 @@ def _parse_description_fields(description_html: str) -> tuple[dict[str, str], li
     return fields, categories
 
 
-def _is_relevant_rss_notice(title: str, summary: str, categories: list[str]) -> bool:
-    normalized = normalize_text(f"{title} {summary} {' '.join(categories)}")
-    has_design_signal = any(marker in normalized for marker in RSS_DESIGN_MARKERS)
-    if not has_design_signal:
-        return False
-
-    if has_built_environment_context(title, summary, *categories):
-        return True
-
-    return any(marker in normalized for marker in RSS_BUILT_MARKERS)
-
-
 def is_preannouncement_rss_notice(title: str, summary: str, categories: list[str]) -> bool:
     normalized = normalize_text(f"{title} {summary} {' '.join(categories)}")
     return any(marker in normalized for marker in RSS_PREANNOUNCEMENT_MARKERS)
-
-
-def _rss_relevance_score(title: str, summary: str, categories: list[str]) -> int:
-    normalized = normalize_text(f"{title} {summary} {' '.join(categories)}")
-
-    score = 0
-    if any(marker in normalized for marker in ("architect", "architecture", "architectural")):
-        score += 5
-    if any(
-        marker in normalized
-        for marker in ("urban design", "landscape architecture", "landscape design")
-    ):
-        score += 4
-    if any(
-        marker in normalized
-        for marker in ("design build", "design and build", "design builder", "design-builder")
-    ):
-        score += 4
-    if any(
-        marker in normalized
-        for marker in ("concept design", "detailed design", "preliminary design")
-    ):
-        score += 3
-    if "design services" in normalized or "architectural services" in normalized:
-        score += 3
-    if any(marker in normalized for marker in RSS_BUILT_MARKERS):
-        score += 1
-
-    return score
 
 
 def collect_generic_rss_documents(
@@ -156,7 +79,6 @@ def collect_generic_rss_documents(
     limit: int = 20,
     publication_date_from: str | None = None,
     fetch_text: callable | None = None,
-    include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
     raw_feed = (fetch_text or _default_fetch_text)(source.base_url)
     root = ET.fromstring(raw_feed)
@@ -181,13 +103,10 @@ def collect_generic_rss_documents(
             continue
         if publication_date_from and published_at and published_at < publication_date_from:
             continue
-        if is_preannouncement_rss_notice(title, summary, categories):
-            continue
-        if not include_unclassified and (not _is_relevant_rss_notice(title, summary, categories)):
-            continue
 
         payload = json.dumps(
             {
+                "rawNoticeHtml": ET.tostring(item, encoding="unicode"),
                 "title": title,
                 "buyer": fields.get("organisation") or fields.get("organization"),
                 "noticeId": fields.get("rfx_id") or fields.get("notice_id"),
@@ -205,7 +124,7 @@ def collect_generic_rss_documents(
         )
         scored_documents.append(
             (
-                _rss_relevance_score(title, summary, categories),
+                0,
                 published_at or "0000-00-00",
                 CollectedSourceDocument(source_url=link, payload=payload),
             )

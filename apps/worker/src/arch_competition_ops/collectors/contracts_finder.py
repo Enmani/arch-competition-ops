@@ -12,7 +12,6 @@ from arch_competition_ops.collectors.common import (
 )
 from arch_competition_ops.collectors.uk_ocds import (
     OCDS_PAGE_SIZE,
-    is_relevant_uk_design_notice,
     iter_ocds_releases,
     pick_buyer_name,
     pick_delivery_location,
@@ -67,7 +66,6 @@ def collect_contracts_finder_documents(
     limit: int = 20,
     publication_date_from: str | None = None,
     fetch_json: Callable[[str], dict] | None = None,
-    include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
     published_from, published_to = _resolve_search_window(publication_date_from)
     search_url = build_url(
@@ -75,7 +73,6 @@ def collect_contracts_finder_documents(
         {
             "publishedFrom": published_from,
             "publishedTo": published_to,
-            "stages": "tender",
             "limit": OCDS_PAGE_SIZE,
         },
     )
@@ -93,12 +90,6 @@ def collect_contracts_finder_documents(
         classification = tender.get("classification", {})
         cpv_code = classification.get("id", "").strip() if isinstance(classification, dict) else ""
 
-        if not include_unclassified and (
-            not title
-            or not is_relevant_uk_design_notice(title, description, [cpv_code] if cpv_code else [])
-        ):
-            continue
-
         official_url = _notice_page_url(release, tender)
         if official_url is None:
             # Without its own page the notice cannot be told apart from the other rows.
@@ -107,7 +98,7 @@ def collect_contracts_finder_documents(
         payload_row = json.dumps(
             {
                 "title": title,
-                **({"rawNotice": release} if include_unclassified else {}),
+                "rawNotice": release,
                 "buyer": pick_buyer_name(release),
                 "noticeId": release.get("ocid"),
                 "deadline": (tender.get("tenderPeriod") or {}).get("endDate"),

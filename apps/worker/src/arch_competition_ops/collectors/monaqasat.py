@@ -37,19 +37,16 @@ import certifi
 import requests
 from requests.adapters import HTTPAdapter
 
-from arch_competition_ops import clock
-from arch_competition_ops.collectors.base import CollectedSourceDocument
+from arch_competition_ops.collectors.base import CollectedSourceDocument, deferred_detail
 from arch_competition_ops.collectors.common import DEFAULT_HEADERS
-from arch_competition_ops.collectors.design_scope import is_design_and_build
 from arch_competition_ops.collectors.mideast_common import (
     build_paced_client,
     clean_text,
-    has_arabic_design_marker,
     page_text,
     parse_dmy,
     window_start,
 )
-from arch_competition_ops.collectors.relevance import is_design_relevant
+from arch_competition_ops.collectors.pagination import page_limit, unfinished_page
 from arch_competition_ops.http import HttpError
 from arch_competition_ops.models import SourceDefinition
 
@@ -59,8 +56,6 @@ SITE = "https://monaqasat.mof.gov.qa"
 LIST_URL = SITE + "/TendersOnlineServices/AvailableMinistriesTenders/{page}"
 NOTICE_URL = SITE + "/TendersOnlineServices/TenderDetails/{tender_id}"
 MAX_PAGES = 40
-CONTRACTING_SECTOR = "مقاولات"
-COMPETITION_TYPE = "مسابقة"
 DETAIL_CHARS = 6000
 EVIDENCE_NOTE = "Official Qatari tender from the Ministry of Finance state procurement site."
 
@@ -184,21 +179,8 @@ def _brief(detail: str | None) -> str | None:
     return detail[start:].strip() if start >= 0 else detail
 
 
-def _in_scope(card: dict[str, Any], *, include_unclassified: bool) -> bool:
-    title = card["title"]
-    is_competition = COMPETITION_TYPE in (card["type"] or "") and "تأهيل" not in (
-        card["type"] or ""
-    )
-    if (card["sector"] or "").strip() == CONTRACTING_SECTOR:
-        # Contracting is read only for integrated design-and-build contracts (and competitions).
-        return is_competition or is_design_and_build(title)
-    if include_unclassified or is_competition:
-        return True
-    return has_arabic_design_marker(title) or is_design_relevant(title)
-
-
 def _build_document(
-    card: dict[str, Any], *, deadline: date, detail: str | None, include_unclassified: bool
+    card: dict[str, Any], *, deadline: date | None, detail: str | None
 ) -> CollectedSourceDocument:
     url = NOTICE_URL.format(tender_id=card["tenderId"])
     payload = {
@@ -206,7 +188,7 @@ def _build_document(
         "buyer": card["agency"],
         "noticeId": card["tenderId"],
         "tenderNumber": card["tenderNumber"],
-        "deadline": deadline.isoformat(),
+        "deadline": deadline.isoformat() if deadline else None,
         "summary": _brief(detail),
         "officialUrl": url,
         "publishedAt": card["published"].isoformat(),
@@ -221,8 +203,6 @@ def _build_document(
                 "rawNotice": {k: str(v) if isinstance(v, date) else v for k, v in card.items()},
                 "rawNoticeHtml": detail or "",
             }
-            if include_unclassified
-            else {}
         ),
     }
     return CollectedSourceDocument(source_url=url, payload=json.dumps(payload, ensure_ascii=False))
@@ -234,35 +214,30 @@ def collect_monaqasat_documents(
     limit: int = 20,
     publication_date_from: str | None = None,
     fetch_text: Callable[[str], str] | None = None,
-    include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
-    """Qatari tenders open for bids and published since ``publication_date_from``, newest first.
-
-    AI mode keeps every suppliers-and-service-providers tender (consultancy has no sector of its
-    own on this portal) and, from the contracting sector, design-and-build contracts and design
-    competitions. Without AI mode an Arabic or Latin design keyword is required as well.
-    """
+    """Collect public notices in the requested publication window."""
     start = window_start(publication_date_from)
-    today = clock.today()
     get = fetch_text or _default_fetch_text
     candidates: list[dict[str, Any]] = []
     seen: set[str] = set()
-    for page_number in range(1, MAX_PAGES + 1):
+    for page_number in range(1, page_limit(MAX_PAGES) + 1):
         cards = _parse_cards(get(LIST_URL.format(page=page_number)))
         fresh = [card for card in cards if card["tenderId"] not in seen]
         if not fresh:
+            if cards:
+                unfinished_page()
             break
         seen.update(card["tenderId"] for card in fresh)
         for card in fresh:
-            published, closing = card["published"], card["closing"]
-            if published is None or published < start or closing is None or closing < today:
+            published = card["published"]
+            if published is None or published < start:
                 continue
-            if _in_scope(card, include_unclassified=include_unclassified):
-                candidates.append(card)
+            candidates.append(card)
         dated = [card["published"] for card in fresh if card["published"]]
         if dated and max(dated) < start:
             break
     else:
+        unfinished_page()
         logger.warning(
             "Monaqasat listing hit the %s-page cap; later pages were not read", MAX_PAGES
         )
@@ -271,17 +246,22 @@ def collect_monaqasat_documents(
     documents = []
     for card in candidates[: max(limit, 0)]:
         detail = None
-        if include_unclassified:
-            try:
-                detail = _detail_summary(get(NOTICE_URL.format(tender_id=card["tenderId"])))
-            except HttpError as exc:  # a missing detail page must not drop the tender
-                logger.warning("Monaqasat tender %s detail not read: %s", card["tenderId"], exc)
+        try:
+            detail = _detail_summary(get(NOTICE_URL.format(tender_id=card["tenderId"])))
+        except HttpError as exc:  # a missing detail page must not drop the tender
+            if exc.status_code in {403, 429}:
+                documents.append(
+                    deferred_detail(exc, NOTICE_URL.format(tender_id=card["tenderId"]), card)
+                )
+                if len(documents) >= limit:
+                    return documents
+                continue
+            logger.warning("Monaqasat tender %s detail not read: %s", card["tenderId"], exc)
         documents.append(
             _build_document(
                 card,
                 deadline=card["closing"],
                 detail=detail,
-                include_unclassified=include_unclassified,
             )
         )
     return documents

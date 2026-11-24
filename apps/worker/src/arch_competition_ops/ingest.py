@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 from collections import Counter
 from dataclasses import dataclass, field
+from datetime import timedelta
 
 from arch_competition_ops import clock
 from arch_competition_ops.bootstrap import initialize_database
@@ -26,6 +27,7 @@ from arch_competition_ops.card_previews import (
 )
 from arch_competition_ops.collectors import collect_source_documents
 from arch_competition_ops.collectors.base import CollectedSourceDocument
+from arch_competition_ops.collectors.pagination import track_pages
 from arch_competition_ops.config_loader import load_source_catalog
 from arch_competition_ops.extractors import parse_source_payload
 from arch_competition_ops.geocoding import NominatimGeocoder, enrich_record_geocode
@@ -43,13 +45,14 @@ from arch_competition_ops.screening.fingerprints import (
 from arch_competition_ops.screening.service import DocumentAssessment, assess_documents
 from arch_competition_ops.settings import Settings
 from arch_competition_ops.storage import (
+    backlog,
     competition_is_stale_expired,
     dedup_key_for,
     find_duplicate_records,
     record_source_run,
-    upsert_competitions,
 )
-from arch_competition_ops.storage.notice_ledger import find_screened, record_screened
+from arch_competition_ops.storage.connection import connect
+from arch_competition_ops.storage.notice_ledger import record_screened
 from arch_competition_ops.storage.screening import (
     ScreeningBudgetExceeded,
     upsert_screened_competitions,
@@ -72,10 +75,10 @@ class SourceDisabledError(ValueError):
 class IngestError(RuntimeError):
     """The run failed as a whole (collector or database write); ``__cause__`` has the detail."""
 
-    def __init__(self, source_id: str, stage: str, cause: BaseException) -> None:
+    def __init__(self, source_id: str, stage: str, cause: BaseException, details: str = "") -> None:
         self.source_id = source_id
         self.stage = stage
-        super().__init__(f"Ingest of '{source_id}' failed during {stage}: {cause}")
+        super().__init__(f"Ingest of '{source_id}' failed during {stage}: {cause}{details}")
 
 
 @dataclass(frozen=True)
@@ -96,6 +99,7 @@ class IngestResult:
     failures: list[DocumentFailure] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     preview: CardPreviewPrewarmResult | None = None
+    batch_paused: bool = False
     deferred: int = 0
     # Listed notices skipped because the same content was already screened under the same
     # criteria (see storage/notice_ledger.py).
@@ -155,6 +159,8 @@ def ingest_source(
     source_id: str,
     limit: int = 20,
     publication_date_from: str | None = None,
+    collect_only: bool = False,
+    queued_row_ids: list[int] | None = None,
     collected_documents: list[CollectedSourceDocument] | None = None,
 ) -> IngestResult:
     configure_procedure_registry(settings.root)
@@ -184,48 +190,52 @@ def ingest_source(
         )
         _refresh_queue(db_path, result)
 
-    try:
-        documents = (
-            collected_documents
-            if collected_documents is not None
-            else collect_source_documents(
-                source,
-                limit=settings.ai_candidate_cap,
-                publication_date_from=publication_date_from,
-                archive_dir=settings.resolve_path(settings.html_archive_dir),
-                include_unclassified=settings.ai_enabled,
-            )
-        )
-    except Exception as exc:
-        record_run("failed", last_error=str(exc))
-        raise IngestError(source.source_id, "collection", exc) from exc
-    result.document_count = len(documents)
-    content_hashes: dict[int, str] = {}
-    criteria_hash = ""
-    if settings.ai_enabled:
-        criteria_hash = screening_criteria_hash(settings)
-        content_hashes = {id(d): notice_content_hash(d.payload, d.source_url) for d in documents}
-        seen = find_screened(
+    criteria_hash = screening_criteria_hash(settings) if settings.ai_enabled else None
+    if queued_row_ids is None:
+        start, collection_limit = backlog.collection_window(
             db_path,
-            source_id=source.source_id,
-            criteria_hash=criteria_hash,
-            content_hashes=content_hashes.values(),
+            source_id,
+            publication_date_from or (clock.today() - timedelta(days=7)).isoformat(),
+            settings.ai_candidate_cap,
         )
-        fresh = [d for d in documents if content_hashes[id(d)] not in seen]
-        # The same listing can appear twice in one window (pages shifting during paging).
-        fresh = list({content_hashes[id(d)]: d for d in reversed(fresh)}.values())[::-1]
-        result.already_screened = len(documents) - len(fresh)
-        documents = fresh
-        if result.already_screened:
-            result.notes.append(
-                f"Already screened with unchanged content and criteria: {result.already_screened}"
-            )
+        try:
+            with track_pages(max(1, collection_limit // settings.ai_candidate_cap)) as pages:
+                discovered = (
+                    collected_documents
+                    if collected_documents is not None
+                    else collect_source_documents(
+                        source,
+                        limit=collection_limit,
+                        publication_date_from=start,
+                        archive_dir=settings.resolve_path(settings.html_archive_dir),
+                    )
+                )
+        except Exception as exc:
+            record_run("failed", last_error=str(exc))
+            with connect(db_path) as cx:
+                _, stats = backlog.queue_stats(cx, source_id)
+            raise IngestError(source_id, "collection", exc, f" ({stats})") from exc
+        result.document_count = len(discovered)
+        result.already_screened, count, stats = backlog.enqueue(
+            db_path,
+            source_id,
+            discovered,
+            criteria_hash,
+            unfinished=max(pages.unfinished, int(len(discovered) >= collection_limit)),
+            cap=settings.ai_candidate_cap,
+        )
+        result.notes.append(stats)
+        if collect_only or not settings.ai_enabled:
+            result.deferred = count
+            result.status = "success" if discovered or count else "empty"
+            record_run(result.status, last_error=None)
+            return result
+    documents = backlog.queued(db_path, source_id, limit, queued_row_ids)
+    if queued_row_ids is not None:
+        result.document_count = len(documents)
+    else:
+        result.deferred = max(0, count - len(documents))
 
-    def ledger_entries(items: list[CollectedSourceDocument]) -> list[tuple[str, str]]:
-        return [(content_hashes[id(d)], d.source_url) for d in items]
-
-    result.deferred += max(0, len(documents) - limit)
-    documents = documents[:limit]
     records: list[CompetitionRecord] = []
     assessments: list[DocumentAssessment | None] = []
     # Documents whose paid assessment finished, including those then dropped as expired; they
@@ -247,32 +257,24 @@ def ingest_source(
         for position, document in enumerate(documents):
             stage = "parse"
             try:
-                assessment = None
-                if settings.ai_enabled:
-                    stage = "ai_extract_and_screen"
-                    outcome = outcomes[position]
-                    if outcome.error is not None:
-                        raise outcome.error
-                    assessment = outcome.assessment
-                    record = assessment.record
-                    # Retain stable upstream identity when the source adapter provides it.
-                    try:
-                        parsed = parse_source_payload(
-                            source,
-                            document.payload,
-                            source_url=document.source_url,
-                        )
-                        if parsed.official_notice_id:
-                            record.official_notice_id = parsed.official_notice_id
-                        record.cpv_codes = parsed.cpv_codes
-                    except (ValueError, KeyError, TypeError):
-                        pass  # AI has already produced a validated record from raw source text.
-                else:
-                    record = parse_source_payload(
+                stage = "ai_extract_and_screen"
+                outcome = outcomes[position]
+                if outcome.error is not None:
+                    raise outcome.error
+                assessment = outcome.assessment
+                record = assessment.record
+                # Retain stable upstream identity when the source adapter provides it.
+                try:
+                    parsed = parse_source_payload(
                         source,
                         document.payload,
                         source_url=document.source_url,
                     )
+                    if parsed.official_notice_id:
+                        record.official_notice_id = parsed.official_notice_id
+                    record.cpv_codes = parsed.cpv_codes
+                except (ValueError, KeyError, TypeError):
+                    pass  # AI has already produced a validated record from raw source text.
                 if competition_is_stale_expired(record, retention_days=retention_days):
                     result.skipped_expired += 1
                     if assessment is not None:
@@ -304,11 +306,18 @@ def ingest_source(
             except ScreeningBudgetExceeded as exc:
                 # Budget deferral is not a content rejection. Keep later sources collectable.
                 result.deferred += len(documents) - position
+                result.batch_paused = True
                 result.notes.append(str(exc))
                 break
             except Exception as exc:  # noqa: BLE001 - one bad document must not sink the run
                 logger.warning("Skipping document %s at %s: %s", document.source_url, stage, exc)
                 result.failures.append(DocumentFailure(document.source_url, stage, str(exc)))
+                error_class = (
+                    f"http_{exc.status_code}"
+                    if getattr(exc, "status_code", None)
+                    else type(exc).__name__
+                )
+                backlog.record_failure(db_path, source_id, document, error_class)
                 last_error = str(exc)
                 continue
             records.append(record)
@@ -319,28 +328,27 @@ def ingest_source(
         geocoder.flush()
 
     try:
-        if settings.ai_enabled:
-            publications = [
-                {
-                    "request_id": a.request_id,
-                    "model": a.model,
-                    "decision": a.decision.decision,
-                    "relevance_score": a.decision.relevance_score,
-                    "result_json": a.decision.model_dump_json(),
-                }
-                for a in assessments
-                if a is not None
-            ]
-            result.ingested_ids = upsert_screened_competitions(db_path, records, publications)
-            record_screened(
-                db_path,
-                source_id=source.source_id,
-                criteria_hash=criteria_hash,
-                outcome="assessed",
-                entries=ledger_entries(screened),
-            )
-        else:
-            result.ingested_ids = upsert_competitions(db_path, records)
+        publications = [
+            {
+                "request_id": a.request_id,
+                "model": a.model,
+                "decision": a.decision.decision,
+                "relevance_score": a.decision.relevance_score,
+                "result_json": a.decision.model_dump_json(),
+            }
+            for a in assessments
+            if a is not None
+        ]
+        result.ingested_ids = upsert_screened_competitions(db_path, records, publications)
+        record_screened(
+            db_path,
+            source_id=source.source_id,
+            criteria_hash=criteria_hash,
+            outcome="assessed",
+            entries=[
+                (notice_content_hash(d.payload, d.source_url), d.source_url) for d in screened
+            ],
+        )
     except Exception as exc:
         record_run("failed", last_error=str(exc))
         raise IngestError(source.source_id, "database write", exc) from exc

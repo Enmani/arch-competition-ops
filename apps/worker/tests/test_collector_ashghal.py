@@ -86,7 +86,6 @@ def _fixed_today():
 
 
 def _collect(site, **kwargs):
-    kwargs.setdefault("include_unclassified", True)
     kwargs.setdefault("limit", 1000)
     return collect_ashghal_documents(_source(), fetch_text=site, **kwargs)
 
@@ -121,7 +120,10 @@ def test_only_open_rows_in_the_window_that_have_not_closed_are_kept() -> None:
 
     documents = _collect(site)
 
-    assert [json.loads(d.payload)["noticeId"] for d in documents] == ["PWA/STC/1/2026"]
+    assert [json.loads(d.payload)["noticeId"] for d in documents] == [
+        "PWA/STC/4/2026",
+        "PWA/STC/1/2026",
+    ]
 
 
 def test_a_longer_window_reads_older_issue_dates() -> None:
@@ -147,7 +149,7 @@ def test_each_tender_has_its_own_public_page_and_limit_picks_the_newest() -> Non
     assert _collect(site, limit=0) == []
 
 
-def test_plain_mode_needs_the_design_relevance_gate() -> None:
+def test_collection_preserves_unclassified_source_material() -> None:
     site = FakeSite(
         [
             _row(1, title="Architectural design of a pavilion"),
@@ -155,10 +157,13 @@ def test_plain_mode_needs_the_design_relevance_gate() -> None:
         ]
     )
 
-    documents = _collect(site, include_unclassified=False)
+    documents = _collect(site)
 
-    assert [json.loads(d.payload)["noticeId"] for d in documents] == ["PWA/STC/1/2026"]
-    assert "rawNotice" not in json.loads(documents[0].payload)
+    assert [json.loads(d.payload)["noticeId"] for d in documents] == [
+        "PWA/STC/2/2026",
+        "PWA/STC/1/2026",
+    ]
+    assert "rawNotice" in json.loads(documents[0].payload)
 
 
 def test_payload_takes_the_full_title_from_the_detail_page() -> None:

@@ -1,19 +1,22 @@
 from __future__ import annotations
 
+import json
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from datetime import timedelta
+from itertools import groupby
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from arch_competition_ops import clock
 from arch_competition_ops.config_loader import load_source_catalog, load_yaml_file
-from arch_competition_ops.ingest import ingest_source
+from arch_competition_ops.ingest import IngestError, ingest_source
 from arch_competition_ops.locking import exclusive_lock
 from arch_competition_ops.models import SourceDefinition
 from arch_competition_ops.settings import Settings
+from arch_competition_ops.storage.connection import connect
 
 DEFAULT_AUTOMATION_CONFIG_PATH = Path("config") / "automation.yml"
 logger = logging.getLogger(__name__)
@@ -173,6 +176,7 @@ def run_automation_batch(
     config_path: Path = DEFAULT_AUTOMATION_CONFIG_PATH,
     limit_per_source: int | None = None,
     publication_date_from: str | None = None,
+    collect_only: bool = False,
     continue_on_error: bool = True,
     use_lock: bool = True,
 ) -> AutomationBatchResult:
@@ -204,6 +208,7 @@ def run_automation_batch(
             return ingest_source(
                 settings,
                 source_id=source.source_id,
+                collect_only=True,
                 limit=effective_limit,
                 publication_date_from=effective_publication_date_from,
             )
@@ -237,6 +242,45 @@ def run_automation_batch(
                         deferred=ingest.deferred,
                     )
                 )
+
+        if not settings.ai_enabled or collect_only:
+            return
+        db_path = settings.resolve_path(settings.db)
+        by_id = {run.source_id: run for run in result.succeeded}
+        # A failed discovery still has readable notices from previous runs.
+        with connect(db_path) as cx:
+            ids = cx.execute(
+                "WITH pending AS (SELECT source_id, rowid AS notice_id, first_seen, "
+                "row_number() OVER (PARTITION BY source_id ORDER BY first_seen,rowid) AS position "
+                "FROM notice_backlog WHERE status='queued' "
+                "AND source_id IN (SELECT value FROM json_each(?))) "
+                "SELECT source_id,notice_id FROM pending WHERE position<=? "
+                "ORDER BY first_seen,notice_id",
+                (json.dumps(result.source_ids), effective_limit),
+            ).fetchall()
+        for source_id, group in groupby(ids, key=lambda item: item[0]):
+            row_ids = [row_id for _, row_id in group]
+            run = by_id.get(source_id)
+            try:
+                read = ingest_source(
+                    settings, source_id=source_id, queued_row_ids=row_ids, limit=len(row_ids)
+                )
+            except IngestError as exc:
+                result.failed.append(AutomationSourceFailure(source_id, str(exc)))
+                if not continue_on_error:
+                    raise
+                continue
+            if run is None:
+                run = AutomationSourceRun(source_id, 0)
+                by_id[source_id] = run
+                result.succeeded.append(run)
+            run.ingested_ids.extend(read.ingested_ids)
+            run.ingested_count += len(read.ingested_ids)
+            run.failure_count += read.parse_failure_count
+            run.notes.extend(read.notes)
+            run.deferred -= min(run.deferred, len(read.ingested_ids) + read.skipped_expired)
+            if read.batch_paused:
+                break
 
     if use_lock:
         with exclusive_lock(settings.resolve_path(settings.ingest_lock), label=f"batch:{batch_id}"):

@@ -9,13 +9,8 @@ from arch_competition_ops.collectors.base import CollectedSourceDocument
 from arch_competition_ops.collectors.common import (
     fetch_text_get,
 )
-from arch_competition_ops.collectors.relevance import (
-    has_built_environment_context,
-    is_design_relevant,
-)
 from arch_competition_ops.models import SourceDefinition
 from arch_competition_ops.normalizers.dates import parse_date_string, slash_order_for_jurisdiction
-from arch_competition_ops.normalizers.text import normalize_text
 
 SCP_AVVISI_CSV_URL = "https://dati.mit.gov.it/scp/v_od_avvisi.csv"
 
@@ -30,21 +25,12 @@ def _default_fetch_text(url: str) -> str:
     return fetch_text_get(url, headers={"Accept": "text/csv, text/plain;q=0.9, */*;q=0.8"})
 
 
-def _matches_buyer_allowlist(buyer: str | None, buyer_allowlist: list[str]) -> bool:
-    if not buyer_allowlist:
-        return True
-
-    normalized_buyer = normalize_text(buyer)
-    return any(normalized_pattern in normalized_buyer for normalized_pattern in buyer_allowlist)
-
-
 def collect_scp_documents(
     source: SourceDefinition,
     *,
     limit: int = 20,
     publication_date_from: str | None = None,
     fetch_text: callable | None = None,
-    include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
     csv_text = (fetch_text or _default_fetch_text)(SCP_AVVISI_CSV_URL)
     reader = csv.DictReader(io.StringIO(csv_text))
@@ -52,34 +38,11 @@ def collect_scp_documents(
         date.fromisoformat(publication_date_from) if publication_date_from else None
     )
     slash_order = slash_order_for_jurisdiction(source.jurisdiction)
-    buyer_allowlist = [
-        normalize_text(pattern) for pattern in source.buyer_allowlist if pattern.strip()
-    ]
 
     rows: list[tuple[str | None, CollectedSourceDocument]] = []
     for row in reader:
         title = (row.get("descrizione_avviso") or "").strip()
         buyer = (row.get("denominazione_stazione_appaltante") or "").strip()
-        if not include_unclassified and (
-            not title
-            or not is_design_relevant(
-                title,
-                row.get("tipo_avviso"),
-                buyer,
-            )
-        ):
-            continue
-        if not _matches_buyer_allowlist(buyer, buyer_allowlist):
-            continue
-        normalized_title = normalize_text(title)
-        if not include_unclassified and (
-            not has_built_environment_context(title)
-            and not any(
-                marker in normalized_title
-                for marker in ("architett", "progettazione", "maitrise d oeuvre")
-            )
-        ):
-            continue
 
         publication_date = parse_date_string(
             row.get("data_pubblicazione_scp"), slash_order=slash_order
@@ -92,7 +55,7 @@ def collect_scp_documents(
             {
                 "officialNoticeId": row.get("id_avviso"),
                 "title": title,
-                **({"rawNotice": row} if include_unclassified else {}),
+                "rawNotice": row,
                 "buyer": buyer,
                 "procedureType": row.get("tipo_avviso"),
                 "deadline": parse_date_string(row.get("scadenza_avviso"), slash_order=slash_order),

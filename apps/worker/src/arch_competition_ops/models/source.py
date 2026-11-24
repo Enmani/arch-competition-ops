@@ -36,7 +36,6 @@ class SourceDefinition(BaseModel):
     regions: list[str] = Field(default_factory=list)
     languages: list[str] = Field(default_factory=list)
     notes: str | None = None
-    search_query: str | None = None
 
 
 class SourceCatalog(BaseModel):

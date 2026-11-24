@@ -1,7 +1,7 @@
 ---
 title: Setup
 status: done
-updated_at: 2026-11-15
+updated_at: 2026-11-24
 related_docs:
   - README.md
   - .env.example
@@ -57,7 +57,7 @@ Claim API credits in the intended API organization, then create a project key at
 OPENAI_API_KEY=your-project-key
 ARCH_COMPETITION_OPS_AI_ENABLED=1
 ARCH_COMPETITION_OPS_AI_MODEL=gpt-6-luna
-ARCH_COMPETITION_OPS_AI_REASONING_EFFORT=high
+ARCH_COMPETITION_OPS_AI_REASONING_EFFORT=low
 ARCH_COMPETITION_OPS_AI_DAILY_BUDGET_USD=1
 ARCH_COMPETITION_OPS_AI_MONTHLY_BUDGET_USD=31
 ```
@@ -82,11 +82,11 @@ uv run arch-competition-ops analyze-source-file --source-id ted_design_notices -
 
 For a different public notice page shape, use `collector: generic_notice_pages`, `extractor: generic_listing_html`, `scan_method: html`, and a `url_list` or `url_list_path` in the existing source registry. Each URL must identify one notice; this collector does not crawl arbitrary listings. AI must be enabled for raw HTML extraction. The existing SSRF guard, request limits and evidence archive apply.
 
-The caps are conservative local estimates in UTC and cover this database's worker requests. Check [OpenAI billing](https://platform.openai.com/settings/organization/billing/overview) for actual credits and expiration. Model catalog prices were checked on 2026-10-30 and need updating when provider prices change. Decisions API supports Luna classification/scoring without generated explanations; the current extraction path uses Responses for quotations and written reasons.
+The caps are conservative local estimates in UTC and cover this database's worker requests. Check [OpenAI billing](https://platform.openai.com/settings/organization/billing/overview) for actual credits and expiration. Model catalog prices were checked on 2026-10-30 and need updating when provider prices change.
 
 `ARCH_COMPETITION_OPS_AI_CONCURRENCY` (1 to 16, default 1) sets how many detailed assessments one source's ingest runs at once. Raise it (the cloud workflow uses 8) to finish a large daily run within a job time limit; the budget caps still apply, and an HTTP 429 from the provider is retried up to 3 times with backoff. Geocoding stays sequential.
 
-Candidate-list triage uses Luna's Decisions API automatically. Detailed extraction uses the selected model and `high` reasoning. Each run reads the whole publication window (up to `ARCH_COMPETITION_OPS_AI_CANDIDATE_CAP`, default 2000) and skips notices already screened with unchanged content and criteria (the `ai_notice_ledger` table), so a daily run pays only for new or changed notices. Disable triage with `ARCH_COMPETITION_OPS_AI_TRIAGE_ENABLED=0`. The initial exclusion threshold is 0.98 (`ARCH_COMPETITION_OPS_AI_TRIAGE_EXCLUDE_THRESHOLD`); uncertain candidates are retained. See the architecture's success criteria before treating a recommendation as verified eligibility.
+Use --collect-only on ingest-source or ingest-batch to save a window without spending money. Each paid request reads one queued notice. Configure reasoning effort with ARCH_COMPETITION_OPS_AI_REASONING_EFFORT. The default is low.
 
 ## Browser Fallback (Optional)
 

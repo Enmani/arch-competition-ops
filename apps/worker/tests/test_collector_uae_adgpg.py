@@ -97,7 +97,6 @@ class FakeGate:
 
     def run(self, **kwargs: Any) -> list:
         kwargs.setdefault("limit", 1000)
-        kwargs.setdefault("include_unclassified", True)
         return collect_adgpg_documents(
             _source(), fetch_list=self.fetch_list, fetch_detail=self.fetch_detail, **kwargs
         )
@@ -206,7 +205,7 @@ def test_category_scope_in_ai_mode() -> None:
 
     documents = FakeGate(rows, details).run()
 
-    assert _ids(documents) == ["1", "4", "5", "6", "7"]
+    assert _ids(documents) == [str(i) for i in range(1, 8)]
 
 
 def test_design_and_build_rescues_a_works_only_tender_from_its_summary() -> None:
@@ -217,19 +216,19 @@ def test_design_and_build_rescues_a_works_only_tender_from_its_summary() -> None
     dropped = FakeGate([plain_works], {2: _detail(plain_works, categories=[72000000])}).run()
 
     assert _ids(works_only) == ["1"]
-    assert dropped == []
+    assert _ids(dropped) == ["2"]
 
 
-def test_keyword_gate_applies_without_ai_mode() -> None:
+def test_collection_preserves_unclassified_source_material() -> None:
     rows = [
         _row(2, name="RFQ-Architectural design of a school", details="A new school building."),
         _row(1, name="RFQ-Office stationery supply", details="Paper and pens."),
     ]
 
-    documents = FakeGate(rows).run(include_unclassified=False)
+    documents = FakeGate(rows).run()
 
-    assert _ids(documents) == ["2"]
-    assert "rawNotice" not in json.loads(documents[0].payload)
+    assert _ids(documents) == ["2", "1"]
+    assert "rawNotice" in json.loads(documents[0].payload)
 
 
 def test_limit_stops_the_read_and_the_detail_requests() -> None:
@@ -253,8 +252,8 @@ def test_closed_and_duplicate_tenders_are_dropped_before_any_detail_request() ->
 
     documents = gate.run()
 
-    assert _ids(documents) == ["4", "2"]
-    assert gate.detail_calls == [4, 2]
+    assert _ids(documents) == ["4", "3", "2"]
+    assert gate.detail_calls == [4, 3, 2]
 
 
 def test_unreadable_detail_keeps_the_tender_from_the_list(
@@ -272,7 +271,6 @@ def test_unreadable_detail_keeps_the_tender_from_the_list(
         documents = collect_adgpg_documents(
             _source(),
             limit=10,
-            include_unclassified=True,
             fetch_list=gate.fetch_list,
             fetch_detail=flaky,
         )

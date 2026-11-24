@@ -1,6 +1,5 @@
-# limit_per_source bounds paid detail assessments per source run. Notices already screened are
-# skipped by the notice ledger, so the limit only matters for a backlog; a limit below the daily
-# inflow would push notices out of the publication window unread.
+# Each source collects the discovery window first. limit_per_source only limits reading.
+# Unread notices remain queued beyond the discovery window.
 batches:
   - batch_id: all_enabled
     description: All enabled sources, sharing the same daily AI budget. Run once a day; a 7-day window leaves slack for a missed run without re-downloading a month of the PCSP feed. For a backfill pass --publication-date-from.

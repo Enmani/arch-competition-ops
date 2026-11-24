@@ -8,34 +8,13 @@ from pathlib import Path
 from typing import Literal
 
 from arch_competition_ops import clock
-from arch_competition_ops.storage.connection import connect, write_transaction
-from arch_competition_ops.storage.schema import ensure_schema
+from arch_competition_ops.storage.connection import write_transaction
 
-LedgerOutcome = Literal["triage_excluded", "assessed"]
+LedgerOutcome = Literal["assessed"]
 
 # Notices are listed for weeks, not years; older rows can only match a re-published identical
 # notice, which is then simply screened again.
 _RETENTION_DAYS = 400
-# SQLite's default limit on bound parameters is 999; stay well below it per query.
-_CHUNK = 400
-
-
-def find_screened(
-    db_path: Path, *, source_id: str, criteria_hash: str, content_hashes: Iterable[str]
-) -> set[str]:
-    ensure_schema(db_path)
-    hashes = list(dict.fromkeys(content_hashes))
-    found: set[str] = set()
-    with connect(db_path) as connection:
-        for start in range(0, len(hashes), _CHUNK):
-            chunk = hashes[start : start + _CHUNK]
-            rows = connection.execute(
-                "SELECT content_hash FROM ai_notice_ledger WHERE source_id = ? "
-                f"AND criteria_hash = ? AND content_hash IN ({','.join('?' for _ in chunk)})",
-                [source_id, criteria_hash, *chunk],
-            )
-            found.update(row[0] for row in rows)
-    return found
 
 
 def record_screened(
@@ -63,6 +42,15 @@ def record_screened(
                 (source_id, content_hash, criteria_hash, outcome, url, now.isoformat())
                 for content_hash, url in rows
             ],
+        )
+        connection.executemany(
+            "UPDATE notice_backlog SET status='done',attempts=attempts+1,last_error=NULL,"
+            "criteria_hash=? WHERE source_id=? AND content_hash=?",
+            [(criteria_hash, source_id, key) for key, _url in rows],
+        )
+        connection.execute(
+            "DELETE FROM notice_backlog WHERE status='done' AND first_seen < ?",
+            ((now - timedelta(days=_RETENTION_DAYS)).isoformat(),),
         )
         connection.execute(
             "DELETE FROM ai_notice_ledger WHERE recorded_at < ?",

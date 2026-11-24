@@ -81,7 +81,15 @@ class _FakeTenderNed:
             rows = self.works
         else:
             self.list_queries.append(query)
-            rows = self.scoped if "cpvCodes" in query else self.notices
+            rows = (
+                self.notices
+                if "typeOpdracht" in query
+                else list(
+                    {
+                        r["publicatieId"]: r for r in [*self.scoped, *self.notices, *self.works]
+                    }.values()
+                )
+            )
         page, size = int(query["page"][0]), int(query["size"][0])
         content = rows[page * size : (page + 1) * size]
         return {"content": content, "last": (page + 1) * size >= len(rows)}
@@ -90,21 +98,15 @@ class _FakeTenderNed:
 def test_ai_mode_pages_the_default_window_with_the_server_side_cpv_scope():
     fake = _FakeTenderNed([_row(f"{i:03d}") for i in range(tenderned.PAGE_SIZE + 1)])
 
-    documents = collect_tenderned_documents(
-        _source(), limit=2000, fetch_json=fake, include_unclassified=True
-    )
+    documents = collect_tenderned_documents(_source(), limit=2000, fetch_json=fake)
 
     assert len(documents) == tenderned.PAGE_SIZE + 1
-    scoped_queries = [q for q in fake.list_queries if "cpvCodes" in q]
+    scoped_queries = fake.list_queries
     assert [q["page"] for q in scoped_queries] == [["0"], ["1"]]
     query = scoped_queries[0]
     assert query["size"] == ["100"]
     assert query["publicatieDatumVanaf"] == [_day(7)]
-    assert query["cpvCodes"] == ["71000000-8", "79930000-2"]
-    # The design-contest pass reads the contract-notice listing of the same window.
-    notice_queries = [q for q in fake.list_queries if "cpvCodes" not in q]
-    assert notice_queries[0]["publicatieType"] == ["AAO"]
-    assert notice_queries[0]["publicatieDatumVanaf"] == [_day(7)]
+    assert "cpvCodes" not in query and "publicatieType" not in query
     urls = [document.source_url for document in documents]
     assert len(set(urls)) == len(urls)
     assert urls[0] == f"{BASE_URL}/000"
@@ -125,11 +127,10 @@ def test_paging_stops_at_the_first_row_older_than_the_window():
         limit=2000,
         publication_date_from=_day(3),
         fetch_json=fake,
-        include_unclassified=True,
     )
 
     assert len(documents) == tenderned.PAGE_SIZE - 1
-    assert len([q for q in fake.list_queries if "cpvCodes" in q]) == 1
+    assert len(fake.list_queries) == 1
     assert "old" not in fake.detail_ids
 
 
@@ -138,11 +139,9 @@ def test_paging_stops_at_the_page_cap_with_a_warning(caplog):
     fake = _FakeTenderNed([_row(f"{i:05d}") for i in range(total)])
 
     with caplog.at_level(logging.WARNING, logger=tenderned.__name__):
-        documents = collect_tenderned_documents(
-            _source(), limit=100_000, fetch_json=fake, include_unclassified=True
-        )
+        documents = collect_tenderned_documents(_source(), limit=100_000, fetch_json=fake)
 
-    assert len([q for q in fake.list_queries if "cpvCodes" in q]) == tenderned.MAX_PAGES
+    assert len(fake.list_queries) == tenderned.MAX_PAGES
     assert len(documents) == tenderned.PAGE_SIZE * tenderned.MAX_PAGES
     assert "paging stopped after 50 pages" in caplog.text
 
@@ -150,13 +149,11 @@ def test_paging_stops_at_the_page_cap_with_a_warning(caplog):
 def test_paging_stops_when_the_limit_is_reached():
     fake = _FakeTenderNed([_row(f"{i:03d}") for i in range(tenderned.PAGE_SIZE * 3)])
 
-    documents = collect_tenderned_documents(
-        _source(), limit=5, fetch_json=fake, include_unclassified=True
-    )
+    documents = collect_tenderned_documents(_source(), limit=5, fetch_json=fake)
 
     assert len(documents) == 5
     # Each listing is read only as far as the merged newest-first stream is consumed.
-    assert [q["page"] for q in fake.list_queries + fake.works_queries] == [["0"], ["0"], ["0"]]
+    assert [q["page"] for q in fake.list_queries + fake.works_queries] == [["0"]]
     assert len(fake.detail_ids) == 5
 
 
@@ -188,29 +185,24 @@ def test_ai_scope_keeps_open_design_or_unclassified_notices_and_drops_the_rest()
     }
     fake = _FakeTenderNed(scoped, notices, details)
 
-    documents = collect_tenderned_documents(
-        _source(), limit=50, fetch_json=fake, include_unclassified=True
-    )
+    documents = collect_tenderned_documents(_source(), limit=50, fetch_json=fake)
 
     kept = [json.loads(document.payload)["noticeId"] for document in documents]
-    assert kept == ["design", "correction", "pin-cfc", "national", "unclassified", "contest"]
-    # Closed publications and non-contest rows of the second listing fetch no detail document.
-    assert sorted(fake.detail_ids) == sorted(
-        ["design", "correction", "pin-cfc", "national", "unclassified", "off-scope", "contest"]
-    )
+    assert kept == list(dict.fromkeys(r["publicatieId"] for r in scoped + notices))
+    assert fake.detail_ids == kept
 
 
-def test_keyword_mode_reads_the_service_contract_notices_of_the_last_30_days():
+def test_unclassified_publications_use_the_default_window():
     fake = _FakeTenderNed([], [_row("421000", aanbestedingNaam="Brokerdienstverlening")])
 
-    assert collect_tenderned_documents(_source(), fetch_json=fake) == []
+    assert len(collect_tenderned_documents(_source(), fetch_json=fake)) == 1
 
     query = fake.list_queries[0]
-    assert query["publicatieDatumVanaf"] == [_day(30)]
-    assert query["publicatieType"] == ["AAO"]
-    assert query["typeOpdracht"] == ["D"]
+    assert query["publicatieDatumVanaf"] == [_day(7)]
+    assert "publicatieType" not in query
+    assert "typeOpdracht" not in query
     assert "cpvCodes" not in query
-    assert fake.detail_ids == []
+    assert len(fake.detail_ids) == 1
 
 
 def test_ai_mode_adds_design_and_build_works_publications_from_the_works_listing():
@@ -254,25 +246,17 @@ def test_ai_mode_adds_design_and_build_works_publications_from_the_works_listing
         limit=50,
         publication_date_from=_day(7),
         fetch_json=fake,
-        include_unclassified=True,
     )
 
     assert [json.loads(d.payload)["noticeId"] for d in documents] == [
-        "ikc-oost",
-        "schenkel",
-        "design",
+        r["publicatieId"] for r in scoped + works
     ]
-    assert len(fake.works_queries) == 1
-    assert fake.works_queries[0]["publicatieDatumVanaf"] == [_day(7)]
-    # Plain works and closed publications fetch no detail document.
-    assert sorted(fake.detail_ids) == ["design", "ikc-oost", "schenkel"]
+    assert fake.works_queries == []
 
 
-def test_ai_mode_drops_a_plain_works_publication_in_the_scoped_listing():
+def test_ai_mode_keeps_a_plain_works_publication_in_the_scoped_listing():
     scoped = [_row("plain", aanbestedingNaam="Renovatie sportaccommodatie Scharn")]
     fake = _FakeTenderNed(scoped, details={"plain": {"cpvCodes": [{"code": "45212200-8"}]}})
 
-    assert (
-        collect_tenderned_documents(_source(), limit=50, fetch_json=fake, include_unclassified=True)
-        == []
-    )
+    documents = collect_tenderned_documents(_source(), limit=50, fetch_json=fake)
+    assert [json.loads(d.payload)["noticeId"] for d in documents] == ["plain"]

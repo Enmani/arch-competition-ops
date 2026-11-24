@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date, timedelta
+from datetime import date
 
 import httpx
 import pytest
@@ -9,7 +9,6 @@ from openai import OpenAI
 from support import REPO_ROOT, build_source, write_minimal_config
 
 from arch_competition_ops import clock
-from arch_competition_ops.cli import main
 from arch_competition_ops.models import CompetitionRecord
 from arch_competition_ops.screening.extraction import extract_record
 from arch_competition_ops.screening.inputs import prepare_input
@@ -475,27 +474,3 @@ def test_account_error_is_sanitized_and_not_retried(ai_workspace):
             )
     assert len(calls) == 1
     assert "test-secret" not in str(error.value)
-
-
-def test_cli_dry_run_needs_no_key_and_skips_expired_and_human_discarded(ai_workspace, capsys):
-    settings, _source = ai_workspace
-    db = settings.resolve_path(settings.db)
-    for title, status, days in [
-        ("eligible", "discovered", 30),
-        ("old", "discovered", -3),
-        ("discarded", "discarded", 30),
-    ]:
-        upsert_competition(
-            db,
-            CompetitionRecord(
-                title=title,
-                status=status,
-                source_url=f"https://city.example/{title}",
-                deadline_at=clock.today() + timedelta(days=days),
-            ),
-        )
-    assert main(["screen-competitions", "--dry-run", "--json"]) == 0
-    payload = json.loads(capsys.readouterr().out)
-    assert payload["planned"] == 1
-    assert payload["results"][0]["title"] == "eligible"
-    assert payload["cost_usd"] == 0

@@ -22,6 +22,8 @@ from arch_competition_ops.models import CompetitionRecord
 from arch_competition_ops.settings import Settings
 from arch_competition_ops.storage import list_competitions, upsert_competition
 
+pytestmark = pytest.mark.usefixtures("offline_assessment")
+
 
 def _days_from_today(days: int) -> str:
     return (clock.today() + timedelta(days=days)).isoformat()
@@ -235,7 +237,9 @@ def test_ingest_source_records_source_health_with_parse_failures_and_duplicate_p
 
     assert exit_code == 1
     output = capsys.readouterr().out
-    assert "[WARN] parse failed for https://ted.europa.eu/en/notice/3/html" in output
+    assert (
+        "[WARN] ai_extract_and_screen failed for https://ted.europa.eu/en/notice/3/html" in output
+    )
     with _db(workspace) as connection:
         assert connection.execute("SELECT COUNT(*) FROM competitions").fetchone()[0] == 2
         run_row = connection.execute(
@@ -265,7 +269,7 @@ def test_partial_failures_come_back_as_a_result_not_an_exception(workspace, monk
     assert result.status == "completed_with_failures"
     assert len(result.ingested_ids) == 1
     assert [(failure.source_url, failure.stage) for failure in result.failures] == [
-        ("https://ted.europa.eu/bad", "parse")
+        ("https://ted.europa.eu/bad", "ai_extract_and_screen")
     ]
 
 
@@ -375,7 +379,7 @@ def test_collection_error_keeps_the_original_exception_as_cause(workspace, monke
 
 def test_one_ingest_is_one_transaction(workspace, monkeypatch) -> None:
     _use_documents(monkeypatch, [_ted_document("A-1"), _ted_document("B-2")])
-    import arch_competition_ops.storage.competitions as repository
+    import arch_competition_ops.storage.screening as repository
 
     real_upsert = repository.upsert_in_connection
     calls = {"count": 0}

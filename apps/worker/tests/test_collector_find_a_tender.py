@@ -97,9 +97,7 @@ def test_follows_cursor_pages_until_exhausted_with_the_default_window() -> None:
         [_release("108100-2026", "ocds-h6vhtk-000001", date_="2026-11-10T10:00:00Z")],
     )
 
-    documents = collect_find_a_tender_documents(
-        _source(), limit=500, fetch_json=fetch, include_unclassified=True
-    )
+    documents = collect_find_a_tender_documents(_source(), limit=500, fetch_json=fetch)
 
     query = parse_qs(urlsplit(requested[0]).query)
     today = clock.today()
@@ -142,21 +140,16 @@ def test_keeps_only_open_tender_stage_notices_in_the_cpv_or_design_contest_scope
         ]
     )
 
-    documents = collect_find_a_tender_documents(
-        _source(), limit=500, fetch_json=fetch, include_unclassified=True
-    )
+    documents = collect_find_a_tender_documents(_source(), limit=500, fetch_json=fetch)
 
     assert [d.source_url.removeprefix(NOTICE_URL) for d in documents] == [
-        "1-2026",
-        "2-2026",
-        "4-2026",
-        "8-2026",
+        *(f"{i}-2026" for i in range(1, 10)),
     ]
-    contest = json.loads(documents[2].payload)
+    contest = json.loads(documents[3].payload)
     assert contest["opportunityType"] == "public_design_contest"
 
 
-def test_one_document_per_ocid_and_a_later_award_closes_the_procedure() -> None:
+def test_each_release_of_one_procedure_keeps_its_notice_url() -> None:
     fetch, _ = _pages(
         [
             _release(
@@ -180,11 +173,9 @@ def test_one_document_per_ocid_and_a_later_award_closes_the_procedure() -> None:
         ],
     )
 
-    documents = collect_find_a_tender_documents(
-        _source(), limit=500, fetch_json=fetch, include_unclassified=True
-    )
+    documents = collect_find_a_tender_documents(_source(), limit=500, fetch_json=fetch)
 
-    assert len(documents) == 1
+    assert {d.source_url for d in documents} == {f"{NOTICE_URL}{n}-2026" for n in [30, 29, 20, 19]}
     assert documents[0].source_url == f"{NOTICE_URL}30-2026"
     payload = json.loads(documents[0].payload)
     assert payload["title"] == "Library design team (amended)"
@@ -201,9 +192,7 @@ def test_payload_keeps_explicit_facts_and_the_raw_release_in_ai_mode() -> None:
     )
     fetch, _ = _pages([release])
 
-    (document,) = collect_find_a_tender_documents(
-        _source(), limit=5, fetch_json=fetch, include_unclassified=True
-    )
+    (document,) = collect_find_a_tender_documents(_source(), limit=5, fetch_json=fetch)
 
     payload = json.loads(document.payload)
     assert payload["officialUrl"] == f"{NOTICE_URL}108004-2026" == document.source_url
@@ -218,7 +207,7 @@ def test_payload_keeps_explicit_facts_and_the_raw_release_in_ai_mode() -> None:
     assert payload["rawNotice"] == release
 
 
-def test_rule_mode_applies_uk_relevance_and_omits_the_raw_release() -> None:
+def test_collection_preserves_unclassified_source_material() -> None:
     fetch, _ = _pages(
         [
             _release("1-2026", "ocds-a", cpv=["71200000"]),
@@ -235,8 +224,8 @@ def test_rule_mode_applies_uk_relevance_and_omits_the_raw_release() -> None:
 
     documents = collect_find_a_tender_documents(_source(), limit=5, fetch_json=fetch)
 
-    assert [d.source_url for d in documents] == [f"{NOTICE_URL}1-2026"]
-    assert "rawNotice" not in json.loads(documents[0].payload)
+    assert [d.source_url for d in documents] == [f"{NOTICE_URL}1-2026", f"{NOTICE_URL}2-2026"]
+    assert "rawNotice" in json.loads(documents[0].payload)
 
 
 def test_limit_caps_documents_and_stops_paging() -> None:
@@ -248,25 +237,20 @@ def test_limit_caps_documents_and_stops_paging() -> None:
         [_release("1-2026", "ocds-a", date_="2026-11-12T10:00:00Z")],
     )
 
-    documents = collect_find_a_tender_documents(
-        _source(), limit=2, fetch_json=fetch, include_unclassified=True
-    )
+    documents = collect_find_a_tender_documents(_source(), limit=2, fetch_json=fetch)
 
     assert [d.source_url.removeprefix(NOTICE_URL) for d in documents] == ["3-2026", "2-2026"]
     assert len(requested) == 1
 
 
-def test_ai_mode_keeps_design_and_build_works_notices_and_rule_mode_does_not() -> None:
+def test_design_and_ordinary_works_are_both_collected() -> None:
     releases = [
         _release("1-2026", "ocds-a", cpv=["45214200"], title="Design and Build of a new school"),
         _release("2-2026", "ocds-b", cpv=["45214200"], title="Roof repairs at the town hall"),
     ]
 
     fetch, _requested = _pages(releases)
-    documents = collect_find_a_tender_documents(
-        _source(), limit=50, include_unclassified=True, fetch_json=fetch
-    )
-    assert [d.source_url for d in documents] == [f"{NOTICE_URL}1-2026"]
+    documents = collect_find_a_tender_documents(_source(), limit=50, fetch_json=fetch)
+    assert [d.source_url for d in documents] == [f"{NOTICE_URL}1-2026", f"{NOTICE_URL}2-2026"]
 
     fetch, _requested = _pages(releases)
-    assert collect_find_a_tender_documents(_source(), limit=50, fetch_json=fetch) == []

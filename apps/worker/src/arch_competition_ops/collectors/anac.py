@@ -1,22 +1,4 @@
-"""ANAC legal-publicity platform (pubblicitalegale.anticorruzione.it), ``/api/v0/avvisi``.
-
-The list endpoint pages a Spring ``Page`` (``content``, ``last``) and filters server-side on
-(checked against the live API in 2026-11):
-
-* ``dataPubblicazioneStart`` (``DD/MM/YYYY``; an ISO date answers HTTP 500);
-* ``codiceScheda``, which takes the portal's template groups, not raw scheda codes (``P1_16``
-  answers HTTP 500). The groups used here are the ones that still open participation: ``2``
-  (prior information used as a call for competition), ``3`` (qualification systems), ``4``
-  (contract notices and design contests), ``5a``/``5b`` (market inquiries, above and below the EU
-  threshold) and ``6`` (lists of economic operators). The groups left out are informative prior
-  information (``1``), in-house awards (``8b``), contract modifications (``10``) and every result
-  template (awards, direct awards, voluntary transparency), which the portal files under "esiti".
-
-A week of every notice kind is about 25,000 rows, mostly direct awards; the open groups are about
-760. ``cpv`` filters only on an exact Italian label, so the AI design scope
-(``collectors.design_scope``) is applied locally from the label each lot carries (see
-``anac_cpv_labels``) and from the title, which names an ``appalto integrato`` (design and build).
-"""
+"""ANAC legal-publicity platform (pubblicitalegale.anticorruzione.it), ``/api/v0/avvisi``."""
 
 from __future__ import annotations
 
@@ -26,21 +8,15 @@ from datetime import date, timedelta
 from typing import Any
 
 from arch_competition_ops import clock
-from arch_competition_ops.collectors.anac_cpv_labels import DESIGN_SCOPE_CPV_LABELS_IT
 from arch_competition_ops.collectors.base import CollectedSourceDocument
 from arch_competition_ops.collectors.common import (
     build_url,
     fetch_json_get,
 )
-from arch_competition_ops.collectors.design_scope import has_design_cpv, is_design_and_build
-from arch_competition_ops.collectors.relevance import (
-    has_built_environment_context,
-    is_design_relevant,
-)
+from arch_competition_ops.collectors.pagination import page_limit, unfinished_page
 from arch_competition_ops.extractors.anac import resolve_anac_record_status
 from arch_competition_ops.models import SourceDefinition
 from arch_competition_ops.normalizers.dates import parse_date_string
-from arch_competition_ops.normalizers.text import normalize_text
 
 logger = logging.getLogger(__name__)
 
@@ -55,14 +31,8 @@ PAGE_SIZE = 100
 # Stops a runaway window: a week of the open groups is about 8 pages, and the unscoped feed read
 # without AI stops as soon as ``limit`` relevant notices are kept.
 MAX_PAGES = 50
-OPEN_PARTICIPATION_TEMPLATE_GROUPS = "2,3,4,5a,5b,6"
-# Result schede (awards ``A*``, direct awards ``AD*``, ``NAG``), contract modifications (``M*``)
-# and informative prior information (``PL*``). The server-side group filter already leaves them
-# out; this guard keeps a page that carries them anyway from reaching AI screening.
-CLOSED_SCHEDA_PREFIXES = ("A", "M", "NAG", "PL")
 # eForms subtypes 23 and 24 are design contest notices (directives 2014/24 and 2014/25).
 DESIGN_CONTEST_EFORM_SUBTYPES = frozenset({"23", "24"})
-_DESIGN_SCOPE_LABELS = frozenset(label.casefold() for label in DESIGN_SCOPE_CPV_LABELS_IT.values())
 
 
 def _default_fetch_json(url: str) -> Any:
@@ -151,7 +121,7 @@ def _window_start(publication_date_from: str | None) -> date:
     return clock.today() - timedelta(days=DEFAULT_LOOKBACK_DAYS)
 
 
-def _search_url(window_start: date, page: int, *, open_participation_only: bool) -> str:
+def _search_url(window_start: date, page: int) -> str:
     params: dict[str, Any] = {
         "page": page,
         "size": PAGE_SIZE,
@@ -159,32 +129,7 @@ def _search_url(window_start: date, page: int, *, open_participation_only: bool)
         "sortDirection": "desc",
         "dataPubblicazioneStart": window_start.strftime("%d/%m/%Y"),
     }
-    if open_participation_only:
-        params["codiceScheda"] = OPEN_PARTICIPATION_TEMPLATE_GROUPS
     return build_url(ANAC_AVVISI_URL, params)
-
-
-def _cpv_labels(item: dict[str, Any]) -> list[str]:
-    """CPV of every lot in every template, as the list response gives it (the Italian label)."""
-    labels: list[str] = []
-    templates = item.get("templates") or item.get("template") or []
-    for entry in templates if isinstance(templates, list) else []:
-        template = entry.get("template") if isinstance(entry, dict) else None
-        if not isinstance(template, dict):
-            continue
-        for lot in _flatten_section_items(template):
-            label = str(lot.get("cpv") or "").strip()
-            if label and label not in labels:
-                labels.append(label)
-    return labels
-
-
-def _is_design_scope_cpv(label: str) -> bool:
-    # The detail endpoint writes ``<code>_<label>``; the list endpoint writes the label alone.
-    code, separator, _ = label.partition("_")
-    if separator and len(code) == 8 and code.isdigit():
-        return has_design_cpv([code])
-    return label.casefold() in _DESIGN_SCOPE_LABELS
 
 
 def _is_design_contest(item: dict[str, Any]) -> bool:
@@ -194,26 +139,10 @@ def _is_design_contest(item: dict[str, Any]) -> bool:
     return scheda.startswith("P") and scheda.rpartition("_")[2] in DESIGN_CONTEST_EFORM_SUBTYPES
 
 
-def _in_ai_scope(item: dict[str, Any], title: str, summary: str) -> bool:
-    """Open participation and a design CPV, a design contest, no CPV at all (unknown), or a
-    design-and-build contract (``appalto integrato``) whatever its CPV."""
-    scheda = str(item.get("codiceScheda") or "").upper()
-    if scheda.startswith(CLOSED_SCHEDA_PREFIXES) or str(item.get("tipo") or "") == "esito":
-        return False
-    if _is_design_contest(item):
-        return True
-    labels = _cpv_labels(item)
-    if not labels or any(_is_design_scope_cpv(label) for label in labels):
-        return True
-    return is_design_and_build(title, summary)
-
-
 def _build_document(
     source: SourceDefinition,
     item: dict[str, Any],
     publication_date: str | None,
-    *,
-    include_unclassified: bool,
 ) -> CollectedSourceDocument | None:
     template = _extract_template(item)
     metadata = template.get("metadata", {}) if isinstance(template, dict) else {}
@@ -224,20 +153,6 @@ def _build_document(
         title = flattened_items[0].get("descrizione")
     title = str(title or "").strip()
     summary = str(metadata.get("descrizione") or "").strip() or title
-    if include_unclassified:
-        if not _in_ai_scope(item, title, summary):
-            return None
-    else:
-        if not title or not is_design_relevant(title, summary):
-            return None
-        normalized_title = normalize_text(title)
-        if not has_built_environment_context(title, summary) and not any(
-            marker in normalized_title
-            for marker in ("architett", "archeolog", "restauro", "paesagg")
-        ):
-            return None
-        if "aggiudicazione" in summary.lower() and not item.get("dataScadenza"):
-            return None
 
     first_item = flattened_items[0] if flattened_items else {}
     notice_id = item.get("idAvviso")
@@ -261,7 +176,7 @@ def _build_document(
             "officialUrl": document_link,
             "sourceApiUrl": detail_url,
             "sourcePublicUrl": public_notice_url,
-            **({"rawNotice": item} if include_unclassified else {}),
+            "rawNotice": item,
         },
         ensure_ascii=False,
     )
@@ -277,25 +192,15 @@ def collect_anac_documents(
     limit: int = 20,
     publication_date_from: str | None = None,
     fetch_json: callable | None = None,
-    include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
-    """Notices published since ``publication_date_from`` (default: the last 7 days), newest first.
-
-    With ``include_unclassified`` (AI screening) only the open-participation groups are read and
-    a notice is kept when it is in the design scope of ``collectors.design_scope``: a lot has a
-    design-scope CPV, it is a design contest, it carries no CPV at all, or its title or
-    description names a design-and-build contract. Without it the whole feed is read through the
-    keyword gates, which also keep design direct awards as archived records.
-    """
+    """Collect public notices in the requested publication window."""
     get_json = fetch_json or _default_fetch_json
     window_start = _window_start(publication_date_from)
     documents: list[CollectedSourceDocument] = []
     seen_ids: set[str] = set()
 
-    for page in range(MAX_PAGES):
-        response = get_json(
-            _search_url(window_start, page, open_participation_only=include_unclassified)
-        )
+    for page in range(page_limit(MAX_PAGES)):
+        response = get_json(_search_url(window_start, page))
         content = response.get("content", []) if isinstance(response, dict) else []
         if not isinstance(content, list) or not content:
             return documents
@@ -313,9 +218,7 @@ def collect_anac_documents(
                 continue
             seen_ids.add(notice_key)
 
-            document = _build_document(
-                source, item, publication_date, include_unclassified=include_unclassified
-            )
+            document = _build_document(source, item, publication_date)
             if document is None:
                 continue
             documents.append(document)
@@ -325,6 +228,7 @@ def collect_anac_documents(
         if response.get("last") is True or len(content) < PAGE_SIZE:
             return documents
 
+    unfinished_page()
     logger.warning(
         "ANAC: stopped after %d pages of %d notices before reaching %s; older notices are not read",
         MAX_PAGES,

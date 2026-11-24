@@ -480,3 +480,5 @@ Static assets are capped at 20,000 files per Worker version (25 MiB each) and ev
 ### Imagery terms
 
 Satellite images use Esri World Imagery tiles. The site displays the credit line from the manifest next to the image. For Esri World Imagery it is "Imagery © Esri, Maxar, Earthstar Geographics, and the GIS User Community". The public `services.arcgisonline.com` endpoint is subject to Esri's terms of use; if traffic or commercial use grows, review them or switch `ARCH_SATELLITE_TILE_URL_TEMPLATE` (and `ARCH_PREVIEW_TILE_ATTRIBUTION`) to a licensed provider.
+
+For a collection-only run, select **collect_only** in Daily ingest. It saves notices in the private worker database and pushes that state to R2. The next paid run starts with the oldest queued notice. The log reports new notices, text lengths, known unfinished pages and backlog age per source. Set **publication_date_from** to recover older notices that failed before the queue existed.

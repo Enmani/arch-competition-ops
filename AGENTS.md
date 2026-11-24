@@ -1,7 +1,7 @@
 ---
 title: Arch Competition Ops for Codex
 status: done
-updated_at: 2026-10-30
+updated_at: 2026-11-24
 related_docs:
   - docs/AI_CONSTRAINTS.md
   - docs/AGENTS.md

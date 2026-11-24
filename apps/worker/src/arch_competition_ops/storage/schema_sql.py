@@ -109,6 +109,26 @@ CREATE TABLE IF NOT EXISTS ai_screening_results (
 );
 CREATE INDEX IF NOT EXISTS idx_ai_screening_results_decision ON ai_screening_results (decision);
 
+-- Worker-only collection state; D1 only serves published facts and decisions.
+CREATE TABLE IF NOT EXISTS notice_backlog (
+    source_id TEXT NOT NULL,
+    source_url TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'queued',
+    first_seen TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    criteria_hash TEXT,
+    PRIMARY KEY(source_id, content_hash)
+);
+CREATE INDEX IF NOT EXISTS idx_backlog_queue ON notice_backlog(status, first_seen);
+CREATE TABLE IF NOT EXISTS collection_resume (
+    source_id TEXT PRIMARY KEY,
+    date_from TEXT NOT NULL,
+    read_limit INTEGER NOT NULL
+);
+
 -- Local worker ledger of notices already screened, so an unchanged notice is never triaged,
 -- fetched or assessed twice. A row means: this source listed exactly this content
 -- (content_hash) and it was decided under exactly these screening criteria (criteria_hash).

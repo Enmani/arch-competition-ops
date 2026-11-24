@@ -6,11 +6,8 @@ import json
 import re
 from urllib.parse import urljoin, urlsplit
 
-from arch_competition_ops.collectors.base import CollectedSourceDocument
-from arch_competition_ops.collectors.municipal.relevance import (
-    is_candidate_municipal_notice,
-    is_relevant_municipal_notice,
-)
+from arch_competition_ops.collectors.base import CollectedSourceDocument, deferred_detail
+from arch_competition_ops.http import HttpError
 from arch_competition_ops.models import SourceDefinition
 from arch_competition_ops.normalizers.dates import parse_date_string
 from arch_competition_ops.normalizers.text import strip_html
@@ -92,13 +89,9 @@ def collect_nettender_listing_documents(
     publication_date_from: str | None,
     fetch_text: callable,
     post_text: callable,
-    include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
     documents: list[CollectedSourceDocument] = []
     for oid, category, row_html in NETTENDER_ROW_PATTERN.findall(listing_html):
-        if category != "InvitationToTender":
-            continue
-
         title = _extract_td_by_class(row_html, "tender")
         authority = _extract_td_by_class(row_html, "tenderAuthority")
         deadline_raw = _extract_td_by_class(row_html, "tenderDeadline")
@@ -113,26 +106,22 @@ def collect_nettender_listing_documents(
         if not title:
             continue
 
-        listing_context = " ".join(
-            value for value in (authority, " / ".join(procedure_bits), deadline_raw) if value
-        )
-        if not include_unclassified and not is_candidate_municipal_notice(title, listing_context):
-            continue
-
         detail_url = _resolve_nettender_detail_url(
             listing_url,
             oid,
             category,
             post_text=post_text,
         )
-        detail_html = fetch_text(detail_url) if detail_url else ""
-        combined_context = " ".join(
-            value for value in (listing_context, strip_html(detail_html) or "") if value
-        )
-        if not include_unclassified and (not is_relevant_municipal_notice(title, combined_context)):
+        try:
+            detail_html = fetch_text(detail_url) if detail_url else ""
+        except HttpError as exc:
+            documents.append(deferred_detail(exc, detail_url, row_html))
+            if len(documents) >= limit:
+                break
             continue
 
         payload: dict[str, object] = {
+            "rawNoticeHtml": row_html + "\n" + detail_html,
             "title": title,
             "authority": authority,
             "procedureType": (" / ".join(procedure_bits) or None),

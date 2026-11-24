@@ -103,7 +103,6 @@ def _fixed_today():
 
 
 def _collect(site, **kwargs):
-    kwargs.setdefault("include_unclassified", True)
     kwargs.setdefault("limit", 1000)
     return collect_monaqasat_documents(_source(), fetch_text=site, **kwargs)
 
@@ -166,7 +165,7 @@ def test_skips_closed_and_undated_tenders() -> None:
 
     documents = _collect(site)
 
-    assert [json.loads(d.payload)["noticeId"] for d in documents] == ["1"]
+    assert [json.loads(d.payload)["noticeId"] for d in documents] == ["1", "2", "4"]
 
 
 def test_contracting_is_read_only_for_design_and_build_or_competitions() -> None:
@@ -181,10 +180,10 @@ def test_contracting_is_read_only_for_design_and_build_or_competitions() -> None
 
     documents = _collect(site)
 
-    assert sorted(json.loads(d.payload)["noticeId"] for d in documents) == ["2", "3", "4"]
+    assert sorted(json.loads(d.payload)["noticeId"] for d in documents) == ["1", "2", "3", "4"]
 
 
-def test_plain_mode_needs_a_design_word_outside_contracting() -> None:
+def test_collection_preserves_unclassified_source_material() -> None:
     site = FakeSite(
         [
             _card(1, "14/11/2026", title="توريد أدوية طبية"),
@@ -193,11 +192,11 @@ def test_plain_mode_needs_a_design_word_outside_contracting() -> None:
         ]
     )
 
-    documents = _collect(site, include_unclassified=False)
+    documents = _collect(site)
 
-    assert sorted(json.loads(d.payload)["noticeId"] for d in documents) == ["2", "3"]
-    assert not [u for u in site.requests if "/TenderDetails/" in u]
-    assert "rawNotice" not in json.loads(documents[0].payload)
+    assert sorted(json.loads(d.payload)["noticeId"] for d in documents) == ["1", "2", "3"]
+    assert len([u for u in site.requests if "/TenderDetails/" in u]) == 3
+    assert "rawNotice" in json.loads(documents[0].payload)
 
 
 def test_each_tender_has_its_own_public_page_and_limit_picks_the_newest() -> None:

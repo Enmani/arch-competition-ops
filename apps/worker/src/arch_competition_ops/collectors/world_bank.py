@@ -29,26 +29,12 @@ from urllib import parse
 from arch_competition_ops import clock
 from arch_competition_ops.collectors.base import CollectedSourceDocument
 from arch_competition_ops.collectors.common import build_url, fetch_json_get
-from arch_competition_ops.collectors.relevance import (
-    has_built_environment_context,
-    is_design_relevant,
-)
 from arch_competition_ops.models import SourceDefinition
 from arch_competition_ops.normalizers.text import strip_html
 
 WORLD_BANK_PROCNOTICES_URL = "https://search.worldbank.org/api/v2/procnotices"
 WORLD_BANK_NOTICE_PAGE_URL = (
     "https://projects.worldbank.org/en/projects-operations/procurement-detail/{notice_id}"
-)
-CONSULTING_SERVICES_GROUP = "CS"
-# Notice types that invite consultants to take part. An allow-list on purpose: awards and any
-# notice type the World Bank adds later stay out until someone looks at them.
-CONSULTING_INVITATION_NOTICE_TYPES = frozenset(
-    {
-        "Request for Expression of Interest",
-        "Invitation for Bids",
-        "Invitation for Prequalification",
-    }
 )
 PAGE_SIZE = 100
 DEFAULT_LOOKBACK_DAYS = 7
@@ -110,7 +96,6 @@ def _page_url(offset: int) -> str:
             "format": "json",
             "apilang": "en",
             "fl": "*",
-            "procurement_group_exact": CONSULTING_SERVICES_GROUP,
             "srt": "noticedate",
             "order": "desc",
             "rows": PAGE_SIZE,
@@ -119,26 +104,12 @@ def _page_url(offset: int) -> str:
     )
 
 
-def _is_consulting_invitation(notice: dict[str, Any]) -> bool:
-    return (
-        notice.get("procurement_group") == CONSULTING_SERVICES_GROUP
-        and notice.get("notice_type") in CONSULTING_INVITATION_NOTICE_TYPES
-    )
-
-
-def _is_design_notice(title: str, project_name: str | None) -> bool:
-    # Negative markers ("workshop", "website") are common in REOI body text, so the gate reads
-    # the assignment title and project name only.
-    return is_design_relevant(title) and has_built_environment_context(title, project_name)
-
-
 def _build_document(
     notice: dict[str, Any],
     *,
     notice_id: str,
     title: str,
     published: date,
-    include_unclassified: bool,
 ) -> CollectedSourceDocument:
     page_url = WORLD_BANK_NOTICE_PAGE_URL.format(notice_id=parse.quote(notice_id, safe=""))
     country = _text(notice.get("project_ctry_name"))
@@ -160,7 +131,8 @@ def _build_document(
         "publishedAt": published.isoformat(),
         # The notice page is script-rendered from this same record; an empty rawNoticeHtml
         # tells AI enrichment not to fetch the empty shell.
-        **({"rawNotice": notice, "rawNoticeHtml": ""} if include_unclassified else {}),
+        "rawNotice": notice,
+        "rawNoticeHtml": "",
     }
     return CollectedSourceDocument(
         source_url=page_url, payload=json.dumps(payload, ensure_ascii=False)
@@ -173,13 +145,8 @@ def collect_world_bank_documents(
     limit: int = 20,
     publication_date_from: str | None = None,
     fetch_json: Callable[[str], Any] | None = None,
-    include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
-    """Consulting-services invitations published since ``publication_date_from``, newest first.
-
-    With ``include_unclassified`` every invitation in the window is kept (AI triage decides
-    relevance downstream); otherwise an architecture/urban/landscape keyword gate applies.
-    """
+    """Collect public notices in the requested publication window."""
     fetch = fetch_json or _default_fetch_json
     window_start = _window_start(publication_date_from)
     documents: list[CollectedSourceDocument] = []
@@ -199,8 +166,6 @@ def collect_world_bank_documents(
                 continue
             if published < window_start:
                 return documents
-            if not _is_consulting_invitation(notice):
-                continue
             notice_id = _text(notice.get("id"))
             title = (
                 _text(notice.get("noticetitle"))
@@ -209,17 +174,12 @@ def collect_world_bank_documents(
             )
             if not notice_id or not title:
                 continue
-            if not include_unclassified and not _is_design_notice(
-                title, _text(notice.get("project_name"))
-            ):
-                continue
             documents.append(
                 _build_document(
                     notice,
                     notice_id=notice_id,
                     title=title,
                     published=published,
-                    include_unclassified=include_unclassified,
                 )
             )
             if len(documents) >= limit:

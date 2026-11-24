@@ -40,7 +40,28 @@ def public_url(value: str) -> str:
         query = [
             (k, v)
             for k, v in parse_qsl(url.query)
-            if k.lower() in {"id", "noticeid", "projectid", "oid", "publicationid"}
+            if k.lower()
+            in {
+                "id",
+                "noticeid",
+                "projectid",
+                "oid",
+                "publicationid",
+                "tenderid",
+                "stenderid",
+                "noticeversion",
+                "pid",
+                "idevl",
+                "toid",
+                "category",
+                "function",
+                "uri",
+                "meformsnoticeid",
+                "projectnumber",
+                "docid",
+                "resid",
+            }
+            or (k == "q" and re.fullmatch(r"idweb:[\w-]+", v))
         ]
         return urlunsplit((url.scheme, host + port, url.path, urlencode(query), ""))
     except ValueError:
@@ -63,31 +84,38 @@ class _PageLinks(HTMLParser):
 
 def enrich_notice_payload(payload: str, source_url: str, settings: Settings) -> str:
     """API listing summaries often omit the very fields we need; also read the linked notice."""
-    if (
+    if not payload.lstrip().startswith("{"):
+        return payload
+    try:
+        envelope = json.loads(payload)
+    except ValueError:
+        return payload
+    pending = envelope.get("pendingDetailUrl")
+    if not pending and (
         not settings.ai_fetch_details
-        or not payload.lstrip().startswith("{")
+        or "rawNoticeHtml" in envelope
         or urlsplit(source_url).path in {"", "/"}
     ):
         return payload
     try:
-        if "rawNoticeHtml" in json.loads(payload):
-            # The adapter already fetched the notice page, or found it unusable (for example a
-            # portal shell showing another tender); fetching it again would bring the same page.
-            return payload
-    except (ValueError, AttributeError):
-        pass
-    try:
         response = get_default_client().get(
-            source_url,
+            pending or source_url,
             archive=settings.resolve_path(settings.html_archive_dir),
             max_bytes=2 * 1024 * 1024,
         )
-    except HttpError:
+    except HttpError as exc:
+        if pending or exc.status_code in {403, 429}:
+            raise
         # The existing listing remains usable evidence; its missing fields stay visible.
         return payload
     media = response.headers.get("Content-Type", response.headers.get("content-type", ""))
     if "pdf" in media.lower():
         return payload
+    if pending and urlsplit(source_url).hostname == "contrataciondelestado.es":
+        from arch_competition_ops.collectors.pcsp import _detail_belongs_to, _extract_detail_fields
+
+        if not _detail_belongs_to(_extract_detail_fields(response.text), source_url):
+            return payload
     return payload + "\n\nSource notice detail:\n" + response.text
 
 
@@ -117,11 +145,22 @@ def prepare_input(
                 limitations.append("PDF content was not read; structured record only")
             else:
                 source_payload = response.text
-        except HttpError:
+        except HttpError as exc:
+            if exc.status_code in {403, 429}:
+                raise
             limitations.append("Source page could not be fetched; structured record only")
     if source_payload is None:
         limitations.append("No source notice text supplied")
     version = notice_content_hash(source_payload or "", source_url)
+    title = row.get("title") or ""
+    if not title and (source_payload or "").lstrip().startswith("{"):
+        try:
+            envelope, _ = json.JSONDecoder().raw_decode(source_payload.lstrip())
+            original = envelope.get("title")
+            if isinstance(original, str) and original in notice_evidence(source_payload):
+                title = original
+        except ValueError:
+            pass
     source_payload = notice_evidence(source_payload or "")
     text = re.sub(r"<(script|style)\b[^>]*>.*?</\1>", " ", source_payload or "", flags=re.I | re.S)
     text = strip_html(text) or ""
@@ -131,7 +170,7 @@ def prepare_input(
     fields = {}
     remaining = settings.ai_max_input_chars
     for name, value in (
-        ("notice_title", row.get("title") or ""),
+        ("notice_title", title),
         ("notice_url", public_url(source_url)),
         ("notice_text", text),
         (

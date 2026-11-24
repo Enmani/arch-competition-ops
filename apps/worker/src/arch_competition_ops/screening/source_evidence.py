@@ -29,4 +29,8 @@ def notice_evidence(payload: str) -> str:
                 ensure_ascii=False,
             )
         )
-    return "\n".join(parts) + stripped[end:]
+    tail = stripped[end:].lstrip("\n")
+    detail = tail.removeprefix("Source notice detail:\n")
+    if detail != tail:
+        parts.append(detail)
+    return "\n".join(parts)

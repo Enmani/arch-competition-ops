@@ -9,47 +9,8 @@ from arch_competition_ops.collectors.base import CollectedSourceDocument
 from arch_competition_ops.collectors.common import (
     fetch_text_get,
 )
-from arch_competition_ops.collectors.relevance import (
-    has_built_environment_context,
-    is_design_relevant,
-)
 from arch_competition_ops.models import SourceDefinition
 from arch_competition_ops.normalizers.dates import parse_date_string
-from arch_competition_ops.normalizers.text import normalize_text
-
-CANADA_DESIGN_MARKERS = (
-    "design build",
-    "design-builder",
-    "design builder",
-    "architect",
-    "architecture",
-    "architectural",
-    "landscape",
-    "urban design",
-    "planning",
-    "masterplan",
-    "heritage conservation",
-)
-CANADA_BUILT_MARKERS = (
-    "design build",
-    "design-builder",
-    "design builder",
-    "camp infrastructure",
-    "infrastructure",
-    "public works",
-    "stormwater",
-    "watermain",
-    "heritage",
-)
-CANADA_NEGATIVE_MARKERS = (
-    "naval architecture",
-    "marine",
-    "tugboat",
-    "vessel recycling",
-    "hotel rooms",
-    "lodging",
-    "accommodation services",
-)
 
 
 def _default_fetch_text(url: str) -> str:
@@ -64,35 +25,12 @@ def _pick_row_value(row: dict[str, str], *keys: str) -> str | None:
     return None
 
 
-def _is_relevant_canadabuys_notice(title: str, summary: str, category: str, unspsc: str) -> bool:
-    if not title:
-        return False
-
-    normalized = normalize_text(f"{title} {summary} {unspsc}")
-    if any(marker in normalized for marker in CANADA_NEGATIVE_MARKERS):
-        return False
-    has_design_signal = is_design_relevant(title, summary, unspsc) or any(
-        marker in normalized for marker in CANADA_DESIGN_MARKERS
-    )
-    if not has_design_signal:
-        return False
-
-    if category.strip() == "*CNST":
-        return True
-
-    if has_built_environment_context(title, summary, unspsc):
-        return True
-
-    return any(marker in normalized for marker in CANADA_BUILT_MARKERS)
-
-
 def collect_canadabuys_documents(
     source: SourceDefinition,
     *,
     limit: int = 20,
     publication_date_from: str | None = None,
     fetch_text: callable | None = None,
-    include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
     csv_text = (fetch_text or _default_fetch_text)(source.base_url)
     reader = csv.DictReader(io.StringIO(csv_text))
@@ -122,16 +60,6 @@ def collect_canadabuys_documents(
 
         if publication_date_from and publication_date and publication_date < publication_date_from:
             continue
-        if not include_unclassified and (
-            not title
-            or not _is_relevant_canadabuys_notice(
-                title,
-                summary,
-                procurement_category,
-                unspsc_description,
-            )
-        ):
-            continue
 
         reference = _pick_row_value(row, "referenceNumber-numeroReference") or ""
         official_url = (
@@ -147,7 +75,7 @@ def collect_canadabuys_documents(
         payload = json.dumps(
             {
                 "title": title,
-                **({"rawNotice": row} if include_unclassified else {}),
+                "rawNotice": row,
                 "buyer": _pick_row_value(row, "procuringEntity-entiteContractante"),
                 "noticeId": _pick_row_value(
                     row,

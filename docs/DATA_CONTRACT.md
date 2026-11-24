@@ -1,7 +1,7 @@
 ---
 title: Data Contract
 status: done
-updated_at: 2026-11-15
+updated_at: 2026-11-24
 related_docs:
   - AGENTS.md
   - docs/ARCHITECTURE.md
@@ -53,8 +53,9 @@ Read by the system, never replaced without an explicit instruction.
 - Classification columns (`project_types`, `building_categories`, `design_scopes`, `project_modes`) are written by the worker; the web app reads them and does not re-derive them.
 
 - AI-extracted facts require an exact quote from the supplied notice or its links. Euro monetary fields also require an explicit euro currency and matching amount; other currencies stay in source text. Unknown, rejected and conflicting claims remain empty or are flagged for review. Model recommendations never overwrite canonical opportunity status or human decisions.
+- The private worker tables `notice_backlog` and `collection_resume` store notice versions, read attempts and interrupted publication windows. The D1 schema and export omit both tables. Pending notices have no age cutoff.
 - `ai_screening_runs` retains local inputs, results, usage and budget reservations; inputs and results older than 45 days are blanked (`input_json = ''`, `result_json = NULL`) while the row and its cost columns stay. A record whose current assessment is `exclude` is deleted by the daily cleanup after the 7-day retention window unless it is `shortlisted`, `verified` or watchlisted. `ai_screening_results` contains the published recommendation and source revision; only this projection is exported to D1. An outdated exclusion does not hide a newer source record.
-- Candidate success is distinct from verified eligibility: a supported title is required, but missing optional fields are allowed. Unsupported individual fields and participation excerpts are omitted without changing the content judgment; input limitations stay visible to the model and reader. A recommendation with unsupported decision evidence, or any decision left with no supported evidence, changes to `needs_review` rather than discarding the candidate; an exclusion with at least one verified quote stays an exclusion. Generated recommendations never establish eligibility as fact.
+- Candidate success is distinct from verified eligibility: a supported title is required, but missing optional fields are allowed. Unsupported individual fields and participation excerpts are omitted without changing the content judgment; the published assessment reports input limitations. A recommendation with unsupported decision evidence, or any decision left with no supported evidence, changes to `needs_review` rather than discarding the candidate; an exclusion with at least one verified quote stays an exclusion. Generated recommendations never establish eligibility as fact.
 - Participation excerpts are published as `notice_details` in the advisory result JSON, grouped into timeline, commercial, eligibility, scope and submission. Both excerpt and quotation must match the supplied notice; unknown clauses are omitted. They are not additional canonical columns or verified bid conditions. Storage exposes them on detail lookup only when the published source revision is current.
 - The model's reader-facing summary, reasons and missing-information list (`summary_zh/en`, `reasons_zh/en`, `missing_information` and `decision` in the same result JSON) reach the detail lookup as `aiAssessment`, again only for the current source revision. The site shows them labelled as AI output; the free-form missing-information entries are sorted into a fixed set of plain topics and processing remarks are dropped, so they never appear as notice facts.
 - `title` is the source's own wording and stays untouched. Cards and headings show a derived display title: `display_title` (rule-cleaned: platform prefixes, reference numbers and typography removed, never reworded), or `display_title_zh` / `display_title_en` (one AI pass per title: translated, and condensed when long). Each is checked against the source (no number may appear that the source title lacks) and the detail page shows the original title beside it. A changed `title` clears all of them for re-derivation; `display_title_source` records the cleaner/model version.
@@ -65,5 +66,5 @@ Read by the system, never replaced without an explicit instruction.
 
 - User-layer files can be read by the system, but must not be replaced without explicit instruction.
 - System-layer files may evolve as the repository grows.
-- Table and column definitions live only in `apps/web/migrations/*.sql`; the worker's `storage/schema.py` mirrors them and `test_schema_parity.py` enforces parity.
+- Published table and column definitions live in `apps/web/migrations/*.sql`; the worker's `storage/schema.py` mirrors them and `test_schema_parity.py` enforces parity.
 - Canonical structured records belong in the database, not in scattered Markdown tables.

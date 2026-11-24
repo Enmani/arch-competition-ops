@@ -3,7 +3,7 @@ title: Storage, Auth And API Architecture
 vision_doc: vision.md
 goal_doc: docs/goals/2026-04-19-future-direction.md
 status: done
-updated_at: 2026-11-22
+updated_at: 2026-11-24
 related_docs:
   - docs/AI_CONSTRAINTS.md
   - docs/structures/2026-04-22-workspace-follow-up-architecture.md
@@ -229,3 +229,5 @@ The sync sets a marker before the first import and publishes a new version after
 
 - `docs/plans/2026-04-19-07-saved-search-and-watchlists-plan.md`
 - `docs/plans/2026-04-30-cloudflare-workers-d1-deployment-plan.md`
+
+The collection queue and its interrupted search windows live only in worker SQLite. Web, MCP and D1 export continue to read published records. A missing or low qualification score is eligible for publication.

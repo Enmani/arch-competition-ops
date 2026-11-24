@@ -21,4 +21,4 @@ sources:
       - jordan
     languages:
       - ar
-    notes: "Official Jordan Online E-Procurement System tender invitations, public search without login: technical services (the portal's own design and supervision type), services of the consulting-and-studies sub-type, and design-and-build works, about 20 open design tenders a month. The collector reads the search form (session cookie plus CSRF token) with server-side publication and deadline ranges. The notice address is the stateless detail page, which fills most of its fields by script, so the list row is the evidence. No robots.txt. The pilot OCDS data on the site is a static download, not a live feed."
+    notes: "Official Jordan Online E-Procurement System tender invitations, public search without login across tender types. The collector reads the search form (session cookie plus CSRF token) with server-side publication and deadline ranges. The notice address is the stateless detail page, which fills most of its fields by script, so the list row is the evidence. No robots.txt. The pilot OCDS data on the site is a static download, not a live feed."

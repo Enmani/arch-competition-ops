@@ -4,6 +4,7 @@ import hashlib
 
 from arch_competition_ops.screening.models import ScreeningDecision, canonical_json
 from arch_competition_ops.screening.preferences import load_screening_instructions
+from arch_competition_ops.screening.source_evidence import notice_evidence
 from arch_competition_ops.settings import Settings
 
 
@@ -12,7 +13,7 @@ def digest(text: str) -> str:
 
 
 def notice_content_hash(payload: str, url: str) -> str:
-    return digest(canonical_json([url, payload]))
+    return digest(canonical_json([url, notice_evidence(payload)]))
 
 
 def screening_criteria_hash(settings: Settings) -> str:

@@ -20,4 +20,4 @@ sources:
     languages:
       - nl
       - en
-    notes: Official TenderNed public publications API. In AI mode the collector reads the whole window of open notices in the design scope of collectors/design_scope.py (CPV 71*/7993*, design contests, design-and-build works notices).
+    notes: Official TenderNed public publications API. The collector reads the publication window without category restrictions.

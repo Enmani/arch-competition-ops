@@ -30,8 +30,7 @@ def test_china_ai_mode_reads_candidates_before_domain_and_listing_type_gates():
     fetch_list = lambda *_: json.dumps({"data": {"records": rows}})  # noqa: E731
     fetch_detail = lambda _: "<h1>项目公告</h1><p>详细工作范围待核实。</p>"  # noqa: E731
     kwargs = dict(fetch_list=fetch_list, fetch_detail=fetch_detail, today=date(2026, 10, 30))
-    assert collect_ggzy_documents(source, **kwargs) == []
-    documents = collect_ggzy_documents(source, include_unclassified=True, **kwargs)
+    documents = collect_ggzy_documents(source, **kwargs)
     assert len(documents) == 2
     assert all("rawNoticeHtml" in json.loads(d.payload) for d in documents)
 
@@ -61,7 +60,6 @@ def test_italy_plural_templates_and_raw_record_reach_the_model():
     documents = collect_anac_documents(
         source,
         limit=1,
-        include_unclassified=True,
         fetch_json=lambda _: {"content": [row], "last": True},
     )
     assert len(documents) == 1
@@ -86,9 +84,7 @@ def test_swiss_ai_search_reads_service_orders_in_the_design_cpv_scope():
     def fetcher(url):
         if "project-search" in url:
             query = parse_qs(urlsplit(url).query)
-            if "service" not in query["projectSubTypes"] or query["cpvCodes"] == ["45000000"]:
-                return {"projects": []}
-            assert query["cpvCodes"] == ["71000000", "79930000"]
+            assert "cpvCodes" not in query and "projectSubTypes" not in query
             return {
                 "projects": [
                     {
@@ -101,7 +97,7 @@ def test_swiss_ai_search_reads_service_orders_in_the_design_cpv_scope():
             }
         return {"project-info": {"title": {"en": "School design"}}}
 
-    docs = collect_simap_documents(source, limit=1, include_unclassified=True, fetch_json=fetcher)
+    docs = collect_simap_documents(source, limit=1, fetch_json=fetcher)
     assert len(docs) == 1
     assert json.loads(docs[0].payload)["rawNotice"]["listing"]["pubType"] == "tender"
 
@@ -125,8 +121,7 @@ def test_netherlands_ai_mode_retains_unknown_scope_and_missing_deadline():
         "typeOpdracht": {"code": "W"},
     }
     fetcher = lambda url: {"content": [row], "last": True} if "?" in url else row  # noqa: E731
-    assert collect_tenderned_documents(source, fetch_json=fetcher) == []
-    documents = collect_tenderned_documents(source, fetch_json=fetcher, include_unclassified=True)
+    documents = collect_tenderned_documents(source, fetch_json=fetcher)
     assert len(documents) == 1
     assert json.loads(documents[0].payload)["deadline"] is None
 
@@ -148,9 +143,4 @@ def test_netherlands_candidate_expansion_respects_api_page_size_limit():
         assert int(parse_qs(urlsplit(url).query)["size"][0]) <= 100
         return {"content": []}
 
-    assert (
-        collect_tenderned_documents(
-            source, limit=100, include_unclassified=True, fetch_json=fetcher
-        )
-        == []
-    )
+    assert collect_tenderned_documents(source, limit=100, fetch_json=fetcher) == []

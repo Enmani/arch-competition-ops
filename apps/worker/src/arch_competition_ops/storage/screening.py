@@ -290,7 +290,9 @@ def latest_screening_notice_text(db_path: Path, competition_id: str) -> str:
         return ""
     try:
         request = json.loads(row["input_json"])
-        notice = json.loads(request["input"])["evidence_fields"]["notice_text"]
+        notice = json.loads(request.get("request", request)["input"])["evidence_fields"][
+            "notice_text"
+        ]
     except (ValueError, KeyError, TypeError):
         return ""
     return notice if isinstance(notice, str) else ""

@@ -108,7 +108,7 @@ test("the sequence: pull, cleanup, repair countries, ingest, sync, push, keepali
 
   // Sync and push run after a failed ingest but never after a failed pull; dry runs skip the paid
   // ingest and the D1 apply.
-  assert.match(WORKFLOW, /name: Sync to D1\n {8}if: \$\{\{ always\(\) && steps\.pull\.outcome == 'success' && inputs\.dry_run != true \}\}/);
+  assert.match(WORKFLOW, /name: Sync to D1\n {8}if: \$\{\{ always\(\) && steps\.pull\.outcome == 'success' && inputs\.dry_run != true && inputs\.collect_only != true \}\}/);
   assert.match(WORKFLOW, /name: Push state to R2\n {8}id: push\n {8}if: \$\{\{ always\(\) && steps\.pull\.outcome == 'success' \}\}/);
   assert.match(WORKFLOW, /name: Ingest batch\n {8}id: ingest\n {8}if: \$\{\{ inputs\.dry_run != true \}\}/);
   assert.match(WORKFLOW, /name: Pull state from R2\n {8}id: pull\n/);

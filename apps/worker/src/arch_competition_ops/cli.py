@@ -131,6 +131,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ingest_parser.add_argument("--source-id", required=True)
     ingest_parser.add_argument("--limit", type=int, default=20)
+    ingest_parser.add_argument("--collect-only", action="store_true")
     ingest_parser.add_argument("--publication-date-from")
 
     batch_parser = subparsers.add_parser(
@@ -140,6 +141,7 @@ def build_parser() -> argparse.ArgumentParser:
     batch_parser.add_argument("--batch-id")
     batch_parser.add_argument("--config-path", default=str(DEFAULT_AUTOMATION_CONFIG_PATH))
     batch_parser.add_argument("--limit-per-source", type=int)
+    batch_parser.add_argument("--collect-only", action="store_true")
     batch_parser.add_argument("--publication-date-from")
     batch_parser.add_argument("--json", action="store_true")
     batch_parser.add_argument("--fail-fast", action="store_true")
@@ -186,6 +188,7 @@ def _handle_ingest_source(settings: Settings, args: argparse.Namespace) -> int:
         settings,
         source_id=args.source_id,
         limit=args.limit,
+        collect_only=args.collect_only,
         publication_date_from=args.publication_date_from,
     )
     _print_ingest_result(result)
@@ -237,6 +240,7 @@ def _handle_ingest_batch(settings: Settings, args: argparse.Namespace) -> int:
         batch_id=args.batch_id,
         config_path=config_path,
         limit_per_source=args.limit_per_source,
+        collect_only=args.collect_only,
         publication_date_from=args.publication_date_from,
         continue_on_error=not args.fail_fast,
     )

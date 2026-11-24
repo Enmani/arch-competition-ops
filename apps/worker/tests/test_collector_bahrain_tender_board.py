@@ -104,7 +104,6 @@ def _fixed_today():
 
 
 def _collect(board: FakeBoard, **kwargs):
-    kwargs.setdefault("include_unclassified", True)
     kwargs.setdefault("limit", 1000)
     return collect_bahrain_tender_board_documents(
         _source(), post_json=board.post_json, fetch_text=board.fetch_text, **kwargs
@@ -164,8 +163,8 @@ def test_skips_closed_and_undated_tenders_without_reading_their_detail() -> None
 
     documents = _collect(board)
 
-    assert [json.loads(d.payload)["tenderNumber"] for d in documents] == ["OPEN"]
-    assert len(board.detail_urls) == 1
+    assert [json.loads(d.payload)["tenderNumber"] for d in documents] == ["OPEN", "SHUT"]
+    assert len(board.detail_urls) == 2
 
 
 def test_cpv_scope_in_ai_mode() -> None:
@@ -195,10 +194,12 @@ def test_cpv_scope_in_ai_mode() -> None:
         "DESIGN",
         "FAIL",
         "NOCPV",
+        "SUPPLY",
+        "WORKS",
     ]
 
 
-def test_plain_mode_needs_a_cpv_code_and_design_relevance() -> None:
+def test_collection_preserves_unclassified_source_material() -> None:
     board = FakeBoard(
         [
             _row("DESIGN", "14, Nov,2026", title="Architectural design of a clinic"),
@@ -212,10 +213,14 @@ def test_plain_mode_needs_a_cpv_code_and_design_relevance() -> None:
         },
     )
 
-    documents = _collect(board, include_unclassified=False)
+    documents = _collect(board)
 
-    assert [json.loads(d.payload)["tenderNumber"] for d in documents] == ["DESIGN"]
-    assert "rawNotice" not in json.loads(documents[0].payload)
+    assert [json.loads(d.payload)["tenderNumber"] for d in documents] == [
+        "DESIGN",
+        "NOCPV",
+        "SUPPLY",
+    ]
+    assert "rawNotice" in json.loads(documents[0].payload)
 
 
 def test_limit_stops_paging_and_detail_reads() -> None:
