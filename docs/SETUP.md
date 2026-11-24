@@ -62,7 +62,7 @@ ARCH_COMPETITION_OPS_AI_DAILY_BUDGET_USD=1
 ARCH_COMPETITION_OPS_AI_MONTHLY_BUDGET_USD=31
 ```
 
-Edit the [screening skill](../config/skills/screen-architecture-opportunities/SKILL.md) to change how notices are judged, and `config/filters.yml` for structured preferences. Existing ingestion commands use AI automatically when enabled. Source search scope and fetch limits remain controlled by the existing collector and automation configuration.
+Edit the [screening skill](../config/skills/screen-architecture-opportunities/SKILL.md) to change how notices are judged. Existing ingestion commands use AI automatically when enabled. Source search scope and fetch limits remain controlled by the existing collector and automation configuration.
 
 The skill judges the advertised deliverable, the current participation opportunity and the difference between a mismatch and missing evidence. It covers architecture, urban and landscape design. Countries and languages are priorities, while missing prices or eligibility clauses remain gaps to check.
 

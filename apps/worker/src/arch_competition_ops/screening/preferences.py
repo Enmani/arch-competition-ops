@@ -21,6 +21,8 @@ def load_screening_instructions(settings: Settings) -> str:
         text = bundled.read_text(encoding="utf-8")
     else:
         raise FileNotFoundError(f"Configured screening instructions not found: {path}")
+    if text.startswith("---\n"):
+        text = text.split("\n---\n", 1)[1].strip()
     if not text.strip():
         raise ValueError("Screening instructions must not be empty")
     return text

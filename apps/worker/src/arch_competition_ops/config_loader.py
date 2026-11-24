@@ -5,7 +5,7 @@ from typing import Any
 
 import yaml
 
-from arch_competition_ops.models import SourceCatalog, TargetingPreferences, Taxonomy
+from arch_competition_ops.models import SourceCatalog, Taxonomy
 from arch_competition_ops.settings import Settings
 
 # AI maintenance note:
@@ -121,12 +121,6 @@ def load_source_catalog(settings: Settings) -> SourceCatalog:
             "sources": _collect_sources_from_data(settings, data),
         }
     )
-
-
-def load_targeting_preferences(settings: Settings) -> TargetingPreferences:
-    data = load_yaml_file(settings.resolve_path(settings.filters_config))
-    targeting = data.get("targeting", {})
-    return TargetingPreferences.model_validate(targeting)
 
 
 def load_taxonomy(settings: Settings) -> Taxonomy:

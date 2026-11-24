@@ -23,7 +23,6 @@ This repository is a competition-intelligence monorepo. Agents should favor evid
 
 - `vision.md`: product vision and top-level direction
 - `config/sources.yml`: canonical source registry
-- `config/filters.yml`: user targeting preferences
 - `config/skills/screen-architecture-opportunities/SKILL.md`: shared AI screening judgment
 - `config/taxonomy.yml`: allowed labels and controlled vocabulary
 - `data/competitions.sqlite`: canonical structured opportunity records
@@ -57,7 +56,7 @@ This repository is a competition-intelligence monorepo. Agents should favor evid
 10. All new product UI copy must follow the repository i18n contract and ship in both `zh` and `en`.
 11. Do not let `docs/changelog/**` get ahead of canonical docs; if a round changes roadmap, goal, structure, plan, or governance truth, update the owning doc in the same round and use changelog only as the dated trace.
 12. Keep the web app on port `3400` unless the user explicitly changes the repo standard.
-13. Soft rules are user preferences and screening judgment (`config/filters.yml`, the screening skill); the user may rewrite them at any time, so never hard-code them. Authentication, quotas, billing and permissions are hard rules enforced in code, never in prompts or config prose.
+13. The editable screening skill owns model judgment. Human search preferences stay in web filters. Authentication, quotas, billing and permissions are enforced in code.
 14. Group pipeline failures by one failure class and fix the class, not each source with its own patch.
 15. Mark official fields and AI screening conclusions as separate in every output (web, API, MCP). Wording on these surfaces, including MCP tool descriptions, stays neutral and plain with no filler; `official_url`, `source_url` and `evidence_note` are never dropped for brevity.
 16. The MCP entry exposes read-only tools only, and every tool is annotated read-only. Writes (saved searches, watchlists, review) stay in the web app behind login.

@@ -26,7 +26,7 @@ from arch_competition_ops.card_previews import (
 )
 from arch_competition_ops.collectors import collect_source_documents
 from arch_competition_ops.collectors.base import CollectedSourceDocument
-from arch_competition_ops.config_loader import load_source_catalog, load_targeting_preferences
+from arch_competition_ops.config_loader import load_source_catalog
 from arch_competition_ops.extractors import parse_source_payload
 from arch_competition_ops.geocoding import NominatimGeocoder, enrich_record_geocode
 from arch_competition_ops.models import CompetitionRecord, SourceDefinition
@@ -41,7 +41,6 @@ from arch_competition_ops.screening.fingerprints import (
     screening_criteria_hash,
 )
 from arch_competition_ops.screening.service import DocumentAssessment, assess_documents
-from arch_competition_ops.screening.triage import triage_documents
 from arch_competition_ops.settings import Settings
 from arch_competition_ops.storage import (
     competition_is_stale_expired,
@@ -55,7 +54,6 @@ from arch_competition_ops.storage.screening import (
     ScreeningBudgetExceeded,
     upsert_screened_competitions,
 )
-from arch_competition_ops.targeting import load_targeting_filter
 from arch_competition_ops.titles.rewrite import BATCH_SIZE as TITLE_BATCH_SIZE
 from arch_competition_ops.titles.service import polish_titles
 from arch_competition_ops.verifiers import verify_record
@@ -163,7 +161,6 @@ def ingest_source(
     source = _find_enabled_source(settings, source_id)
     db_path = initialize_database(settings)
     retention_days = settings.expired_competition_retention_days
-    targeting = load_targeting_filter(settings)
     geocoder = NominatimGeocoder(cache_path=settings.resolve_path(settings.geocode_cache))
     started_at = clock.now_utc().isoformat()
     result = IngestResult(source_id=source.source_id, status="failed")
@@ -193,13 +190,7 @@ def ingest_source(
             if collected_documents is not None
             else collect_source_documents(
                 source,
-                # With triage, read the whole publication window: the ledger drops what was
-                # already screened, so only new or changed notices cost anything.
-                limit=(
-                    settings.ai_candidate_cap
-                    if settings.ai_enabled and settings.ai_triage_enabled
-                    else limit
-                ),
+                limit=settings.ai_candidate_cap,
                 publication_date_from=publication_date_from,
                 archive_dir=settings.resolve_path(settings.html_archive_dir),
                 include_unclassified=settings.ai_enabled,
@@ -212,10 +203,8 @@ def ingest_source(
     content_hashes: dict[int, str] = {}
     criteria_hash = ""
     if settings.ai_enabled:
-        criteria_hash = screening_criteria_hash(
-            settings, load_targeting_preferences(settings).model_dump(mode="json")
-        )
-        content_hashes = {id(d): notice_content_hash(d.payload) for d in documents}
+        criteria_hash = screening_criteria_hash(settings)
+        content_hashes = {id(d): notice_content_hash(d.payload, d.source_url) for d in documents}
         seen = find_screened(
             db_path,
             source_id=source.source_id,
@@ -235,28 +224,8 @@ def ingest_source(
     def ledger_entries(items: list[CollectedSourceDocument]) -> list[tuple[str, str]]:
         return [(content_hashes[id(d)], d.source_url) for d in items]
 
-    if settings.ai_enabled and settings.ai_triage_enabled:
-        try:
-            triage = triage_documents(settings, documents, limit=limit)
-            documents = triage.documents
-            result.filtered_out += triage.excluded
-            result.deferred += triage.deferred
-            record_screened(
-                db_path,
-                source_id=source.source_id,
-                criteria_hash=criteria_hash,
-                outcome="triage_excluded",
-                entries=ledger_entries(triage.excluded_documents),
-            )
-            result.notes.append(
-                f"AI candidate triage: excluded={triage.excluded}, deferred={triage.deferred}, "
-                f"cached={triage.cached}, estimated_cost_usd={triage.cost_usd:.6f}"
-            )
-        except (ValueError, OSError, RuntimeError) as exc:
-            # A failed preliminary decision cannot justify discarding a candidate.
-            documents = documents[:limit]
-            result.notes.append(f"AI candidate triage unavailable; candidates retained: {exc}")
-
+    result.deferred += max(0, len(documents) - limit)
+    documents = documents[:limit]
     records: list[CompetitionRecord] = []
     assessments: list[DocumentAssessment | None] = []
     # Documents whose paid assessment finished, including those then dropped as expired; they
@@ -322,19 +291,10 @@ def ingest_source(
                     if assessment is not None:
                         screened.append(document)
                     continue
-                if (
-                    not settings.ai_enabled
-                    and (keyword := targeting.excluded_by(record)) is not None
-                ):
-                    logger.info("Skipping %r: negative keyword %r", record.title, keyword)
-                    result.filtered_out += 1
-                    continue
                 # Verification can add evidence (official URL, brief), so the evidence-derived
                 # scores are recomputed from the final record.
                 record.extraction_confidence = compute_extraction_confidence(record)
                 record.qualification_score = compute_qualification_score(record)
-                if not settings.ai_enabled:
-                    targeting.apply_bonus(record)
                 stage = "geocode"
                 record = enrich_record_geocode(
                     record,
@@ -408,7 +368,7 @@ def ingest_source(
             titles = polish_titles(
                 settings,
                 competition_ids=result.ingested_ids,
-                use_ai=settings.ai_enabled,
+                use_ai=False,
                 # Enough batches for every new record: each title is translated once.
                 max_batches=max(1, -(-len(result.ingested_ids) // TITLE_BATCH_SIZE)),
             )

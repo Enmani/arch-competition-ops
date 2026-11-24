@@ -1,20 +1,6 @@
-"""Keep adapter-generated judgments out of the notice evidence sent to the model."""
+"""Select original notice material from a collector envelope."""
 
 import json
-
-# These are local classification/evidence annotations, not upstream notice clauses.
-_DERIVED_KEYS = {
-    "opportunityType",
-    "competitionTypes",
-    "projectTypes",
-    "buildingCategories",
-    "officialSectors",
-    "builtAssetTypes",
-    "designScopes",
-    "projectModes",
-    "evidenceLevel",
-    "evidenceNote",
-}
 
 
 def notice_evidence(payload: str) -> str:
@@ -22,22 +8,25 @@ def notice_evidence(payload: str) -> str:
     if not stripped.startswith("{"):
         return payload
     try:
-        value, end = json.JSONDecoder().raw_decode(stripped)
+        notice, end = json.JSONDecoder().raw_decode(stripped)
     except ValueError:
-        return payload
-    if not isinstance(value, dict):
-        return payload
-    originals = []
-    if value.get("rawNoticeHtml"):
-        originals.append(str(value["rawNoticeHtml"]))
-    if value.get("rawNotice"):
-        originals.append(json.dumps(value["rawNotice"], ensure_ascii=False))
-    if originals:
-        return "\n\n".join(originals) + stripped[end:]
-    return (
-        json.dumps(
-            {key: item for key, item in value.items() if key not in _DERIVED_KEYS},
-            ensure_ascii=False,
+        return ""
+    parts = []
+    for key in ("rawNotice", "rawNoticeHtml"):
+        value = notice.get(key)
+        if isinstance(value, str):
+            parts.append(value)
+        elif key == "rawNotice" and isinstance(value, dict | list):
+            parts.append(json.dumps(value, ensure_ascii=False))
+    if not parts:
+        parts.append(
+            json.dumps(
+                {
+                    key: notice[key]
+                    for key in ("title", "category")
+                    if isinstance(notice.get(key), str)
+                },
+                ensure_ascii=False,
+            )
         )
-        + stripped[end:]
-    )
+    return "\n".join(parts) + stripped[end:]

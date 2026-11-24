@@ -172,7 +172,6 @@ def write_minimal_config(root: Path, sources_yaml: str) -> None:
     """A config/ directory just complete enough for doctor/verify to run."""
     (root / "config").mkdir(exist_ok=True)
     (root / "config" / "sources.yml").write_text(sources_yaml, encoding="utf-8")
-    (root / "config" / "filters.yml").write_text("targeting: {}\n", encoding="utf-8")
     (root / "config" / "taxonomy.yml").write_text(MINIMAL_TAXONOMY + "\n", encoding="utf-8")
     skill = root / DEFAULT_AI_SKILL
     skill.parent.mkdir(parents=True, exist_ok=True)

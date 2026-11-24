@@ -45,31 +45,6 @@ class SourceCatalog(BaseModel):
     sources: list[SourceDefinition] = Field(default_factory=list)
 
 
-class TargetingPreferences(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    regions: list[str] = Field(default_factory=list)
-    languages: list[str] = Field(default_factory=list)
-    audience: list[str] = Field(default_factory=list)
-    competition_types: list[str] = Field(default_factory=list)
-    opportunity_types: list[str] = Field(default_factory=list)
-    procedure_types: list[str] = Field(default_factory=list)
-    evidence_levels: list[str] = Field(default_factory=list)
-    max_registration_fee_eur: float | None = None
-    max_submission_fee_eur: float | None = None
-    min_estimated_contract_value_eur: float | None = None
-    deadline_window_days: int | None = None
-    prioritize_official_sources: bool = True
-    require_brief_or_program: bool = True
-    require_implementation_path: bool = True
-    require_licensed_architect_signal: bool = True
-    include_student_only: bool = False
-    include_built_projects: bool = True
-    include_unpaid_calls: bool = False
-    positive_keywords: list[str] = Field(default_factory=list)
-    negative_keywords: list[str] = Field(default_factory=list)
-
-
 class Taxonomy(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

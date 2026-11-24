@@ -5,7 +5,6 @@ This repository is for professional architecture opportunity intelligence.
 ## Always Read
 
 - `config/sources.yml`
-- `config/filters.yml`
 - `config/taxonomy.yml`
 - `AGENTS.md`
 

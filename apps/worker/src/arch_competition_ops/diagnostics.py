@@ -9,7 +9,6 @@ from arch_competition_ops.bootstrap import initialize_database
 from arch_competition_ops.collectors.registry import COLLECTORS
 from arch_competition_ops.config_loader import (
     load_source_catalog,
-    load_targeting_preferences,
     load_taxonomy,
 )
 from arch_competition_ops.extractors import PARSERS
@@ -56,7 +55,6 @@ def run_doctor(settings: Settings) -> list[CheckResult]:
 
     for loader, label in (
         (load_source_catalog, "source catalog"),
-        (load_targeting_preferences, "targeting preferences"),
         (load_taxonomy, "taxonomy"),
     ):
         try:
@@ -118,28 +116,6 @@ def _check_sources(settings: Settings) -> list[CheckResult]:
     return results
 
 
-def _check_filters(settings: Settings) -> CheckResult:
-    taxonomy = load_taxonomy(settings)
-    filters = load_targeting_preferences(settings)
-    problems = {
-        "competition_types": sorted(
-            set(filters.competition_types) - set(taxonomy.competition_types)
-        ),
-        "audience": sorted(set(filters.audience) - set(taxonomy.audience)),
-        "regions": sorted(set(filters.regions) - set(taxonomy.regions)),
-        "opportunity_types": sorted(
-            set(filters.opportunity_types) - set(taxonomy.opportunity_types)
-        ),
-        "procedure_types": sorted(set(filters.procedure_types) - set(taxonomy.procedure_types)),
-        "evidence_levels": sorted(set(filters.evidence_levels) - set(taxonomy.evidence_levels)),
-    }
-    problems = {name: values for name, values in problems.items() if values}
-    if problems:
-        detail = "; ".join(f"{name}={values}" for name, values in problems.items())
-        return CheckResult(False, "filters within taxonomy", detail)
-    return CheckResult(True, "filters within taxonomy")
-
-
 def run_verify(settings: Settings) -> list[CheckResult]:
     results = run_doctor(settings)
     db_path = settings.resolve_path(settings.db)
@@ -148,11 +124,6 @@ def run_verify(settings: Settings) -> list[CheckResult]:
         results.extend(_check_sources(settings))
     except Exception as exc:  # noqa: BLE001 - report instead of crashing the whole verify run
         results.append(CheckResult(False, "source verification", str(exc)))
-
-    try:
-        results.append(_check_filters(settings))
-    except Exception as exc:  # noqa: BLE001 - report instead of crashing the whole verify run
-        results.append(CheckResult(False, "taxonomy verification", str(exc)))
 
     # dedup_key is a cross-source duplicate *signal* (title + buyer + deadline), not an identity,
     # so clusters are reported for the review queue rather than failing verification.

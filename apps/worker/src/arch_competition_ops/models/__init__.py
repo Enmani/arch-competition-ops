@@ -1,10 +1,9 @@
 from .competition import CompetitionRecord
-from .source import SourceCatalog, SourceDefinition, TargetingPreferences, Taxonomy
+from .source import SourceCatalog, SourceDefinition, Taxonomy
 
 __all__ = [
     "CompetitionRecord",
     "SourceCatalog",
     "SourceDefinition",
-    "TargetingPreferences",
     "Taxonomy",
 ]

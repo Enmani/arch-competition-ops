@@ -18,7 +18,7 @@ def test_program_labels_are_not_notice_evidence_but_original_categories_and_text
     value, _ = json.JSONDecoder().raw_decode(cleaned)
     assert "opportunityType" not in value and "projectTypes" not in value
     assert value["category"] == "Goods"
-    assert value["summary"] == "Industrial refrigerators"
+    assert "summary" not in value  # an adapter summary has no original-source provenance
     assert cleaned.endswith("<p>Original detail</p>")
 
 

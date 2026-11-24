@@ -140,7 +140,7 @@ def test_ai_extracts_site_prize_and_contract_without_source_specific_parser(ai_w
         body = json.loads(request.content)
         calls.append(body)
         assert body["model"] == "gpt-6-luna"
-        assert body["reasoning"] == {"effort": "high"}
+        assert body["reasoning"] == {"effort": "low"}
         assert body["store"] is False
         assert body["text"]["format"]["strict"] is True
         return response(decision_payload())
@@ -253,7 +253,7 @@ def test_unchanged_notice_is_not_paid_again_on_a_later_day(ai_workspace):
     sent = []
 
     def handler(request):
-        sent.append(json.loads(json.loads(request.content)["input"])["date"])
+        sent.append(json.loads(json.loads(request.content)["input"]))
         return response(decision_payload())
 
     try:
@@ -269,8 +269,7 @@ def test_unchanged_notice_is_not_paid_again_on_a_later_day(ai_workspace):
                 )
     finally:
         clock.set_today_provider(None)
-    # The model still sees today's date, but the second day reuses the stored assessment.
-    assert sent == ["2026-11-02"]
+    assert len(sent) == 1 and "date" not in sent[0]
     assert assessment.cached
 
 
@@ -280,7 +279,6 @@ def test_notice_text_is_kept_before_a_long_link_list(ai_workspace):
     _input, fields, _limits = prepare_input(
         {"source_url": "https://city.example/n/1"},
         settings,
-        {},
         source_payload=f"<p>Civic School Design Competition</p>{links}",
     )
     assert fields["notice_text"].startswith("Civic School Design Competition")
@@ -501,103 +499,3 @@ def test_cli_dry_run_needs_no_key_and_skips_expired_and_human_discarded(ai_works
     assert payload["planned"] == 1
     assert payload["results"][0]["title"] == "eligible"
     assert payload["cost_usd"] == 0
-
-
-def test_raw_notice_ingestion_publishes_exclusion_without_changing_human_status(
-    ai_workspace,
-    monkeypatch,
-):
-    settings, source = ai_workspace
-    import yaml
-
-    from arch_competition_ops.collectors.base import CollectedSourceDocument
-    from arch_competition_ops.ingest import ingest_source
-    from arch_competition_ops.screening import service
-
-    settings.ai_enabled = True
-    settings.ai_triage_enabled = False
-    (settings.root / "config" / "sources.yml").write_text(
-        yaml.safe_dump({"sources": [source.model_dump()]}),
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(
-        "arch_competition_ops.ingest.collect_source_documents",
-        lambda *_a, **_kw: [CollectedSourceDocument(source.base_url, NOTICE)],
-    )
-    monkeypatch.setattr("arch_competition_ops.ingest.enrich_record_geocode", lambda r, **_kw: r)
-    with mock_client(lambda _r: response(decision_payload(decision="exclude"))) as client:
-        monkeypatch.setattr(service, "create_client", lambda _settings: client)
-        result = ingest_source(settings, source_id="city")
-    assert not result.failures
-    with connect(settings.resolve_path(settings.db)) as connection:
-        record = connection.execute("SELECT * FROM competitions").fetchone()
-        advice = connection.execute("SELECT * FROM ai_screening_results").fetchone()
-    assert record["status"] == "discovered"
-    assert record["location_label"] == "Via Roma 10, Milano"
-    assert advice["decision"] == "exclude"
-    assert advice["source_updated_at"] == record["updated_at"]
-
-
-def test_ingest_screens_each_listed_notice_once_until_its_content_changes(
-    ai_workspace,
-    monkeypatch,
-):
-    settings, source = ai_workspace
-    import yaml
-
-    from arch_competition_ops.collectors.base import CollectedSourceDocument
-    from arch_competition_ops.ingest import ingest_source
-    from arch_competition_ops.screening import service, triage
-
-    settings.ai_enabled = True
-    (settings.root / "config" / "sources.yml").write_text(
-        yaml.safe_dump({"sources": [source.model_dump()]}),
-        encoding="utf-8",
-    )
-    listing = [
-        CollectedSourceDocument("https://city.example/n/1", NOTICE),
-        CollectedSourceDocument("https://city.example/n/2", "<p>Stationery supply</p>"),
-    ]
-    monkeypatch.setattr(
-        "arch_competition_ops.ingest.collect_source_documents", lambda *_a, **_kw: list(listing)
-    )
-    monkeypatch.setattr("arch_competition_ops.ingest.enrich_record_geocode", lambda r, **_kw: r)
-    calls = []
-
-    def handler(request):
-        calls.append(request.url.path)
-        if request.url.path.endswith("/decisions"):
-            body = json.loads(request.content)
-            texts = json.loads(body["input"])["candidates"]
-            answers = [
-                {
-                    "type": "choice",
-                    "name": f"candidate_{c['id']}",
-                    "choice": "exclude" if "Stationery" in c["preview"] else "keep",
-                    "confidence": 0.99,
-                }
-                for c in texts
-            ]
-            return httpx.Response(200, json={"answers": answers, "usage": {"input_tokens": 10}})
-        return response(decision_payload())
-
-    # Each stage opens and closes its own client, as create_client does in production.
-    monkeypatch.setattr(service, "create_client", lambda _settings: mock_client(handler))
-    monkeypatch.setattr(triage, "create_client", lambda _settings: mock_client(handler))
-    first = ingest_source(settings, source_id="city")
-    calls_after_first = len(calls)
-    second = ingest_source(settings, source_id="city")
-    calls_after_second = len(calls)
-    # A corrigendum changes the listed content, so that notice alone is screened again.
-    listing[0] = CollectedSourceDocument(
-        "https://city.example/n/1", NOTICE.replace("EUR 50,000", "EUR 60,000")
-    )
-    third = ingest_source(settings, source_id="city")
-
-    assert calls_after_first == 2  # one triage batch, one assessment
-    assert first.filtered_out == 1 and len(first.ingested_ids) == 1
-    # Unchanged notices are neither triaged nor assessed again, the excluded one included.
-    assert calls_after_second == calls_after_first
-    assert second.already_screened == 2
-    assert third.already_screened == 1
-    assert calls[calls_after_second:] == ["/v1/decisions", "/v1/responses"]

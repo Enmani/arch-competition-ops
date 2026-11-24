@@ -16,7 +16,6 @@ from openai import APIConnectionError, APIError, APIStatusError, OpenAI
 from pydantic import ValidationError
 
 from arch_competition_ops.bootstrap import initialize_database
-from arch_competition_ops.config_loader import load_targeting_preferences
 from arch_competition_ops.locking import LockHeldError, exclusive_lock
 from arch_competition_ops.models import CompetitionRecord, SourceDefinition
 from arch_competition_ops.screening.catalog import ScreeningModel, get_model
@@ -29,7 +28,6 @@ from arch_competition_ops.screening.extraction import extract_record
 from arch_competition_ops.screening.inputs import (
     enrich_notice_payload,
     prepare_input,
-    request_arguments,
 )
 from arch_competition_ops.screening.models import ScreeningDecision, validate_evidence
 from arch_competition_ops.settings import Settings
@@ -82,26 +80,10 @@ def _request_one(
         budget_usd=settings.ai_monthly_budget_usd,
         daily_budget_usd=settings.ai_daily_budget_usd,
     )
-    schema = ScreeningDecision.model_json_schema()
-    # Strict Structured Outputs requires every property, including defaulted additions.
-    schema["required"] = list(schema["properties"])
     try:
         # HTTP 429 is retried (bounded) under the same reservation; nothing else is.
         response = call_with_rate_limit_retry(
-            lambda: client.responses.create(
-                model=model.id,
-                **request_arguments(input_json),
-                store=False,
-                service_tier="default",
-                text={
-                    "format": {
-                        "type": "json_schema",
-                        "name": "competition_screening",
-                        "strict": True,
-                        "schema": schema,
-                    }
-                },
-            ),
+            lambda: client.responses.create(**json.loads(input_json)["request"]),
             sleep=sleep,
         )
     except APIStatusError as exc:
@@ -202,7 +184,6 @@ def assess_document(
     every worker thread would make all but one thread fail.
     """
     model = get_model(settings.ai_model)
-    preferences = load_targeting_preferences(settings).model_dump(mode="json")
     db_path = initialize_database(settings)
     row = {
         "source_url": source_url,
@@ -222,7 +203,6 @@ def assess_document(
         input_json, fields, limitations = prepare_input(
             row,
             settings,
-            preferences,
             source_payload=payload,
             fetch_source=False,
         )
@@ -340,7 +320,6 @@ def screen_competitions(
     if not 1 <= limit <= 500:
         raise ValueError("AI screening limit must be between 1 and 500")
     model = get_model(model_id or settings.ai_model)
-    preferences = load_targeting_preferences(settings).model_dump(mode="json")
     db_path = initialize_database(settings)
     result = ScreeningBatchResult(model=model.id)
     # Same database => same OS lock, even when workers use different roots/checkouts.
@@ -359,7 +338,7 @@ def screen_competitions(
                     input_json, fields, limitations = prepare_input(
                         row,
                         settings,
-                        preferences,
+                        model_id=model.id,
                         source_payload=(source_payloads or {}).get(row["id"]),
                         fetch_source=fetch_source,
                     )

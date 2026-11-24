@@ -1,0 +1,220 @@
+{
+  "input": "{\"evidence_fields\":{\"notice_links\":\"https://city.example/n?id=1\\nhttps://city.example/brief\",\"notice_text\":\"Library design Brief\",\"notice_title\":\"Library\",\"notice_url\":\"https://city.example/n?id=1\"}}",
+  "instructions": "Read the notice.",
+  "max_output_tokens": 12288,
+  "model": "gpt-6-luna",
+  "reasoning": {
+    "effort": "low"
+  },
+  "service_tier": "default",
+  "store": false,
+  "text": {
+    "format": {
+      "name": "competition_screening",
+      "schema": {
+        "$defs": {
+          "Evidence": {
+            "additionalProperties": false,
+            "properties": {
+              "field": {
+                "title": "Field",
+                "type": "string"
+              },
+              "quote": {
+                "title": "Quote",
+                "type": "string"
+              }
+            },
+            "required": [
+              "field",
+              "quote"
+            ],
+            "title": "Evidence",
+            "type": "object"
+          },
+          "ExtractedField": {
+            "additionalProperties": false,
+            "properties": {
+              "evidence_field": {
+                "title": "Evidence Field",
+                "type": "string"
+              },
+              "field": {
+                "enum": [
+                  "title",
+                  "organizer",
+                  "authority_name",
+                  "official_url",
+                  "location_label",
+                  "location_city",
+                  "location_region",
+                  "deadline_at",
+                  "registration_fee_eur",
+                  "submission_fee_eur",
+                  "estimated_contract_value_eur",
+                  "estimated_contract_value_text",
+                  "prize_summary",
+                  "eligibility_summary",
+                  "brief_pdf_url",
+                  "documents_portal_url",
+                  "opportunity_type",
+                  "procedure_type",
+                  "implementation_path",
+                  "licensed_architect_required",
+                  "local_partner_required",
+                  "competition_types",
+                  "project_types",
+                  "building_categories",
+                  "design_scopes",
+                  "project_modes",
+                  "audience",
+                  "jurisdiction",
+                  "languages",
+                  "official_notice_id"
+                ],
+                "title": "Field",
+                "type": "string"
+              },
+              "quote": {
+                "title": "Quote",
+                "type": "string"
+              },
+              "value": {
+                "title": "Value",
+                "type": "string"
+              }
+            },
+            "required": [
+              "field",
+              "value",
+              "evidence_field",
+              "quote"
+            ],
+            "title": "ExtractedField",
+            "type": "object"
+          },
+          "NoticeDetail": {
+            "additionalProperties": false,
+            "properties": {
+              "category": {
+                "enum": [
+                  "timeline",
+                  "commercial",
+                  "eligibility",
+                  "scope",
+                  "submission"
+                ],
+                "title": "Category",
+                "type": "string"
+              },
+              "evidence_field": {
+                "title": "Evidence Field",
+                "type": "string"
+              },
+              "quote": {
+                "title": "Quote",
+                "type": "string"
+              },
+              "text": {
+                "title": "Text",
+                "type": "string"
+              }
+            },
+            "required": [
+              "category",
+              "text",
+              "evidence_field",
+              "quote"
+            ],
+            "title": "NoticeDetail",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "enum": [
+              "recommend",
+              "exclude",
+              "needs_review"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/$defs/Evidence"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "extracted_fields": {
+            "items": {
+              "$ref": "#/$defs/ExtractedField"
+            },
+            "title": "Extracted Fields",
+            "type": "array"
+          },
+          "missing_information": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Information",
+            "type": "array"
+          },
+          "notice_details": {
+            "items": {
+              "$ref": "#/$defs/NoticeDetail"
+            },
+            "title": "Notice Details",
+            "type": "array"
+          },
+          "reasons_en": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons En",
+            "type": "array"
+          },
+          "reasons_zh": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons Zh",
+            "type": "array"
+          },
+          "relevance_score": {
+            "maximum": 100,
+            "minimum": 0,
+            "title": "Relevance Score",
+            "type": "integer"
+          },
+          "summary_en": {
+            "title": "Summary En",
+            "type": "string"
+          },
+          "summary_zh": {
+            "title": "Summary Zh",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision",
+          "relevance_score",
+          "summary_zh",
+          "summary_en",
+          "reasons_zh",
+          "reasons_en",
+          "missing_information",
+          "evidence",
+          "extracted_fields",
+          "notice_details"
+        ],
+        "title": "ScreeningDecision",
+        "type": "object"
+      },
+      "strict": true,
+      "type": "json_schema"
+    }
+  }
+}

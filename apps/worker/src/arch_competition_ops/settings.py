@@ -26,7 +26,6 @@ class Settings(BaseSettings):
     root: Path = Field(default_factory=lambda: Path.cwd().resolve())
     db: Path = Path("data") / "competitions.sqlite"
     source_config: Path = Path("config") / "sources.yml"
-    filters_config: Path = Path("config") / "filters.yml"
     taxonomy_config: Path = Path("config") / "taxonomy.yml"
     browser_storage_dir: Path = Path("artifacts") / "crawlee"
     geocode_cache: Path = Path("data") / "geocoding-cache.json"
@@ -44,13 +43,11 @@ class Settings(BaseSettings):
     )
     ai_enabled: bool = False
     ai_model: str = "gpt-6-luna"
-    ai_reasoning_effort: Literal["low", "medium", "high", "xhigh", "max"] = "high"
+    ai_reasoning_effort: Literal["low", "medium", "high", "xhigh", "max"] = "low"
     ai_fetch_details: bool = True
-    ai_triage_enabled: bool = True
     # Most candidates read per source run before triage; the notice ledger skips those already
     # screened, so this bounds only a first run or a criteria change, not daily cost.
     ai_candidate_cap: int = Field(default=2000, ge=1, le=10000)
-    ai_triage_exclude_threshold: float = Field(default=0.98, ge=0.8, le=1)
     ai_daily_budget_usd: float = Field(default=1, ge=0, allow_inf_nan=False)
     ai_preferences: Path = DEFAULT_AI_SKILL
     ai_monthly_budget_usd: float = Field(default=31, ge=0, allow_inf_nan=False)

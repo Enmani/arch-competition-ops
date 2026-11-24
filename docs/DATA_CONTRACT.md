@@ -19,7 +19,6 @@ Read by the system, never replaced without an explicit instruction.
 | Path | Purpose |
 |------|---------|
 | `config/sources.yml`, `config/source_packs/**`, `config/source_lists/**` | source registry |
-| `config/filters.yml` | targeting preferences |
 | `config/skills/screen-architecture-opportunities/SKILL.md` | shared AI judgment skill, versioned with the project and bundled into backend packages |
 | `data/competitions.sqlite` | canonical normalized record store (worker writes opportunities; the web app writes accounts, workspaces and review decisions) |
 | `data/inbox/*` | manually collected URLs or notes waiting for processing |

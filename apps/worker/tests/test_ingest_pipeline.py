@@ -412,44 +412,6 @@ def test_expired_notices_are_counted_and_skipped(workspace, monkeypatch) -> None
     assert result.status == "success"
 
 
-def test_negative_keywords_from_filters_yml_exclude_records(workspace, monkeypatch) -> None:
-    (workspace / "config" / "filters.yml").write_text(
-        "targeting:\n  negative_keywords:\n    - ideas competition\n", encoding="utf-8"
-    )
-    _use_documents(
-        monkeypatch,
-        [
-            _ted_document("KEEP-1"),
-            _ted_document("DROP-1", title="Ideas competition for a new civic square"),
-        ],
-    )
-
-    result = ingest_source(Settings(root=workspace), source_id="ted_design_notices", limit=2)
-
-    assert len(result.ingested_ids) == 1
-    assert result.filtered_out == 1
-
-
-def test_positive_keywords_add_a_small_qualification_bonus(workspace, monkeypatch) -> None:
-    _use_documents(monkeypatch, [_ted_document("BONUS-1")])
-    settings = Settings(root=workspace)
-
-    ingest_source(settings, source_id="ted_design_notices", limit=1)
-    with _db(workspace) as connection:
-        baseline = connection.execute("SELECT qualification_score FROM competitions").fetchone()[0]
-        connection.execute("DELETE FROM competitions")
-        connection.commit()
-
-    (workspace / "config" / "filters.yml").write_text(
-        "targeting:\n  positive_keywords:\n    - waterfront\n", encoding="utf-8"
-    )
-    ingest_source(settings, source_id="ted_design_notices", limit=1)
-    with _db(workspace) as connection:
-        boosted = connection.execute("SELECT qualification_score FROM competitions").fetchone()[0]
-
-    assert boosted == pytest.approx(baseline + 0.05)
-
-
 def test_reingest_keeps_human_status_and_source_identity(workspace, monkeypatch) -> None:
     _use_documents(monkeypatch, [_ted_document()])
     settings = Settings(root=workspace)
