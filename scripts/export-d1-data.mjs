@@ -99,7 +99,10 @@ export function parseArgs(argv) {
 }
 
 function readTableRows(database, spec, columns) {
-  const columnList = columns.map(quoteIdentifier).join(", ");
+  const current = spec.name === "ai_screening_results"
+    ? ", source_updated_at = (SELECT updated_at FROM competitions WHERE id = competition_id) AS current_revision"
+    : "";
+  const columnList = columns.map(quoteIdentifier).join(", ") + current;
   const where = spec.rowFilter ? ` WHERE ${spec.rowFilter}` : "";
   const order = quoteIdentifier(spec.primaryKey);
   return database

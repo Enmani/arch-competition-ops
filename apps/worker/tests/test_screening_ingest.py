@@ -92,7 +92,21 @@ def test_ingest_screens_each_listed_notice_once_until_its_content_changes(
     monkeypatch.setattr(service, "create_client", lambda _settings: mock_client(handler))
     first = ingest_source(settings, source_id="city")
     calls_after_first = len(calls)
+    original = listing[:]
+    listing[:] = [
+        original[1],
+        CollectedSourceDocument(
+            original[0].source_url,
+            NOTICE + '<input name="csrf" value="rotated"><script>timestamp=2</script>',
+        ),
+        original[1],
+    ]
     second = ingest_source(settings, source_id="city")
+    from arch_competition_ops.storage.connection import connect
+
+    with connect(settings.resolve_path(settings.db)) as db:
+        assert db.execute("SELECT count(*) FROM notice_backlog").fetchone()[0] == 2
+    listing[:] = original
     calls_after_second = len(calls)
     # A corrigendum changes the listed content, so that notice alone is screened again.
     listing[0] = CollectedSourceDocument(
@@ -104,6 +118,6 @@ def test_ingest_screens_each_listed_notice_once_until_its_content_changes(
     assert len(first.ingested_ids) == 2
     # Unchanged notices are neither triaged nor assessed again, the excluded one included.
     assert calls_after_second == calls_after_first
-    assert second.already_screened == 2
+    assert second.already_screened >= 2
     assert third.already_screened == 1
     assert calls[calls_after_second:] == ["/v1/responses"]

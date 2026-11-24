@@ -21,12 +21,19 @@ export function buildUpsertStatement(spec, columns, row) {
   const table = quoteIdentifier(spec.name);
   const columnList = columns.map(quoteIdentifier).join(", ");
   const values = columns
-    .map((column) => formatSqlValue(row[column], { table: spec.name, key, column }))
+    .map((column) => {
+      if (spec.name === "ai_screening_results" && column === "source_updated_at" && row.current_revision) {
+        return `(SELECT updated_at FROM competitions WHERE id = ${formatSqlValue(key, { table: spec.name, key, column })})`;
+      }
+      return formatSqlValue(row[column], { table: spec.name, key, column });
+    })
     .join(", ");
   const assignments = updateColumns
     .map((column) => `${quoteIdentifier(column)} = excluded.${quoteIdentifier(column)}`)
     .join(", ");
   const changes = updateColumns
+    .filter(column => !(spec.name === "competitions" && ["discovered_at", "last_verified_at", "updated_at"].includes(column))
+      && !(spec.name === "ai_screening_results" && column === "updated_at"))
     .map((column) => `${table}.${quoteIdentifier(column)} IS NOT excluded.${quoteIdentifier(column)}`)
     .join(" OR ");
   const guard = spec.conflictGuard ? `(${spec.conflictGuard}) AND (${changes})` : changes;

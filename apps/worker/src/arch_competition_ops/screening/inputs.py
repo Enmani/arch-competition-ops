@@ -2,93 +2,21 @@
 
 from __future__ import annotations
 
-import ipaddress
 import json
 import re
-from html.parser import HTMLParser
 from typing import Any
-from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
+from urllib.parse import urlsplit
 
 from arch_competition_ops.http import HttpError, get_default_client
 from arch_competition_ops.normalizers.text import strip_html
 from arch_competition_ops.screening.anthropic import strip_integer_bounds
 from arch_competition_ops.screening.fingerprints import notice_content_hash
 from arch_competition_ops.screening.models import ScreeningDecision, canonical_json
+from arch_competition_ops.screening.notice_urls import URL, PageLinks, public_url
 from arch_competition_ops.screening.preferences import load_screening_instructions
 from arch_competition_ops.screening.providers import provider_identity
 from arch_competition_ops.screening.source_evidence import notice_evidence
 from arch_competition_ops.settings import Settings
-
-URL = re.compile(r"""https?://[^\s<>"'\\]+""", re.I)
-
-
-def public_url(value: str) -> str:
-    try:
-        url = urlsplit(value)
-        host = url.hostname or ""
-        if (
-            url.scheme not in {"http", "https"}
-            or "." not in host
-            or host.endswith((".local", ".localhost", ".internal"))
-        ):
-            return ""
-        try:
-            if not ipaddress.ip_address(host).is_global:
-                return ""
-        except ValueError:
-            pass
-        port = f":{url.port}" if url.port else ""
-        # Public identifiers survive; unknown query parameters can carry signed credentials.
-        query = [
-            (k, v)
-            for k, v in parse_qsl(url.query)
-            if k.lower()
-            in {
-                "id",
-                "noticeid",
-                "projectid",
-                "oid",
-                "publicationid",
-                "tenderid",
-                "tendno",
-                "tendseq",
-                "frameworkagreementseq",
-                "tendcategcd",
-                "intrllocaltypecd",
-                "tendmthodcd",
-                "invtyn",
-                "stenderid",
-                "noticeversion",
-                "pid",
-                "idevl",
-                "toid",
-                "category",
-                "function",
-                "uri",
-                "meformsnoticeid",
-                "projectnumber",
-                "docid",
-                "resid",
-            }
-            or (k == "q" and re.fullmatch(r"idweb:[\w-]+", v))
-        ]
-        return urlunsplit((url.scheme, host + port, url.path, urlencode(query), ""))
-    except ValueError:
-        return ""
-
-
-class _PageLinks(HTMLParser):
-    def __init__(self, base_url: str):
-        super().__init__(convert_charrefs=True)
-        self.base_url = base_url
-        self.links: list[str] = []
-
-    def handle_starttag(self, tag, attrs):
-        for key, value in attrs:
-            if key == "href" and value:
-                absolute = urljoin(self.base_url, value)
-                if absolute.startswith(("https://", "http://")):
-                    self.links.append(absolute)
 
 
 def enrich_notice_payload(payload: str, source_url: str, settings: Settings) -> str:
@@ -169,7 +97,7 @@ def prepare_input(
     source_payload = notice_evidence(source_payload or "")
     text = re.sub(r"<(script|style)\b[^>]*>.*?</\1>", " ", source_payload or "", flags=re.I | re.S)
     text = strip_html(text) or ""
-    links = _PageLinks(source_url)
+    links = PageLinks(source_url)
     links.feed(source_payload or "")
     links.links.extend(URL.findall(text))
     fields = {}

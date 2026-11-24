@@ -147,7 +147,12 @@ def upsert_in_connection(
         incoming,
         source_label=record.source_name or record.source_id or "the source",
     )
-    _write_row(connection, merged, exists=existing is not None)
+    if existing is None or any(
+        existing[key] != value
+        for key, value in merged.items()
+        if key not in {"updated_at", "discovered_at", "last_verified_at"}
+    ):
+        _write_row(connection, merged, exists=existing is not None)
     return merged["id"]
 
 

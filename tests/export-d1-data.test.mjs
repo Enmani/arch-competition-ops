@@ -63,6 +63,19 @@ test("a database without schema_migrations bookkeeping passes the schema check",
   assert.ok(result.files.length >= 4);
 });
 
+test("verification timestamps alone leave public opportunity rows untouched", (t) => {
+  const workspace = createWorkspace(t);
+  createLocalDatabase(workspace.dbPath, seedWorkerData);
+  const remote = applyMigrations(new Database(":memory:"));
+  t.after(() => remote.close());
+  executeFiles(remote, runInto(workspace));
+  const local = new Database(workspace.dbPath);
+  local.prepare("UPDATE competitions SET last_verified_at=?, discovered_at=?, updated_at=?")
+    .run("2030-01-01", "2020-01-01", "2030-01-01");
+  local.close();
+  assert.equal(executeFiles(remote, runInto(workspace, { now: new Date("2030-01-01") })), 0);
+});
+
 test("generated upserts are idempotent and use ON CONFLICT DO UPDATE", (t) => {
   const workspace = createWorkspace(t);
   createLocalDatabase(workspace.dbPath, seedWorkerData);

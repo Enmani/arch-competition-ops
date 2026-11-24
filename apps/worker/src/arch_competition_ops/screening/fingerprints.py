@@ -1,8 +1,11 @@
 """Identity of one notice version and its assessment contract."""
 
 import hashlib
+import re
 
+from arch_competition_ops.normalizers.text import strip_html
 from arch_competition_ops.screening.models import ScreeningDecision, canonical_json
+from arch_competition_ops.screening.notice_urls import URL, PageLinks, public_url
 from arch_competition_ops.screening.preferences import load_screening_instructions
 from arch_competition_ops.screening.providers import provider_identity
 from arch_competition_ops.screening.source_evidence import notice_evidence
@@ -14,7 +17,16 @@ def digest(text: str) -> str:
 
 
 def notice_content_hash(payload: str, url: str) -> str:
-    return digest(canonical_json([url, notice_evidence(payload)]))
+    material = notice_evidence(payload)
+    visible = re.sub(r"<(script|style)\b[^>]*>.*?</\1>", " ", material, flags=re.I | re.S)
+    links = PageLinks(url)
+    links.feed(visible)
+    text = URL.sub(lambda m: public_url(m[0]), strip_html(visible) or "")
+    return digest(
+        canonical_json(
+            [public_url(url) or url, text, sorted(set(filter(None, map(public_url, links.links))))]
+        )
+    )
 
 
 def screening_criteria_hash(settings: Settings) -> str:

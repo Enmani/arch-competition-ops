@@ -231,7 +231,9 @@ def _publish_in_connection(
         "VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(competition_id) DO UPDATE SET "
         "source_updated_at=excluded.source_updated_at, model=excluded.model, "
         "decision=excluded.decision, relevance_score=excluded.relevance_score, "
-        "result_json=excluded.result_json, updated_at=excluded.updated_at",
+        "result_json=excluded.result_json, updated_at=excluded.updated_at "
+        "WHERE source_updated_at IS NOT excluded.source_updated_at OR decision IS NOT excluded.decision "
+        "OR relevance_score IS NOT excluded.relevance_score OR result_json IS NOT excluded.result_json",
         (
             competition_id,
             source_updated_at,
