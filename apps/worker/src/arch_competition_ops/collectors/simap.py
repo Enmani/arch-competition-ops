@@ -16,7 +16,15 @@ from arch_competition_ops.collectors.common import (
     fetch_json_get,
     pick_localized_text,
 )
-from arch_competition_ops.collectors.pagination import page_limit, unfinished_page
+from arch_competition_ops.collectors.pagination import (
+    bounded_pages,
+    current_pages,
+    next_page,
+    page_items,
+    page_limit,
+    page_position,
+    unfinished_page,
+)
 from arch_competition_ops.http import HttpError
 from arch_competition_ops.models import SourceDefinition
 from arch_competition_ops.normalizers.dates import parse_date_string
@@ -153,14 +161,14 @@ def _search_projects(
     get_json: FetchJson, params: dict[str, Any], window_start: date
 ) -> Iterator[dict[str, Any]]:
     """Every project of one search, newest publication first, until the window ends."""
-    last_item: str | None = None
-    for _ in range(page_limit(SIMAP_MAX_PAGES)):
+    last_item: str | None = page_position(None)
+    for _ in bounded_pages(range(page_limit(SIMAP_MAX_PAGES))):
         query = {**params, **({"lastItem": last_item} if last_item else {})}
         response = get_json(build_url(SIMAP_PROJECT_SEARCH_URL, query))
         projects = response.get("projects") if isinstance(response, dict) else None
         if not isinstance(projects, list) or not projects:
             return
-        for project in projects:
+        for project in page_items(projects):
             if not isinstance(project, dict):
                 continue
             published = parse_date_string(str(project.get("publicationDate") or ""))
@@ -170,7 +178,11 @@ def _search_projects(
                 return
             yield project
         pagination = response.get("pagination")
+        if current_pages() and current_pages().rows >= current_pages().items:
+            unfinished_page()
+            return
         last_item = pagination.get("lastItem") if isinstance(pagination, dict) else None
+        next_page(last_item)
         if not last_item:
             return
     unfinished_page()

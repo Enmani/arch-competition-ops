@@ -202,6 +202,9 @@ def run_automation_batch(
         limit_per_source=effective_limit,
     )
 
+    settings = settings.model_copy()
+    settings._reading_run_since = clock.now_utc().isoformat()
+
     def run_sources() -> None:
         def run_one(index: int, source: SourceDefinition):
             logger.info("Source %d/%d: %s", index, len(sources), source.source_id)

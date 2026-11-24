@@ -10,6 +10,7 @@ from arch_competition_ops.collectors.common import (
     build_url,
     fetch_json_get,
 )
+from arch_competition_ops.collectors.pagination import window_end
 from arch_competition_ops.collectors.uk_ocds import (
     OCDS_PAGE_SIZE,
     iter_ocds_releases,
@@ -42,7 +43,7 @@ def _default_fetch_json(url: str) -> dict:
 
 
 def _resolve_search_window(publication_date_from: str | None) -> tuple[str, str]:
-    today = clock.today()
+    today = window_end(clock.today())
     published_from = publication_date_from or today.replace(day=1).isoformat()
     published_to = today.isoformat()
     return f"{published_from}T00:00:00", f"{published_to}T23:59:59"

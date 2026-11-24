@@ -40,7 +40,13 @@ from arch_competition_ops.collectors.mideast_common import (
     parse_dmy,
     window_start,
 )
-from arch_competition_ops.collectors.pagination import page_limit, unfinished_page
+from arch_competition_ops.collectors.pagination import (
+    numbered_pages,
+    page_items,
+    page_limit,
+    unfinished_page,
+    window_end,
+)
 from arch_competition_ops.models import SourceDefinition
 
 logger = logging.getLogger(__name__)
@@ -212,13 +218,13 @@ def collect_joneps_documents(
     sequence.
     """
     start = window_start(publication_date_from)
-    today = clock.today()
+    today = window_end(clock.today())
     run_search = search or _Session().search
     kept: list[dict[str, Any]] = []
     seen_numbers: set[str] = set()
     for tender_type, sub_type in (("", None),):
         seen_rows: set[str] = set()
-        for page in range(1, page_limit(MAX_PAGES) + 1):
+        for page in numbered_pages(range(1, page_limit(MAX_PAGES) + 1)):
             rows = _parse_rows(
                 run_search(
                     _search_fields(tender_type, sub_type, start=start, today=today, page=page)
@@ -226,7 +232,7 @@ def collect_joneps_documents(
             )
             fresh = [row for row in rows if row["url"] not in seen_rows]
             seen_rows.update(row["url"] for row in fresh)
-            for row in fresh:
+            for row in page_items(fresh):
                 published = row["published"]
                 if published is None or published < start:
                     continue

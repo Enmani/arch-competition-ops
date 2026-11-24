@@ -14,7 +14,12 @@ from arch_competition_ops.collectors.common import (
     fetch_json_get,
     fetch_json_post,
 )
-from arch_competition_ops.collectors.pagination import page_limit, unfinished_page
+from arch_competition_ops.collectors.pagination import (
+    numbered_pages,
+    page_items,
+    page_limit,
+    unfinished_page,
+)
 from arch_competition_ops.http import HttpError
 from arch_competition_ops.models import SourceDefinition
 from arch_competition_ops.normalizers.dates import parse_date_string
@@ -76,7 +81,7 @@ def _search_hits(
     window_from: str | None,
 ) -> Iterator[dict[str, Any]]:
     """Hits newest first, page by page, until the window, the results or the page cap end."""
-    for page in range(1, page_limit(MAX_PAGES) + 1):
+    for page in numbered_pages(range(1, page_limit(MAX_PAGES) + 1)):
         body = _build_search_body(
             page,
             window_from=window_from,
@@ -94,7 +99,7 @@ def _search_hits(
                     total,
                     accessible,
                 )
-        for hit in hits:
+        for hit in page_items(hits):
             if not isinstance(hit, dict):
                 continue
             published = parse_date_string(str(hit.get("publicationDate") or ""))

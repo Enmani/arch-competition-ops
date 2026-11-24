@@ -19,7 +19,12 @@ from arch_competition_ops.collectors.mideast_common import (
     page_text,
     window_start,
 )
-from arch_competition_ops.collectors.pagination import page_limit, unfinished_page
+from arch_competition_ops.collectors.pagination import (
+    numbered_pages,
+    page_items,
+    page_limit,
+    unfinished_page,
+)
 from arch_competition_ops.http import HttpError
 from arch_competition_ops.models import SourceDefinition
 
@@ -189,7 +194,7 @@ def collect_bahrain_tender_board_documents(
         )
     documents: list[CollectedSourceDocument] = []
     seen: set[str] = set()
-    for page in range(1, min(int(pages), page_limit(MAX_PAGES)) + 1):
+    for page in numbered_pages(range(1, min(int(pages), page_limit(MAX_PAGES)) + 1)):
         if len(documents) >= limit:
             break
         rows = _parse_rows(post("GetCurrentPublicTenderByPage", _query(page)).get("d") or "")
@@ -199,7 +204,7 @@ def collect_bahrain_tender_board_documents(
                 unfinished_page()
             break
         seen.update(row["tenderId"] for row in fresh)
-        for row in fresh:
+        for row in page_items(fresh):
             published = row["published"]
             if published is None or published < start:
                 continue

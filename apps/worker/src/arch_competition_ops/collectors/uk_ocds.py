@@ -7,7 +7,15 @@ from collections.abc import Callable, Iterator
 from typing import Any
 from urllib.parse import urlsplit
 
-from arch_competition_ops.collectors.pagination import page_limit, unfinished_page
+from arch_competition_ops.collectors.pagination import (
+    bounded_pages,
+    current_pages,
+    next_page,
+    page_items,
+    page_limit,
+    page_position,
+    unfinished_page,
+)
 from arch_competition_ops.normalizers.money import format_money_text
 
 logger = logging.getLogger(__name__)
@@ -31,9 +39,11 @@ def iter_ocds_releases(
     """
     host = urlsplit(first_url).netloc
     seen: set[str] = set()
-    url: str | None = first_url
-    while url:
-        if url in seen or urlsplit(url).netloc != host or len(seen) >= page_limit(OCDS_MAX_PAGES):
+    url: str | None = page_position(first_url)
+    for _ in bounded_pages(range(page_limit(OCDS_MAX_PAGES))):
+        if not url:
+            return
+        if url in seen or urlsplit(url).netloc != host:
             unfinished_page()
             logger.warning(
                 "Stopped OCDS paging after %d pages at %s (repeated, foreign or over cap)",
@@ -45,12 +55,18 @@ def iter_ocds_releases(
         payload = fetch_json(url)
         if not isinstance(payload, dict):
             return
-        for release in payload.get("releases") or []:
+        for release in page_items(payload.get("releases") or []):
             if isinstance(release, dict):
                 yield release
+        if current_pages() and current_pages().rows >= current_pages().items:
+            unfinished_page()
+            return
         links = payload.get("links")
         next_url = links.get("next") if isinstance(links, dict) else None
         url = next_url if isinstance(next_url, str) and next_url.strip() else None
+        next_page(url)
+    if url:
+        unfinished_page()
 
 
 def pick_buyer_name(release: dict) -> str | None:

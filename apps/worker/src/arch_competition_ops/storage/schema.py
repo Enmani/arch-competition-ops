@@ -171,6 +171,15 @@ def _apply_schema(db_path: Path) -> None:
                 _add_missing_competition_columns(connection)
             for statement in _statements():
                 _execute_schema_statement(connection, statement)
+            for table, column, definition in (
+                ("collection_resume", "date_to", "TEXT"),
+                ("collection_resume", "cursor", "TEXT NOT NULL DEFAULT ''"),
+                ("notice_backlog", "expires_on", "TEXT"),
+            ):
+                if column not in {
+                    row[1] for row in connection.execute(f"PRAGMA table_info({table})")
+                }:
+                    connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
             _ensure_workspace_watchlist_entry_uniqueness(connection)
         except BaseException:
             connection.execute("ROLLBACK")

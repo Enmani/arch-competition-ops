@@ -46,7 +46,12 @@ from arch_competition_ops.collectors.mideast_common import (
     parse_dmy,
     window_start,
 )
-from arch_competition_ops.collectors.pagination import page_limit, unfinished_page
+from arch_competition_ops.collectors.pagination import (
+    numbered_pages,
+    page_items,
+    page_limit,
+    unfinished_page,
+)
 from arch_competition_ops.http import HttpError
 from arch_competition_ops.models import SourceDefinition
 
@@ -217,7 +222,7 @@ def collect_monaqasat_documents(
     get = fetch_text or _default_fetch_text
     candidates: list[dict[str, Any]] = []
     seen: set[str] = set()
-    for page_number in range(1, page_limit(MAX_PAGES) + 1):
+    for page_number in numbered_pages(range(1, page_limit(MAX_PAGES) + 1)):
         cards = _parse_cards(get(LIST_URL.format(page=page_number)))
         fresh = [card for card in cards if card["tenderId"] not in seen]
         if not fresh:
@@ -225,7 +230,7 @@ def collect_monaqasat_documents(
                 unfinished_page()
             break
         seen.update(card["tenderId"] for card in fresh)
-        for card in fresh:
+        for card in page_items(fresh):
             published = card["published"]
             if published is None or published < start:
                 continue

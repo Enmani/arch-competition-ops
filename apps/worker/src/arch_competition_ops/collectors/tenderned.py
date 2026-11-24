@@ -14,7 +14,12 @@ from arch_competition_ops.collectors.common import (
     build_url,
     fetch_json_get,
 )
-from arch_competition_ops.collectors.pagination import page_limit, unfinished_page
+from arch_competition_ops.collectors.pagination import (
+    numbered_pages,
+    page_items,
+    page_limit,
+    unfinished_page,
+)
 from arch_competition_ops.http import HttpError
 from arch_competition_ops.models import SourceDefinition
 from arch_competition_ops.normalizers.dates import parse_date_string
@@ -39,7 +44,7 @@ def _list_rows(
     fetch: FetchJson, base_url: str, filters: dict[str, Any], window_from: str
 ) -> Iterator[dict[str, Any]]:
     """Rows newest first, page by page, until the window, the results or the page cap end."""
-    for page in range(page_limit(MAX_PAGES)):
+    for page in numbered_pages(range(page_limit(MAX_PAGES))):
         list_payload = fetch(
             build_url(
                 base_url,
@@ -49,7 +54,7 @@ def _list_rows(
         rows = list_payload.get("content") if isinstance(list_payload, dict) else None
         if not isinstance(rows, list) or not rows:
             return
-        for row in rows:
+        for row in page_items(rows):
             if not isinstance(row, dict):
                 continue
             published = parse_date_string(str(row.get("publicatieDatum") or ""))

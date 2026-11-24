@@ -14,6 +14,7 @@ from urllib import parse
 from arch_competition_ops import clock
 from arch_competition_ops.collectors.base import CollectedSourceDocument
 from arch_competition_ops.collectors.common import DEFAULT_HEADERS, build_url
+from arch_competition_ops.collectors.pagination import numbered_pages, page_items, window_end
 from arch_competition_ops.http import HttpStatusError, get_default_client
 from arch_competition_ops.models import SourceDefinition
 from arch_competition_ops.normalizers.money import format_money_text
@@ -62,7 +63,7 @@ def _export_url(day: date, export_format: str) -> str:
 
 def _publication_days(publication_date_from: str | None) -> list[date]:
     """Days to read, newest first: yesterday back to ``publication_date_from`` (inclusive)."""
-    newest = clock.today() - timedelta(days=1)
+    newest = window_end(clock.today() - timedelta(days=1))
     oldest = (
         date.fromisoformat(publication_date_from)
         if publication_date_from
@@ -294,10 +295,14 @@ def collect_oeffentlichevergabe_documents(
     documents: list[CollectedSourceDocument] = []
     # Procedures already decided by a newer release in the window (emitted, awarded or skipped).
     seen_procedures: set[str] = set()
-    for day in _publication_days(publication_date_from):
+    days = _publication_days(publication_date_from)
+    for index in numbered_pages(range(len(days))):
+        if index >= len(days):
+            break
+        day = days[index]
         if len(documents) >= limit:
             break
-        for key, release, detail in _day_releases(day, fetch):
+        for key, release, detail in page_items(_day_releases(day, fetch)):
             procedure = str(release.get("ocid") or key[0])
             if procedure in seen_procedures:
                 continue

@@ -32,7 +32,12 @@ from urllib import parse
 
 from arch_competition_ops.collectors.base import CollectedSourceDocument
 from arch_competition_ops.collectors.common import build_url, fetch_text_get
-from arch_competition_ops.collectors.pagination import page_limit, unfinished_page
+from arch_competition_ops.collectors.pagination import (
+    numbered_pages,
+    page_items,
+    page_limit,
+    unfinished_page,
+)
 from arch_competition_ops.models import SourceDefinition
 from arch_competition_ops.normalizers.text import strip_html
 
@@ -167,12 +172,12 @@ def collect_isdb_documents(
     documents: list[CollectedSourceDocument] = []
     seen: set[str] = set()
 
-    for page_index in range(page_limit(MAX_PAGES)):
+    for page_index in numbered_pages(range(page_limit(MAX_PAGES))):
         page = fetch(build_url(ISDB_TENDERS_URL, {"status": "active", "page": page_index}))
         tenders = parse_tender_list(page)
         if not tenders:
             return documents
-        for tender in tenders:
+        for tender in page_items(tenders):
             path = str(tender["path"])
             if path in seen:
                 continue

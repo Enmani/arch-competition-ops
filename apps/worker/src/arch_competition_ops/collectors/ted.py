@@ -8,7 +8,12 @@ from typing import Any
 
 from arch_competition_ops.collectors.base import CollectedSourceDocument
 from arch_competition_ops.collectors.common import fetch_json_post
-from arch_competition_ops.collectors.pagination import page_limit, unfinished_page
+from arch_competition_ops.collectors.pagination import (
+    bounded_pages,
+    current_pages,
+    page_limit,
+    unfinished_page,
+)
 from arch_competition_ops.models import SourceDefinition
 from arch_competition_ops.normalizers.money import format_money_text
 
@@ -16,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 TED_SEARCH_URL = "https://api.ted.europa.eu/v3/notices/search"
 TED_PAGE_SIZE = 250  # The search API's largest page.
-TED_MAX_PAGES = 40  # 10,000 notices: far above any week of the AI scope (~1,200).
+TED_MAX_PAGES = 40  # Per-run ceiling. Save the iteration token when more pages remain.
 TED_FIELDS = [
     "notice-title",
     "notice-type",
@@ -182,9 +187,10 @@ def _search(
     with a sort stopped early (750, or 500 at page size 100). Callers sort locally.
     """
     kept: list[dict[str, Any]] = []
-    token: str | None = None
+    window = current_pages()
+    token = (window.cursor or None) if window else None
     tokens = set()
-    for _page in range(page_limit(TED_MAX_PAGES)):
+    for _page in bounded_pages(range(page_limit(TED_MAX_PAGES))):
         body: dict[str, Any] = {
             "query": query,
             "fields": TED_FIELDS,
@@ -200,8 +206,13 @@ def _search(
         if token and token in tokens:
             unfinished_page()
             break
+        if window:
+            window.cursor = token or ""
         tokens.add(token)
         if not notices or not token:
+            break
+        if window and len(kept) + page_size > window.items:
+            unfinished_page()
             break
     else:
         unfinished_page()
@@ -246,8 +257,12 @@ def collect_ted_documents(
     """Read the publication window and deduplicate repeated listings."""
     query_date = _normalize_publication_date(publication_date_from)
     query = f"publication-date >= {query_date}"
+    window = current_pages()
+    if window and window.end:
+        query += f" AND publication-date <= {_normalize_publication_date(window.end)}"
     fetch = fetch_json or _default_fetch_json
-    notices = _merge_newest_first(_search(fetch, query, page_size=TED_PAGE_SIZE))
+    size = min(TED_PAGE_SIZE, limit) if window else TED_PAGE_SIZE
+    notices = _merge_newest_first(_search(fetch, query, page_size=size))
     documents: list[CollectedSourceDocument] = []
     for notice in notices[:limit]:
         source_url, payload = _build_notice_payload(notice)

@@ -42,7 +42,12 @@ from arch_competition_ops.collectors.mideast_common import (
     raise_if_challenged,
     window_start,
 )
-from arch_competition_ops.collectors.pagination import page_limit, unfinished_page
+from arch_competition_ops.collectors.pagination import (
+    numbered_pages,
+    page_items,
+    page_limit,
+    unfinished_page,
+)
 from arch_competition_ops.http import HttpError, HttpStatusError
 from arch_competition_ops.models import SourceDefinition
 
@@ -173,7 +178,7 @@ def _walk_scope(
     """Rows of one main activity, newest first, until the window, the end or the page cap."""
     bucket = _publish_bucket(start)
     seen: set[Any] = set()
-    for page in range(1, page_limit(MAX_PAGES_PER_SCOPE) + 1):
+    for page in numbered_pages(range(1, page_limit(MAX_PAGES_PER_SCOPE) + 1)):
         try:
             response = fetch_json(_page_url(activity, bucket, page))
         except HttpStatusError as exc:
@@ -189,7 +194,7 @@ def _walk_scope(
                 unfinished_page()
             return
         seen.update(r.get("tenderId") for r in fresh)
-        yield from fresh
+        yield from page_items(fresh)
         published = [d for d in (_iso_day(r.get("submitionDate")) for r in fresh) if d]
         if published and max(published) < start:
             return

@@ -13,7 +13,12 @@ from arch_competition_ops.collectors.common import (
     build_url,
     fetch_json_get,
 )
-from arch_competition_ops.collectors.pagination import page_limit, unfinished_page
+from arch_competition_ops.collectors.pagination import (
+    bounded_pages,
+    current_pages,
+    page_limit,
+    unfinished_page,
+)
 from arch_competition_ops.models import SourceDefinition
 from arch_competition_ops.normalizers.dates import parse_date_string
 from arch_competition_ops.normalizers.money import format_money_text, parse_money_number
@@ -119,14 +124,25 @@ def _window_start(publication_date_from: str | None) -> date:
 
 
 def _search_url(window_start: date, page: int) -> str:
+    window = current_pages()
+    where = f"dateparution >= date'{window_start.isoformat()}'"
+    if window and window.end:
+        where += f" AND dateparution <= date'{window.end}'"
+        if window.cursor:
+            published, notice_id = json.loads(window.cursor)
+            literal = json.dumps(notice_id)
+            where += (
+                f" AND (dateparution < date'{published}' OR "
+                f"(dateparution = date'{published}' AND idweb < {literal}))"
+            )
     return build_url(
         BOAMP_SEARCH_URL,
         {
-            "where": f"dateparution >= date'{window_start.isoformat()}'",
+            "where": where,
             # ``idweb`` breaks ties within a day so offset paging neither repeats nor skips rows.
             "order_by": "dateparution desc, idweb desc",
             "limit": PAGE_SIZE,
-            "offset": page * PAGE_SIZE,
+            "offset": 0 if window and window.end else page * PAGE_SIZE,
         },
     )
 
@@ -179,7 +195,7 @@ def collect_boamp_documents(
     window_start = _window_start(publication_date_from)
     documents: list[CollectedSourceDocument] = []
 
-    for page in range(page_limit(MAX_PAGES)):
+    for page in bounded_pages(range(page_limit(MAX_PAGES))):
         response = get_json(_search_url(window_start, page))
         results = response.get("results", []) if isinstance(response, dict) else []
         if not isinstance(results, list) or not results:
@@ -192,11 +208,15 @@ def collect_boamp_documents(
             if publication_date and date.fromisoformat(publication_date) < window_start:
                 # Newest first: every later row is older than the window too.
                 return documents
+            window = current_pages()
+            if window and publication_date and item.get("idweb"):
+                window.cursor = json.dumps([publication_date, item["idweb"]])
             document = _build_document(source, item, publication_date)
             if document is None:
                 continue
             documents.append(document)
             if len(documents) >= limit:
+                unfinished_page()
                 return documents
 
         if len(results) < PAGE_SIZE:

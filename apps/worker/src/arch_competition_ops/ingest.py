@@ -164,6 +164,9 @@ def ingest_source(
     queued_row_ids: list[int] | None = None,
     collected_documents: list[CollectedSourceDocument] | None = None,
 ) -> IngestResult:
+    if settings._reading_run_since is None:
+        settings = settings.model_copy()
+        settings._reading_run_since = clock.now_utc().isoformat()
     configure_procedure_registry(settings.root)
     source = _find_enabled_source(settings, source_id)
     db_path = initialize_database(settings)
@@ -193,14 +196,30 @@ def ingest_source(
 
     criteria_hash = screening_criteria_hash(settings) if settings.ai_enabled else None
     if queued_row_ids is None:
-        start, collection_limit = backlog.collection_window(
+        collection_limit = settings.ai_candidate_cap
+        start, end, cursor = backlog.collection_window(
             db_path,
             source_id,
             publication_date_from or (clock.today() - timedelta(days=7)).isoformat(),
-            settings.ai_candidate_cap,
+            collection_limit,
+            settings.discovery_window_days,
+            source.collector
+            in {
+                "ted_search_api",
+                "boamp_opendatasoft",
+                "ggzy_public_notices",
+                "joneps_tender_invitations",
+                "contracts_finder_ocds",
+                "find_a_tender_ocds",
+                "oeffentlichevergabe_ocds",
+            },
         )
+        requested_start = start
+        if end is None:
+            floor = (clock.today() - timedelta(days=settings.discovery_window_days - 1)).isoformat()
+            start = max(start, floor)
         try:
-            with track_pages(max(1, collection_limit // settings.ai_candidate_cap)) as pages:
+            with track_pages(settings.discovery_page_cap, collection_limit, end, cursor) as pages:
                 discovered = (
                     collected_documents
                     if collected_documents is not None
@@ -216,21 +235,37 @@ def ingest_source(
             with connect(db_path) as cx:
                 _, stats = backlog.queue_stats(cx, source_id)
             raise IngestError(source_id, "collection", exc, f" ({stats})") from exc
+        discovered = discovered[:collection_limit]
         result.document_count = len(discovered)
-        result.already_screened, count, stats = backlog.enqueue(
+        result.already_screened, count, stats, result.skipped_expired = backlog.enqueue(
             db_path,
             source_id,
             discovered,
             criteria_hash,
-            unfinished=max(pages.unfinished, int(len(discovered) >= collection_limit)),
-            cap=settings.ai_candidate_cap,
+            unfinished=pages.unfinished
+            or (len(discovered) >= collection_limit and source.collector != "ted_search_api"),
+            cap=collection_limit,
+            cursor=pages.cursor,
+            end=end,
+            age_days=settings.unread_max_age_days,
         )
+        if start != requested_start:
+            stats += f" live_window_from={start} unavailable_history_from={requested_start}"
+        if pages.unfinished or len(discovered) >= collection_limit:
+            stats += (f" discovery_limit source={source_id} pages={pages.used}"
+                      f" items={collection_limit} resume_from={start}")
+        if end and end < clock.today().isoformat():
+            stats += f" discovery_window_through={end} backfill_pending=1"
         result.notes.append(stats)
         if collect_only or not settings.ai_enabled:
             result.deferred = count
             result.status = "success" if discovered or count else "empty"
             record_run(result.status, last_error=None)
             return result
+    if queued_row_ids is not None:
+        with connect(db_path) as cx:
+            backlog.retire_unread(cx, source_id, settings.unread_max_age_days)
+            cx.commit()
     documents = backlog.queued(db_path, source_id, limit, queued_row_ids)
     if queued_row_ids is not None:
         result.document_count = len(documents)

@@ -13,7 +13,12 @@ from arch_competition_ops.collectors.common import (
     build_url,
     fetch_json_get,
 )
-from arch_competition_ops.collectors.pagination import page_limit, unfinished_page
+from arch_competition_ops.collectors.pagination import (
+    numbered_pages,
+    page_items,
+    page_limit,
+    unfinished_page,
+)
 from arch_competition_ops.extractors.anac import resolve_anac_record_status
 from arch_competition_ops.models import SourceDefinition
 from arch_competition_ops.normalizers.dates import parse_date_string
@@ -199,13 +204,13 @@ def collect_anac_documents(
     documents: list[CollectedSourceDocument] = []
     seen_ids: set[str] = set()
 
-    for page in range(page_limit(MAX_PAGES)):
+    for page in numbered_pages(range(page_limit(MAX_PAGES))):
         response = get_json(_search_url(window_start, page))
         content = response.get("content", []) if isinstance(response, dict) else []
         if not isinstance(content, list) or not content:
             return documents
 
-        for item in content:
+        for item in page_items(content):
             if not isinstance(item, dict):
                 continue
             publication_date = parse_date_string(str(item.get("dataPubblicazione") or ""))

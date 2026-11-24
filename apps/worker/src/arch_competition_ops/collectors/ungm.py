@@ -14,7 +14,12 @@ from typing import Any
 from arch_competition_ops import clock
 from arch_competition_ops.collectors.base import CollectedSourceDocument
 from arch_competition_ops.collectors.common import DEFAULT_HEADERS, fetch_text_get
-from arch_competition_ops.collectors.pagination import page_limit, unfinished_page
+from arch_competition_ops.collectors.pagination import (
+    numbered_pages,
+    page_items,
+    page_limit,
+    unfinished_page,
+)
 from arch_competition_ops.http import HttpStatusError, get_default_client
 from arch_competition_ops.models import SourceDefinition
 
@@ -264,7 +269,7 @@ def collect_ungm_documents(
     documents: list[CollectedSourceDocument] = []
     seen: set[str] = set()
 
-    for page in range(page_limit(MAX_PAGES)):
+    for page in numbered_pages(range(page_limit(MAX_PAGES))):
         try:
             fragment = fetch(_search_body(page, window_start))
         except Exception:
@@ -276,7 +281,7 @@ def collect_ungm_documents(
             return documents
         row_count, notices = parse_notice_rows(fragment)
 
-        for notice in notices:
+        for notice in page_items(notices):
             published = notice["publishedAt"]
             if published is not None and date.fromisoformat(published) < window_start:
                 return documents

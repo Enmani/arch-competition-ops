@@ -89,6 +89,7 @@ def _request_one(
         reserve_usd=reserve,
         budget_usd=settings.ai_monthly_budget_usd,
         daily_budget_usd=settings.ai_daily_budget_usd,
+        run_since=settings._reading_run_since,
     )
     response = read_notice(
         client, settings.ai_provider, json.loads(input_json)["request"], sleep=sleep

@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-from pydantic import AliasChoices, Field, SecretStr
+from pydantic import AliasChoices, Field, PrivateAttr, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_AI_SKILL = Path("config/skills/screen-architecture-opportunities/SKILL.md")
@@ -54,6 +54,10 @@ class Settings(BaseSettings):
     ai_reasoning_effort: Literal["low", "medium", "high", "xhigh", "max"] = "low"
     ai_fetch_details: bool = True
     # Initial discovery limit per source. The paid reading limit is set on each batch.
+    _reading_run_since: str | None = PrivateAttr(default=None)
+    discovery_page_cap: int = Field(default=40, ge=1, le=200)
+    discovery_window_days: int = Field(default=7, ge=1, le=30)
+    unread_max_age_days: int = Field(default=30, ge=1)
     ai_notice_max_attempts: int = Field(default=3, ge=1)
     ai_candidate_cap: int = Field(default=2000, ge=1, le=10000)
     ai_daily_budget_usd: float = Field(default=5, ge=0, allow_inf_nan=False)

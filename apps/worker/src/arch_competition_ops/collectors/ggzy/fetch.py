@@ -16,7 +16,12 @@ from arch_competition_ops.collectors.ggzy.html_text import (
     extract_original_category_text,
     normalize_space,
 )
-from arch_competition_ops.collectors.pagination import page_limit, unfinished_page
+from arch_competition_ops.collectors.pagination import (
+    bounded_pages,
+    current_pages,
+    page_limit,
+    unfinished_page,
+)
 from arch_competition_ops.http import HttpError, HttpStatusError, HttpTransportError
 from arch_competition_ops.models import SourceDefinition
 from arch_competition_ops.normalizers.dates import parse_date_string
@@ -107,11 +112,13 @@ def iter_candidate_rows(
     start_date = (
         publication_date_from or (today - timedelta(days=DEFAULT_LOOKBACK_DAYS)).isoformat()
     )
-    end_date = today.isoformat()
+    window = current_pages()
+    end_date = window.end if window and window.end else today.isoformat()
+    page, skip = map(int, (window.cursor if window and window.cursor else "1:0").split(":"))
     seen_ids: set[str] = set()
     candidates: list[dict[str, Any]] = []
 
-    for page_number in range(1, page_limit(200) + 1):
+    for page_number in bounded_pages(range(page, page + page_limit(200))):
         response_text = fetch_list_with_retries(
             LIST_API_URL,
             {
@@ -130,7 +137,7 @@ def iter_candidate_rows(
             break
 
         before = len(seen_ids)
-        for record in records:
+        for index, record in enumerate(records[skip:], start=skip):
             if not isinstance(record, dict):
                 continue
             notice_id = str(record.get("id") or "").strip()
@@ -146,6 +153,17 @@ def iter_candidate_rows(
                 continue
             seen_ids.add(notice_id)
             candidates.append(record)
+            if window and len(candidates) >= window.items:
+                window.cursor = (
+                    f"{page_number}:{index + 1}"
+                    if index + 1 < len(records)
+                    else f"{page_number + 1}:0"
+                )
+                unfinished_page()
+                return candidates
+        skip = 0
+        if window:
+            window.cursor = f"{page_number + 1}:0"
 
         if len(records) < LISTING_PAGE_SIZE:
             break

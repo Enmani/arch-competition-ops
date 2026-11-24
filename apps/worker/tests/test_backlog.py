@@ -125,3 +125,49 @@ def test_poison_notice_releases_slot_and_changed_criteria_requeues(tmp_path):
     assert queued(db, "city", 1) == docs[1:]
     backlog.enqueue(db, "city", [], "v2", unfinished=0, cap=2)
     assert queued(db, "city", 1) == docs[:1]
+
+
+def test_backfill_never_grows_caps_and_resumes_ted_page(tmp_path, monkeypatch):
+    from arch_competition_ops.collectors import ted
+    from arch_competition_ops.ingest import ingest_source
+
+    write_source_catalog(tmp_path, "ted_design_notices")
+    settings = Settings(root=tmp_path, ai_candidate_cap=1, ai_enabled=False)
+    calls = []
+
+    def fetch(url, body):
+        calls.append(body.copy())
+        i = int(body.get("iterationNextToken", 0))
+        return {
+            "notices": [{"publication-number": str(i), "notice-title": {"eng": f"Library {i}"}}],
+            "iterationNextToken": str(i + 1),
+        }
+
+    monkeypatch.setattr(ted, "_default_fetch_json", fetch)
+    for _ in range(5):
+        ingest_source(
+            settings,
+            source_id="ted_design_notices",
+            publication_date_from="2026-01-01",
+            collect_only=True,
+        )
+    assert len(calls) == 5
+    assert [int(c.get("iterationNextToken", 0)) for c in calls] == list(range(5))
+    assert all(c["limit"] == 1 and "<=" in c["query"] for c in calls)
+
+
+def test_expired_and_aged_notices_do_not_spend_read_slots(tmp_path):
+    from arch_competition_ops.bootstrap import initialize_database
+    from arch_competition_ops.storage import backlog
+
+    db = initialize_database(Settings(root=tmp_path))
+    docs = [
+        CollectedSourceDocument("https://city.example/a", '{"deadline":"2026-05-12","title":"A"}'),
+        CollectedSourceDocument("https://city.example/b", "Old library"),
+    ]
+    backlog.enqueue(db, "city", docs, "v", unfinished=0, cap=2)
+    with connect(db) as cx:
+        cx.execute("UPDATE notice_backlog SET first_seen='2001-01-01' WHERE status='queued'")
+        cx.commit()
+    _, count, report, _ = backlog.enqueue(db, "city", [], "v", unfinished=0, cap=2)
+    assert count == 0 and "expired_unread=1" in report and "aged_out=1" in report

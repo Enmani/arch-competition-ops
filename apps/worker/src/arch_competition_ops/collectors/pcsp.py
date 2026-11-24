@@ -16,7 +16,15 @@ from arch_competition_ops.collectors.common import (
     DEFAULT_HEADERS,
     parse_money_value,
 )
-from arch_competition_ops.collectors.pagination import page_limit, unfinished_page
+from arch_competition_ops.collectors.pagination import (
+    bounded_pages,
+    current_pages,
+    next_page,
+    page_items,
+    page_limit,
+    page_position,
+    unfinished_page,
+)
 from arch_competition_ops.http import HttpError, get_default_client
 from arch_competition_ops.models import SourceDefinition
 from arch_competition_ops.normalizers.dates import parse_date_string, slash_order_for_jurisdiction
@@ -75,15 +83,15 @@ def _feed_entries(fetcher: FetchText, first_url: str, window_start: str) -> Iter
     Files are read one at a time and only as long as the caller keeps asking. Reading stops
     after the first file that reaches entries older than the window.
     """
-    url: str | None = first_url
+    url: str | None = page_position(first_url)
     visited: set[str] = set()
-    for _ in range(page_limit(FEED_MAX_FILES)):
+    for _ in bounded_pages(range(page_limit(FEED_MAX_FILES))):
         if url is None or url in visited:
             return
         visited.add(url)
         root = ET.fromstring(fetcher(url))
         reached_older = False
-        for entry in root.findall("atom:entry", ATOM_NS):
+        for entry in page_items(root.findall("atom:entry", ATOM_NS)):
             updated = parse_date_string(
                 entry.findtext("atom:updated", default="", namespaces=ATOM_NS) or ""
             )
@@ -93,7 +101,11 @@ def _feed_entries(fetcher: FetchText, first_url: str, window_start: str) -> Iter
             yield entry
         if reached_older:
             return
+        if current_pages() and current_pages().rows >= current_pages().items:
+            unfinished_page()
+            return
         url = _feed_link(root, "next")
+        next_page(url)
     if url is not None and url not in visited:
         unfinished_page()
         logger.warning(

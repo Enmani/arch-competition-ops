@@ -66,6 +66,7 @@ def reserve_screening(
     reserve_usd: float,
     budget_usd: float,
     daily_budget_usd: float = 5,
+    run_since: str | None = None,
 ) -> str:
     now = clock.now_utc()
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
@@ -85,6 +86,13 @@ def reserve_screening(
             "SELECT COALESCE(SUM(cost_usd), 0) FROM ai_screening_runs WHERE started_at >= ?",
             (day_start,),
         ).fetchone()[0]
+        if run_since and run_since < day_start:
+            run_spend = connection.execute(
+                "SELECT COALESCE(SUM(cost_usd),0) FROM ai_screening_runs WHERE started_at>=?",
+                (run_since,),
+            ).fetchone()[0]
+            if run_spend + reserve_usd > daily_budget_usd:
+                raise ScreeningBudgetExceeded("AI reading run reached the daily spending cap")
         if used_today + reserve_usd > daily_budget_usd:
             raise ScreeningBudgetExceeded(
                 f"AI daily budget reached: ${used_today:.4f} used/reserved, "
@@ -232,8 +240,10 @@ def _publish_in_connection(
         "source_updated_at=excluded.source_updated_at, model=excluded.model, "
         "decision=excluded.decision, relevance_score=excluded.relevance_score, "
         "result_json=excluded.result_json, updated_at=excluded.updated_at "
-        "WHERE source_updated_at IS NOT excluded.source_updated_at OR decision IS NOT excluded.decision "
-        "OR relevance_score IS NOT excluded.relevance_score OR result_json IS NOT excluded.result_json",
+        "WHERE source_updated_at IS NOT excluded.source_updated_at OR decision IS NOT "
+        "excluded.decision "
+        "OR relevance_score IS NOT excluded.relevance_score OR result_json IS NOT "
+        "excluded.result_json",
         (
             competition_id,
             source_updated_at,

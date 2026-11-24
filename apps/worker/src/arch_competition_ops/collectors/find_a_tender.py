@@ -11,6 +11,7 @@ from typing import Any
 from arch_competition_ops import clock
 from arch_competition_ops.collectors.base import CollectedSourceDocument
 from arch_competition_ops.collectors.common import build_url, fetch_json_get
+from arch_competition_ops.collectors.pagination import window_end
 from arch_competition_ops.collectors.uk_ocds import (
     OCDS_PAGE_SIZE,
     iter_ocds_releases,
@@ -33,7 +34,7 @@ def _default_fetch_json(url: str) -> dict:
 
 
 def _resolve_window(publication_date_from: str | None) -> tuple[str, str]:
-    today = clock.today()
+    today = window_end(clock.today())
     updated_from = (
         publication_date_from or (today - timedelta(days=DEFAULT_WINDOW_DAYS)).isoformat()
     )

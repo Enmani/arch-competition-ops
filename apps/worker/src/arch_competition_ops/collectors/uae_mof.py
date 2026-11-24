@@ -12,7 +12,12 @@ from html import unescape
 from arch_competition_ops import clock
 from arch_competition_ops.collectors.base import CollectedSourceDocument
 from arch_competition_ops.collectors.common import fetch_text_post
-from arch_competition_ops.collectors.pagination import page_limit, unfinished_page
+from arch_competition_ops.collectors.pagination import (
+    numbered_pages,
+    page_items,
+    page_limit,
+    unfinished_page,
+)
 from arch_competition_ops.models import SourceDefinition
 from arch_competition_ops.normalizers.text import strip_html
 
@@ -147,11 +152,11 @@ def collect_uae_mof_documents(
         return documents
     seen: set[str] = set()
 
-    for page in range(1, page_limit(MAX_PAGES) + 1):
+    for page in numbered_pages(range(1, page_limit(MAX_PAGES) + 1)):
         items = _parse_items(read_page(page))
         if not items:
             return documents
-        for item in items:
+        for item in page_items(items):
             published = _parse_date(item["opened"])
             if published is None:
                 continue

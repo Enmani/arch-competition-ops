@@ -12,7 +12,15 @@ from typing import Any
 from arch_competition_ops import clock
 from arch_competition_ops.collectors.base import CollectedSourceDocument, deferred_detail
 from arch_competition_ops.collectors.common import fetch_json_get, fetch_text_post
-from arch_competition_ops.collectors.pagination import page_limit, unfinished_page
+from arch_competition_ops.collectors.pagination import (
+    bounded_pages,
+    current_pages,
+    next_page,
+    page_items,
+    page_limit,
+    page_position,
+    unfinished_page,
+)
 from arch_competition_ops.http import HttpError
 from arch_competition_ops.models import SourceDefinition
 from arch_competition_ops.normalizers.text import strip_html
@@ -152,9 +160,9 @@ def collect_adgpg_documents(
         return documents
     seen: set[int] = set()
     older_streak = 0
-    offset = 0
+    offset = page_position(0)
 
-    for _ in range(page_limit(MAX_LIST_PAGES)):
+    for _ in bounded_pages(range(page_limit(MAX_LIST_PAGES))):
         response = list_page(
             {
                 "status": "OPEN",
@@ -171,7 +179,7 @@ def collect_adgpg_documents(
         if not isinstance(rows, list) or not rows:
             return documents
 
-        for row in rows:
+        for row in page_items(rows):
             if not isinstance(row, dict):
                 continue
             tender_id = row.get("TenderID")
@@ -230,7 +238,11 @@ def collect_adgpg_documents(
             if len(documents) >= limit:
                 return documents
 
+        if current_pages() and current_pages().rows >= current_pages().items:
+            unfinished_page()
+            return documents
         offset += len(rows)
+        next_page(offset)
         total = response.get("TenderCount")
         if isinstance(total, int) and offset >= total:
             return documents

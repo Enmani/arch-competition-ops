@@ -120,13 +120,16 @@ CREATE TABLE IF NOT EXISTS notice_backlog (
     attempts INTEGER NOT NULL DEFAULT 0,
     last_error TEXT,
     criteria_hash TEXT,
+    expires_on TEXT,
     PRIMARY KEY(source_id, content_hash)
 );
 CREATE INDEX IF NOT EXISTS idx_backlog_queue ON notice_backlog(status, first_seen);
 CREATE TABLE IF NOT EXISTS collection_resume (
     source_id TEXT PRIMARY KEY,
     date_from TEXT NOT NULL,
-    read_limit INTEGER NOT NULL
+    read_limit INTEGER NOT NULL,
+    date_to TEXT,
+    cursor TEXT NOT NULL DEFAULT ''
 );
 
 -- Local worker ledger of notices already screened, so an unchanged notice is never triaged,
