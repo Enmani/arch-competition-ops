@@ -187,7 +187,7 @@ def _walk_scope(
             # A page past the end answers HTTP 400; page one failing is a real error.
             if page == 1 or exc.status_code != 400:
                 raise
-            logger.info("Etimad activity %s ended at page %s (%s)", activity, page, exc)
+            logger.info("Etimad activity %s ended at page %s (%s)", activity, page, error_class(exc))
             return
         rows = response.get("data") if isinstance(response, dict) else None
         fresh = [r for r in rows or [] if isinstance(r, dict) and r.get("tenderId") not in seen]

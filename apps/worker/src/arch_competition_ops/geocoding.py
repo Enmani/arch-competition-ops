@@ -31,6 +31,7 @@ from arch_competition_ops.location import (
     normalize_location_key,
 )
 from arch_competition_ops.models import CompetitionRecord
+from arch_competition_ops.run_errors import error_class
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +98,7 @@ def enrich_record_geocode(
         try:
             result = resolver.geocode(location_label=query, jurisdiction=record.jurisdiction)
         except (OSError, HttpError) as exc:
-            logger.warning("Geocoding %r failed: %s", query, exc)
+            logger.warning("Geocoding failed: %s", error_class(exc))
             break  # A transport/rate-limit failure is not evidence to broaden the location.
         if not result:
             continue

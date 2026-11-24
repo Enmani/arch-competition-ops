@@ -305,3 +305,15 @@ def test_cursor_restart_shares_item_cap_and_reports_failed_restart(tmp_path, mon
     assert calls[-2:] == ["next1", None]
     with connect(settings.resolve_path(settings.db)) as cx:
         assert not cx.execute("SELECT * FROM collection_resume").fetchall()
+
+
+def test_enrichment_warning_omits_remote_identifier_and_error_text(monkeypatch, caplog):
+    from arch_competition_ops.postprocess import anac
+
+    def fail(*args, **kwargs):
+        raise HttpStatusError("PRIVATE", url=URL, status_code=503)
+
+    monkeypatch.setattr(anac, "fetch_json_get", fail)
+    assert anac.fetch_notice_detail("notice?token=PRIVATE") is None
+    assert "PRIVATE" not in caplog.text
+    assert "http_503" in caplog.text
