@@ -257,7 +257,7 @@ def test_ingest_batch_command_runs_lists_and_reports_failures(
 
     monkeypatch.setattr("arch_competition_ops.automation.ingest_source", failing)
     assert main(["ingest-batch", "--batch-id", "official"]) == 1
-    assert "[FAIL] ted_design_notices :: source exploded" in capsys.readouterr().out
+    assert "[FAIL] ted_design_notices :: RuntimeError" in capsys.readouterr().out
 
 
 def test_partial_source_failures_make_the_batch_exit_nonzero(tmp_path, monkeypatch, capsys) -> None:

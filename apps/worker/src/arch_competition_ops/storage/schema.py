@@ -173,9 +173,13 @@ def _apply_schema(db_path: Path) -> None:
                 _execute_schema_statement(connection, statement)
             for table, column, definition in (
                 ("collection_resume", "date_to", "TEXT"),
+                ("collection_resume", "listing_hash", "TEXT"),
                 ("collection_resume", "cursor", "TEXT NOT NULL DEFAULT ''"),
                 ("notice_backlog", "expires_on", "TEXT"),
                 ("notice_backlog", "queued_at", "TEXT"),
+                ("notice_backlog", "retry_at", "TEXT"),
+                ("notice_backlog", "transient_count", "INTEGER NOT NULL DEFAULT 0"),
+                ("notice_backlog", "terminal_at", "TEXT"),
             ):
                 if column not in {
                     row[1] for row in connection.execute(f"PRAGMA table_info({table})")

@@ -214,12 +214,13 @@ def shrink_old_screening_runs(db_path: Path, *, started_before: date) -> int:
     with write_transaction(db_path) as connection:
         # The ledger records completion time; pre-ledger rows fall back to first discovery.
         stamp = (
-            "COALESCE((SELECT recorded_at FROM ai_notice_ledger l WHERE "
+            "COALESCE(terminal_at,(SELECT recorded_at FROM ai_notice_ledger l WHERE "
             "l.source_id=notice_backlog.source_id AND l.content_hash=notice_backlog.content_hash "
             "AND l.criteria_hash=notice_backlog.criteria_hash),first_seen)"
         )
         connection.execute(
-            f"UPDATE notice_backlog SET payload='' WHERE status='done' AND payload!='' "
+            f"UPDATE notice_backlog SET payload='' WHERE status IN ('done','failed',"
+            "'aged_out','expired_unread') AND payload!='' "
             f"AND {stamp} < ?",
             (started_before.isoformat(),),
         )

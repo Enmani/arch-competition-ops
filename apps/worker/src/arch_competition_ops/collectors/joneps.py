@@ -44,6 +44,7 @@ from arch_competition_ops.collectors.pagination import (
     numbered_pages,
     page_items,
     page_limit,
+    repeated_page,
     unfinished_page,
     window_end,
 )
@@ -240,6 +241,8 @@ def collect_joneps_documents(
                     continue
                 seen_numbers.add(row["tenderNo"])
                 kept.append(row)
+            if rows and not fresh:
+                repeated_page()
             if len(rows) < PAGE_SIZE or not fresh:
                 break
         else:

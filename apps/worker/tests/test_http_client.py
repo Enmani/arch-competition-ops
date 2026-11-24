@@ -97,12 +97,13 @@ def test_get_text_and_post_helpers() -> None:
 # -- retry behaviour -------------------------------------------------------------------------
 
 
-def test_retries_503_then_succeeds_with_exponential_backoff() -> None:
+def test_retries_503_then_succeeds_with_exponential_backoff(caplog) -> None:
     client, adapter, clock = make_client(
         [Reply(503), Reply(502), Reply(200, b"ok")], backoff_base=1.0, backoff_max=8.0
     )
 
-    assert client.get(URL).content == b"ok"
+    assert client.get(URL + "?token=PRIVATE").content == b"ok"
+    assert "PRIVATE" not in caplog.text and "http_503" in caplog.text
 
     assert len(adapter.requests) == 3
     assert len(clock.sleeps) == 2

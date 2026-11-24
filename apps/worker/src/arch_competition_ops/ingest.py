@@ -27,8 +27,8 @@ from arch_competition_ops.card_previews import (
 )
 from arch_competition_ops.collectors import collect_source_documents
 from arch_competition_ops.collectors.base import CollectedSourceDocument
-from arch_competition_ops.collectors.pagination import track_pages
 from arch_competition_ops.config_loader import load_source_catalog
+from arch_competition_ops.discovery import collect_window
 from arch_competition_ops.extractors import parse_source_payload
 from arch_competition_ops.geocoding import NominatimGeocoder, enrich_record_geocode
 from arch_competition_ops.models import CompetitionRecord, SourceDefinition
@@ -38,9 +38,10 @@ from arch_competition_ops.normalizers.competition import (
     configure_procedure_registry,
 )
 from arch_competition_ops.review_queue import refresh_review_queue
+from arch_competition_ops.run_errors import error_class, log_url, provider_code
 from arch_competition_ops.screening.client import ScreeningError, ScreeningPaused
+from arch_competition_ops.screening.extraction import NoticeValidationError
 from arch_competition_ops.screening.fingerprints import (
-    notice_content_hash,
     screening_criteria_hash,
 )
 from arch_competition_ops.screening.service import DocumentAssessment, assess_documents
@@ -80,7 +81,9 @@ class IngestError(RuntimeError):
     def __init__(self, source_id: str, stage: str, cause: BaseException, details: str = "") -> None:
         self.source_id = source_id
         self.stage = stage
-        super().__init__(f"Ingest of '{source_id}' failed during {stage}: {cause}{details}")
+        super().__init__(
+            f"Ingest of '{source_id}' failed during {stage}: {error_class(cause)}{details}"
+        )
 
 
 @dataclass(frozen=True)
@@ -215,21 +218,26 @@ def ingest_source(
                 "find_a_tender_ocds",
                 "oeffentlichevergabe_ocds",
             },
+            criteria_hash,
         )
+
+        def collect(items):
+            if collected_documents is not None:
+                return collected_documents
+            return collect_source_documents(
+                source,
+                limit=items,
+                publication_date_from=start,
+                archive_dir=settings.resolve_path(settings.html_archive_dir),
+            )
+
         try:
-            with track_pages(settings.discovery_page_cap, collection_limit, end, cursor) as pages:
-                discovered = (
-                    collected_documents
-                    if collected_documents is not None
-                    else collect_source_documents(
-                        source,
-                        limit=collection_limit,
-                        publication_date_from=start,
-                        archive_dir=settings.resolve_path(settings.html_archive_dir),
-                    )
-                )
+            discovered, pages, recovery = collect_window(
+                db_path, source_id, settings, end, cursor, collect
+            )
+            result.notes.extend(recovery)
         except Exception as exc:
-            record_run("failed", last_error=str(exc))
+            record_run("failed", last_error=error_class(exc))
             with connect(db_path) as cx:
                 _, stats = backlog.queue_stats(cx, source_id)
             raise IngestError(source_id, "collection", exc, f" ({stats})") from exc
@@ -248,6 +256,7 @@ def ingest_source(
             ),
             cap=collection_limit,
             cursor=pages.cursor,
+            repeated=pages.repeated,
             end=end,
             age_days=settings.unread_max_age_days,
         )
@@ -268,7 +277,8 @@ def ingest_source(
         with connect(db_path) as cx:
             backlog.retire_unread(cx, source_id, settings.unread_max_age_days)
             cx.commit()
-    documents = backlog.queued(db_path, source_id, limit, queued_row_ids)
+    pending = backlog.queued(db_path, source_id, limit, queued_row_ids)
+    documents = [item.document for item in pending]
     if queued_row_ids is not None:
         result.document_count = len(documents)
     else:
@@ -278,7 +288,7 @@ def ingest_source(
     assessments: list[DocumentAssessment | None] = []
     # Documents whose paid assessment finished, including those then dropped as expired; they
     # enter the ledger only once the records are durably written.
-    screened: list[CollectedSourceDocument] = []
+    screened: list[int] = []
     last_error: str | None = None
     # The paid assessments run first, concurrently and in input order; everything after them
     # (parse, verify, geocode, store) stays sequential. Geocoding is paced at one request a second.
@@ -316,7 +326,7 @@ def ingest_source(
                 if competition_is_stale_expired(record, retention_days=retention_days):
                     result.skipped_expired += 1
                     if assessment is not None:
-                        screened.append(document)
+                        screened.append(pending[position].row_id)
                     continue
                 stage = "verify"
                 record = verify_record(
@@ -329,7 +339,7 @@ def ingest_source(
                 if competition_is_stale_expired(record, retention_days=retention_days):
                     result.skipped_expired += 1
                     if assessment is not None:
-                        screened.append(document)
+                        screened.append(pending[position].row_id)
                     continue
                 # Verification can add evidence (official URL, brief), so the evidence-derived
                 # scores are recomputed from the final record.
@@ -345,44 +355,52 @@ def ingest_source(
                 # Budget deferral is not a content rejection. Keep later sources collectable.
                 result.deferred += len(documents) - position
                 if isinstance(exc, ScreeningPaused):
-                    backlog.record_failure(
+                    code = provider_code(exc)
+                    retry = backlog.defer(db_path, pending[position].row_id, code, criteria_hash)
+                    result.notes.append(f"deferred[{source_id}/{code}] retry_at={retry}")
+                else:
+                    result.notes.append(str(exc))
+                result.batch_paused = not isinstance(exc, SourceDailyLimitReached)
+                break
+            except Exception as exc:  # noqa: BLE001 - one notice cannot interrupt independent work
+                code = provider_code(exc) if isinstance(exc, ScreeningError) else error_class(exc)
+                url = log_url(document.source_url)
+                logger.warning("Notice %s at %s: %s", url, stage, code)
+                result.failures.append(DocumentFailure(url, stage, code))
+                specific = (
+                    code
+                    in {
+                        "invalid_schema",
+                        "missing_text",
+                        "incomplete_response",
+                        "max_tokens",
+                        "refusal",
+                        "http_400",
+                        "http_413",
+                    }
+                    or isinstance(exc, NoticeValidationError)
+                    or (stage in {"parse", "verify"} and isinstance(exc, ValueError | KeyError))
+                )
+                if specific:
+                    status = backlog.record_failure(
                         db_path,
-                        source_id,
-                        document,
-                        str(exc),
+                        pending[position].row_id,
+                        code,
                         criteria=criteria_hash,
                         limit=settings.ai_notice_max_attempts,
-                        paused=True,
                     )
-                result.batch_paused = not isinstance(exc, SourceDailyLimitReached)
-                result.notes.append(str(exc))
-                break
-            except Exception as exc:  # noqa: BLE001 - one bad document must not sink the run
-                logger.warning("Skipping document %s at %s: %s", document.source_url, stage, exc)
-                result.failures.append(DocumentFailure(document.source_url, stage, str(exc)))
-                error_class = (
-                    f"http_{exc.status_code}"
-                    if getattr(exc, "status_code", None)
-                    else type(exc).__name__
-                )
-                if isinstance(exc, ScreeningError):
-                    error_class = str(exc)
-                status = backlog.record_failure(
-                    db_path,
-                    source_id,
-                    document,
-                    error_class,
-                    criteria=criteria_hash,
-                    limit=settings.ai_notice_max_attempts,
-                )
-                if status == "failed":
-                    result.notes.append(f"failed[{source_id}/{error_class}]=1")
-                last_error = str(exc)
+                    if status == "failed":
+                        result.notes.append(f"failed[{source_id}/{code}]=1")
+                else:
+                    retry = backlog.defer(db_path, pending[position].row_id, code, criteria_hash)
+                    result.notes.append(f"deferred[{source_id}/{code}] retry_at={retry}")
+                    result.deferred += 1
+                last_error = code
                 continue
             records.append(record)
             assessments.append(assessment)
             if assessment is not None:
-                screened.append(document)
+                screened.append(pending[position].row_id)
     finally:
         geocoder.flush()
 
@@ -404,12 +422,10 @@ def ingest_source(
             source_id=source.source_id,
             criteria_hash=criteria_hash,
             outcome="assessed",
-            entries=[
-                (notice_content_hash(d.payload, d.source_url), d.source_url) for d in screened
-            ],
+            row_ids=screened,
         )
     except Exception as exc:
-        record_run("failed", last_error=str(exc))
+        record_run("failed", last_error=error_class(exc))
         raise IngestError(source.source_id, "database write", exc) from exc
 
     result.status = _run_status(
@@ -441,7 +457,7 @@ def ingest_source(
             )
             result.notes.extend(f"display titles: {error}" for error in titles.errors)
         except Exception as exc:  # noqa: BLE001  derived metadata: never fail the ingest
-            result.notes.append(f"display titles failed: {exc}")
+            result.notes.append(f"display titles failed: {error_class(exc)}")
         result.preview = prewarm_opportunity_card_previews(
             settings, competition_ids=result.ingested_ids
         )
@@ -455,5 +471,5 @@ def _refresh_queue(db_path, result: IngestResult) -> None:
     try:
         refresh_review_queue(db_path)
     except Exception as exc:  # noqa: BLE001 - derived data; never fails an ingest
-        logger.warning("Review queue refresh failed: %s", exc)
-        result.notes.append(f"review queue refresh failed: {exc}")
+        logger.warning("Review queue refresh failed: %s", error_class(exc))
+        result.notes.append(f"review queue refresh failed: {error_class(exc)}")

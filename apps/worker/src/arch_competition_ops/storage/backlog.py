@@ -1,6 +1,8 @@
 """Private discovery queue, independent of the moving publication window."""
 
+import hashlib
 import json
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -11,8 +13,22 @@ from arch_competition_ops.screening.source_evidence import notice_evidence
 from arch_competition_ops.storage.connection import connect, write_transaction
 
 
-def collection_window(db, source_id, date_from, cap, days, supports_end):
+def _refresh_criteria(cx, source_id, criteria):
+    if criteria is not None:
+        cx.execute(
+            "UPDATE notice_backlog SET "
+            "attempts=0,status='queued',last_error=NULL,retry_at=NULL,transient_count=0,"
+            "terminal_at=NULL,queued_at=?,criteria_hash=? "
+            "WHERE source_id=? AND status IN ('failed','queued') AND (attempts>0 OR "
+            "transient_count>0) "
+            "AND criteria_hash IS NOT ?",
+            (clock.now_utc().isoformat(), criteria, source_id, criteria),
+        )
+
+
+def collection_window(db, source_id, date_from, cap, days, supports_end, criteria=None):
     with write_transaction(db) as cx:
+        _refresh_criteria(cx, source_id, criteria)
         cx.execute(
             "INSERT OR IGNORE INTO collection_resume(source_id,date_from,read_limit) VALUES(?,?,?)",
             (source_id, date_from, cap),
@@ -40,6 +56,26 @@ def collection_window(db, source_id, date_from, cap, days, supports_end):
         return start, end if supports_end else None, cursor
 
 
+def reset_cursor(db, source_id, *, gap=False):
+    with write_transaction(db) as cx:
+        if gap:
+            _mark_gap(cx, source_id)
+        else:
+            cx.execute(
+                "UPDATE collection_resume SET cursor='',listing_hash=NULL WHERE source_id=?",
+                (source_id,),
+            )
+
+
+def _mark_gap(cx, source_id):
+    cx.execute(
+        "INSERT OR IGNORE INTO collection_coverage_gaps "
+        "SELECT source_id,date_from,date_to FROM collection_resume WHERE source_id=?",
+        (source_id,),
+    )
+    cx.execute("DELETE FROM collection_resume WHERE source_id=?", (source_id,))
+
+
 def listing_deadline(payload):
     try:
         data = json.loads(payload)
@@ -62,35 +98,45 @@ def listing_deadline(payload):
 
 def retire_unread(cx, source_id, age_days):
     expired = cx.execute(
-        "UPDATE notice_backlog SET status='expired_unread' WHERE source_id=? "
+        "UPDATE notice_backlog SET status='expired_unread',terminal_at=? WHERE source_id=? "
         "AND status='queued' AND expires_on<?",
-        (source_id, clock.today().isoformat()),
+        (clock.now_utc().isoformat(), source_id, clock.today().isoformat()),
     )
     cx.execute(
-        "UPDATE notice_backlog SET status='aged_out' WHERE source_id=? AND status='queued' "
+        "UPDATE notice_backlog SET status='aged_out',terminal_at=? WHERE source_id=? AND "
+        "status='queued' "
         "AND COALESCE(queued_at,first_seen)<?",
-        (source_id, (clock.now_utc() - timedelta(days=age_days)).isoformat()),
+        (
+            clock.now_utc().isoformat(),
+            source_id,
+            (clock.now_utc() - timedelta(days=age_days)).isoformat(),
+        ),
     )
     return expired.rowcount
 
 
 def enqueue(
-    db, source_id, documents, criteria, *, unfinished, cap, cursor="", end=None, age_days=30
+    db,
+    source_id,
+    documents,
+    criteria,
+    *,
+    unfinished,
+    cap,
+    cursor="",
+    end=None,
+    age_days=30,
+    repeated=False,
 ):
     now = clock.now_utc()
+    versions = set()
     lengths = []
     new = already = 0
     with write_transaction(db) as cx:
-        if criteria is not None:
-            cx.execute(
-                "UPDATE notice_backlog SET "
-                "attempts=0,status='queued',last_error=NULL,queued_at=?,criteria_hash=? "
-                "WHERE source_id=? AND status IN ('failed','queued') AND attempts>0 "
-                "AND criteria_hash IS NOT ?",
-                (now.isoformat(), criteria, source_id, criteria),
-            )
+        _refresh_criteria(cx, source_id, criteria)
         for document in documents:
             version = notice_content_hash(document.payload, document.source_url)
+            versions.add(version)
             inserted = cx.execute(
                 "INSERT OR IGNORE INTO notice_backlog "
                 "(source_id,source_url,payload,content_hash,first_seen,expires_on) "
@@ -105,10 +151,17 @@ def enqueue(
                 ),
             ).rowcount
             new += inserted
+            if not inserted:
+                cx.execute(
+                    "UPDATE notice_backlog SET payload=? WHERE source_id=? AND content_hash=? "
+                    "AND status='queued' AND payload=''",
+                    (document.payload, source_id, version),
+                )
             if not inserted and criteria is not None:
                 cx.execute(
                     "UPDATE notice_backlog "
-                    "SET status='queued',attempts=0,last_error=NULL,payload=?,queued_at=? "
+                    "SET status='queued',attempts=0,last_error=NULL,retry_at=NULL,"
+                    "terminal_at=NULL,transient_count=0,payload=?,queued_at=? "
                     "WHERE source_id=? AND content_hash=? AND status='done' "
                     "AND criteria_hash IS NOT ?",
                     (document.payload, now.isoformat(), source_id, version, criteria),
@@ -119,21 +172,36 @@ def enqueue(
                 ).fetchone()[0]
             lengths.append(len(notice_evidence(document.payload)))
         expired = retire_unread(cx, source_id, age_days)
-        if unfinished:
+        signature = hashlib.sha256("".join(sorted(versions)).encode()).hexdigest()
+        previous = cx.execute(
+            "SELECT cursor,listing_hash FROM collection_resume WHERE source_id=?", (source_id,)
+        ).fetchone()
+        repeated = repeated or bool(
+            unfinished
+            and previous
+            and previous[0]
+            and (previous[0] == cursor or (versions and previous[1] == signature))
+        )
+        if repeated:
+            _mark_gap(cx, source_id)
+        elif unfinished:
             cx.execute(
-                "UPDATE collection_resume SET cursor=? WHERE source_id=?",
-                (cursor, source_id),
+                "UPDATE collection_resume SET cursor=?,listing_hash=? WHERE source_id=?",
+                (cursor, signature, source_id),
             )
         elif end and end < clock.today().isoformat():
             next_day = (date.fromisoformat(end) + timedelta(days=1)).isoformat()
             cx.execute(
-                "UPDATE collection_resume SET date_from=?, date_to=NULL, cursor='' "
+                "UPDATE collection_resume SET date_from=?, date_to=NULL, cursor='',"
+                "listing_hash=NULL "
                 "WHERE source_id=?",
                 (next_day, source_id),
             )
         else:
             cx.execute("DELETE FROM collection_resume WHERE source_id=?", (source_id,))
         count, stats = queue_stats(cx, source_id, new=new, lengths=lengths, unfinished=unfinished)
+    if repeated:
+        stats += " paging_reset=repeated_page"
     return already, count, stats, expired
 
 
@@ -148,6 +216,13 @@ def queue_stats(cx, source_id, *, new=0, lengths=(), unfinished=1):
         f"new={new} text_chars_min/max={min(lengths, default=0)}/{max(lengths, default=0)} "
         f"unfinished_pages_at_least={int(unfinished)} queued={count} oldest_days={age}"
     )
+    waiting, retry = cx.execute(
+        "SELECT count(*),min(retry_at) FROM notice_backlog WHERE source_id=? "
+        "AND status='queued' AND retry_at>?",
+        (source_id, clock.now_utc().isoformat()),
+    ).fetchone()
+    if waiting:
+        stats += f" deferred_transient={waiting} next_retry={retry}"
     gaps = cx.execute(
         "SELECT min(date_from),max(date_through),count(*) FROM collection_coverage_gaps "
         "WHERE source_id=?",
@@ -170,42 +245,57 @@ def queue_stats(cx, source_id, *, new=0, lengths=(), unfinished=1):
     return count, stats
 
 
+@dataclass(frozen=True)
+class QueuedNotice:
+    row_id: int
+    document: CollectedSourceDocument
+
+
 def queued(db: Path, source_id: str, limit: int, row_ids: list[int] | None = None):
     selected = ""
-    parameters = [source_id]
+    parameters = [source_id, clock.now_utc().isoformat()]
     if row_ids is not None:
         selected = "AND rowid IN (SELECT value FROM json_each(?)) "
         parameters.append(json.dumps(row_ids))
     with connect(db) as cx:
         return [
-            CollectedSourceDocument(*row)
+            QueuedNotice(row[0], CollectedSourceDocument(*row[1:]))
             for row in cx.execute(
-                "SELECT source_url,payload FROM notice_backlog "
+                "SELECT rowid,source_url,payload FROM notice_backlog "
                 "WHERE source_id=? AND status='queued' "
+                "AND (retry_at IS NULL OR retry_at<=?) "
                 f"{selected}ORDER BY first_seen,rowid LIMIT ?",
                 [*parameters, limit],
             )
         ]
 
 
-def record_failure(db, source_id, document, error, *, criteria, limit, paused=False):
+def record_failure(db, row_id, error, *, criteria, limit):
     with write_transaction(db) as cx:
-        status = cx.execute(
-            "UPDATE notice_backlog SET attempts=attempts+?,last_error=?,criteria_hash=?, "
-            "status=CASE WHEN attempts+? >= ? AND ?=0 THEN 'failed' ELSE 'queued' END "
-            "WHERE source_id=? AND content_hash=? RETURNING status",
-            (
-                int(not paused),
-                error,
-                criteria,
-                int(not paused),
-                limit,
-                int(paused),
-                source_id,
-                notice_content_hash(document.payload, document.source_url),
-            ),
+        row = cx.execute(
+            "UPDATE notice_backlog SET attempts=attempts+1,last_error=?,criteria_hash=?, "
+            "retry_at=NULL,transient_count=0, "
+            "status=CASE WHEN attempts+1>=? THEN 'failed' ELSE 'queued' END, "
+            "terminal_at=CASE WHEN attempts+1>=? THEN ? END "
+            "WHERE rowid=? AND status='queued' RETURNING status",
+            (error, criteria, limit, limit, clock.now_utc().isoformat(), row_id),
         ).fetchone()
-        return status[0] if status else None
+        return row[0] if row else None
+
+
+def defer(db, row_id, error, criteria):
+    now = clock.now_utc()
+    with write_transaction(db) as cx:
+        row = cx.execute(
+            "UPDATE notice_backlog SET transient_count=min(6,transient_count+1),last_error=?,"
+            "criteria_hash=? WHERE rowid=? AND status='queued' RETURNING transient_count",
+            (error, criteria, row_id),
+        ).fetchone()
+        if row is None:
+            return None
+        retry = (now + timedelta(hours=min(24, 2 ** (row[0] - 1)))).isoformat()
+        cx.execute("UPDATE notice_backlog SET retry_at=? WHERE rowid=?", (retry, row_id))
+        return retry
 
 
 def terminal_notices(db, source_id):
@@ -224,7 +314,8 @@ def terminal_notices(db, source_id):
 def requeue_failed(db, source_id, url=None, version=None):
     with write_transaction(db) as cx:
         return cx.execute(
-            "UPDATE notice_backlog SET attempts=0,status='queued',last_error=NULL,queued_at=? "
+            "UPDATE notice_backlog SET attempts=0,status='queued',last_error=NULL,"
+            "retry_at=NULL,transient_count=0,terminal_at=NULL,queued_at=? "
             "WHERE source_id=? AND status='failed' AND (? IS NULL OR source_url=?) "
             "AND (? IS NULL OR content_hash=?)",
             (clock.now_utc().isoformat(), source_id, url, url, version, version),

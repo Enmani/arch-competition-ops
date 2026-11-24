@@ -41,8 +41,8 @@ def test_collection_resumes_after_outage_and_read_budget(tmp_path, monkeypatch):
     assert "new=1" in result.notes[0]
     ingest_source(settings, source_id=source, limit=1)
     db = settings.resolve_path(settings.db)
-    assert queued(db, source, 1) == [old]
-    assert queued(db, source, 10) == [old, amended, new]
+    assert [item.document for item in queued(db, source, 1)] == [old]
+    assert [item.document for item in queued(db, source, 10)] == [old, amended, new]
     with connect(db) as cx:
         assert cx.execute("SELECT count(*) FROM competitions").fetchone()[0] == 0
 
@@ -98,6 +98,10 @@ def test_quota_pauses_all_sources_and_preserves_oldest_notice(tmp_path, monkeypa
         ],
     )
     run_automation_batch(settings, batch_id="all")
+    from datetime import timedelta
+
+    later = clock.now_utc() + timedelta(days=1)
+    monkeypatch.setattr(clock, "now_utc", lambda: later)
     monkeypatch.setattr("arch_competition_ops.ingest.collect_source_documents", lambda *a, **k: [])
     run_automation_batch(settings, batch_id="all")
     assert len(calls) == 2 and calls[0] == calls[1]
@@ -106,8 +110,8 @@ def test_quota_pauses_all_sources_and_preserves_oldest_notice(tmp_path, monkeypa
             "SELECT source_id,status,attempts,last_error FROM notice_backlog ORDER BY rowid"
         ).fetchall()
     assert [tuple(r) for r in rows] == [
-        (sources[0], "queued", 0, "insufficient_quota"),
-        (sources[1], "queued", 0, None),
+        (sources[0], "queued", 0, None),
+        (sources[1], "queued", 0, "insufficient_quota"),
     ]
 
 
@@ -119,12 +123,14 @@ def test_poison_notice_releases_slot_and_changed_criteria_requeues(tmp_path):
     docs = [CollectedSourceDocument(f"https://city.example/{n}", f"Project {n}") for n in range(2)]
     backlog.enqueue(db, "city", docs, "v1", unfinished=0, cap=2)
     for _ in range(3):
-        backlog.record_failure(db, "city", docs[0], "invalid_schema", criteria="v1", limit=3)
-    assert queued(db, "city", 1) == docs[1:]
+        backlog.record_failure(
+            db, queued(db, "city", 1)[0].row_id, "invalid_schema", criteria="v1", limit=3
+        )
+    assert [item.document for item in queued(db, "city", 1)] == docs[1:]
     backlog.enqueue(db, "city", [], "v1", unfinished=0, cap=2)
-    assert queued(db, "city", 1) == docs[1:]
+    assert [item.document for item in queued(db, "city", 1)] == docs[1:]
     backlog.enqueue(db, "city", [], "v2", unfinished=0, cap=2)
-    assert queued(db, "city", 1) == docs[:1]
+    assert [item.document for item in queued(db, "city", 1)] == docs[:1]
 
 
 def test_backfill_never_grows_caps_and_resumes_ted_page(tmp_path, monkeypatch):
@@ -190,7 +196,7 @@ def test_completed_payload_is_cleared_but_can_be_read_after_rule_change(tmp_path
     with connect(db) as cx:
         assert cx.execute("SELECT payload FROM notice_backlog").fetchone()[0] == ""
     backlog.enqueue(db, "city", [doc], "v2", unfinished=0, cap=1)
-    assert queued(db, "city", 1) == [doc]
+    assert [item.document for item in queued(db, "city", 1)] == [doc]
 
 
 def test_live_source_reports_unavailable_archive_after_resuming(tmp_path):
@@ -278,8 +284,8 @@ def test_terminal_report_lists_notice_and_supports_targeted_retry(tmp_path):
         for i in range(2)
     ]
     backlog.enqueue(db, "city", docs, "v", unfinished=0, cap=10)
-    for doc in docs:
-        backlog.record_failure(db, "city", doc, "invalid_output", criteria="v", limit=1)
+    for item in queued(db, "city", 10):
+        backlog.record_failure(db, item.row_id, "invalid_output", criteria="v", limit=1)
     report = list(backlog.terminal_notices(db, "city"))
     assert len(report) == 2 and "private" not in str(report)
     assert report[0]["status"] == "failed" and report[0]["last_error"] == "invalid_output"

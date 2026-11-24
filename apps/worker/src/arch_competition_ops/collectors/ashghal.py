@@ -21,6 +21,7 @@ from arch_competition_ops.collectors.mideast_common import (
 from arch_competition_ops.collectors.pagination import current_pages, snapshot_items, snapshot_pages
 from arch_competition_ops.http import HttpError
 from arch_competition_ops.models import SourceDefinition
+from arch_competition_ops.run_errors import error_class
 
 logger = logging.getLogger(__name__)
 
@@ -176,7 +177,7 @@ def collect_ashghal_documents(
                 if not current_pages() and len(documents) >= limit:
                     break
                 continue
-            logger.warning("Ashghal tender %s detail not read: %s", row["tenderNumber"], exc)
+            logger.warning("Ashghal detail not read: %s", error_class(exc))
         documents.append(_build_document(row, detail))
         if not current_pages() and len(documents) >= limit:
             break

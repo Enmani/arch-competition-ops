@@ -24,6 +24,7 @@ from arch_competition_ops.collectors.pagination import (
 from arch_competition_ops.http import HttpError
 from arch_competition_ops.models import SourceDefinition
 from arch_competition_ops.normalizers.text import strip_html
+from arch_competition_ops.run_errors import error_class
 
 logger = logging.getLogger(__name__)
 
@@ -203,9 +204,7 @@ def collect_adgpg_documents(
                     if len(documents) >= limit:
                         return documents
                     continue
-                logger.warning(
-                    "ADGPG tender %s detail unreadable, kept from the list: %s", tender_id, exc
-                )
+                logger.warning("ADGPG detail unreadable, kept from the list: %s", error_class(exc))
                 detail_response = None
             detail = (
                 detail_response.get("TenderDetails") if isinstance(detail_response, dict) else None

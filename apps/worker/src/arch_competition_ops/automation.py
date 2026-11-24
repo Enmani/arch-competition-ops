@@ -15,6 +15,7 @@ from arch_competition_ops.config_loader import load_source_catalog, load_yaml_fi
 from arch_competition_ops.ingest import IngestError, ingest_source
 from arch_competition_ops.locking import exclusive_lock
 from arch_competition_ops.models import SourceDefinition
+from arch_competition_ops.run_errors import error_class
 from arch_competition_ops.settings import Settings
 from arch_competition_ops.storage.connection import connect
 
@@ -229,7 +230,10 @@ def run_automation_batch(
                     ingest = futures[index - 1].result() if futures else run_one(index, source)
                 except Exception as exc:
                     result.failed.append(
-                        AutomationSourceFailure(source_id=source.source_id, error=str(exc))
+                        AutomationSourceFailure(
+                            source.source_id,
+                            str(exc) if isinstance(exc, IngestError) else error_class(exc),
+                        )
                     )
                     if not continue_on_error:
                         raise
@@ -258,11 +262,11 @@ def run_automation_batch(
             ids = cx.execute(
                 "WITH pending AS (SELECT source_id, rowid AS notice_id, first_seen, "
                 "row_number() OVER (PARTITION BY source_id ORDER BY first_seen,rowid) AS position "
-                "FROM notice_backlog WHERE status='queued' "
+                "FROM notice_backlog WHERE status='queued' AND (retry_at IS NULL OR retry_at<=?) "
                 "AND source_id IN (SELECT value FROM json_each(?))) "
                 "SELECT source_id,notice_id FROM pending WHERE position<=? "
-                "ORDER BY first_seen,notice_id",
-                (json.dumps(result.source_ids), effective_limit),
+                "ORDER BY source_id,first_seen,notice_id",
+                (clock.now_utc().isoformat(), json.dumps(result.source_ids), effective_limit),
             ).fetchall()
         for source_id, group in groupby(ids, key=lambda item: item[0]):
             row_ids = [row_id for _, row_id in group]

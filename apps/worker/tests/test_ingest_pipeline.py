@@ -217,7 +217,9 @@ def test_ingest_source_records_source_health_with_parse_failures_and_duplicate_p
 
     def fake_parse(_source, payload: str, *, source_url: str) -> CompetitionRecord:
         if json.loads(payload)["case"] == "bad":
-            raise ValueError("parser exploded on bad payload")
+            from arch_competition_ops.screening.extraction import NoticeValidationError
+
+            raise NoticeValidationError("parser exploded on bad payload")
         return CompetitionRecord(
             title="Municipal Waterfront Design Competition",
             organizer="Comune Demo Nord",
@@ -253,7 +255,7 @@ def test_ingest_source_records_source_health_with_parse_failures_and_duplicate_p
     assert (run_row["document_count"], run_row["upserted_count"]) == (3, 2)
     assert run_row["parse_failure_count"] == 1
     assert (run_row["duplicate_group_count"], run_row["max_duplicate_group_size"]) == (1, 2)
-    assert "parser exploded" in run_row["last_error"]
+    assert run_row["last_error"] == "NoticeValidationError"
     assert health_row["last_status"] == "completed_with_failures"
     assert health_row["last_success_at"] is not None
 
@@ -356,12 +358,12 @@ def test_network_failure_gives_a_friendly_error_not_a_traceback(
     captured = capsys.readouterr()
     assert exit_code == 1
     assert "error: Ingest of 'ted_design_notices' failed during collection" in captured.out
-    assert "connection reset" in captured.out
+    assert "HttpTransportError" in captured.out and "connection reset" not in captured.out
     assert "Traceback" not in captured.out + captured.err
     with _db(workspace) as connection:
         run_row = connection.execute("SELECT status, last_error FROM source_runs").fetchone()
     assert run_row["status"] == "failed"
-    assert "connection reset" in run_row["last_error"]
+    assert run_row["last_error"] == "HttpTransportError"
 
 
 def test_collection_error_keeps_the_original_exception_as_cause(workspace, monkeypatch) -> None:

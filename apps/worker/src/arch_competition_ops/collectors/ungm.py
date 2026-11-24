@@ -22,6 +22,7 @@ from arch_competition_ops.collectors.pagination import (
 )
 from arch_competition_ops.http import HttpStatusError, get_default_client
 from arch_competition_ops.models import SourceDefinition
+from arch_competition_ops.run_errors import error_class
 
 logger = logging.getLogger(__name__)
 
@@ -272,12 +273,12 @@ def collect_ungm_documents(
     for page in numbered_pages(range(page_limit(MAX_PAGES))):
         try:
             fragment = fetch(_search_body(page, window_start))
-        except Exception:
-            if page == 0:
+        except Exception as exc:
+            if not documents:
                 raise
             # An error after the first page keeps what was read: the next run covers the window.
             unfinished_page()
-            logger.warning("UNGM paging stopped at page %d after an error", page, exc_info=True)
+            logger.warning("UNGM paging stopped at page %d after %s", page, error_class(exc))
             return documents
         row_count, notices = parse_notice_rows(fragment)
 

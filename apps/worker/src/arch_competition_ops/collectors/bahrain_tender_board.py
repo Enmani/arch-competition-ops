@@ -24,10 +24,11 @@ from arch_competition_ops.collectors.pagination import (
     numbered_pages,
     page_items,
     page_limit,
-    unfinished_page,
+    repeated_page,
 )
 from arch_competition_ops.http import HttpError
 from arch_competition_ops.models import SourceDefinition
+from arch_competition_ops.run_errors import error_class
 
 logger = logging.getLogger(__name__)
 
@@ -199,7 +200,7 @@ def collect_bahrain_tender_board_documents(
         fresh = [row for row in rows if row["tenderId"] not in seen]
         if not fresh:
             if rows:
-                unfinished_page()
+                repeated_page()
             break
         seen.update(row["tenderId"] for row in fresh)
         for row in page_items(fresh):
@@ -215,7 +216,7 @@ def collect_bahrain_tender_board_documents(
                     if len(documents) >= limit:
                         return documents
                     continue
-                logger.warning("Bahrain tender %s detail not read: %s", row["tenderId"], exc)
+                logger.warning("Bahrain detail not read: %s", error_class(exc))
             documents.append(_build_document(row, detail))
             if len(documents) >= limit:
                 break

@@ -40,6 +40,7 @@ from arch_competition_ops.maintenance import (
 )
 from arch_competition_ops.normalizers.competition import configure_procedure_registry
 from arch_competition_ops.postprocess.registry import POSTPROCESS_TASKS
+from arch_competition_ops.run_errors import error_class
 from arch_competition_ops.screening import commands as screening_commands
 from arch_competition_ops.screening.client import ScreeningError
 from arch_competition_ops.settings import Settings
@@ -485,7 +486,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         _safe_print(f"error: {exc}")
         return EXIT_FAILURE
     except (HttpError, requests.RequestException, OSError) as exc:
-        _safe_print(f"error: network or file access failed: {exc}")
+        _safe_print(f"error: network or file access failed: {error_class(exc)}")
         return EXIT_FAILURE
     except ValueError as exc:
         _safe_print(f"error: {exc}")

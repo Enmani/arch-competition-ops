@@ -230,4 +230,4 @@ A content signature covers the worker export. Another covers visible opportuniti
 - `docs/plans/2026-04-19-07-saved-search-and-watchlists-plan.md`
 - `docs/plans/2026-04-30-cloudflare-workers-d1-deployment-plan.md`
 
-The collection queue and its interrupted search windows live only in worker SQLite. Web, MCP and D1 export continue to read published records. A missing or low qualification score is eligible for publication.
+The collection queue, retry times, page positions and coverage gaps live only in worker SQLite. Web, MCP and D1 export continue to read published records. A missing or low qualification score is eligible for publication.

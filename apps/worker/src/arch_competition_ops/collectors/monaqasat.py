@@ -50,10 +50,12 @@ from arch_competition_ops.collectors.pagination import (
     numbered_pages,
     page_items,
     page_limit,
+    repeated_page,
     unfinished_page,
 )
 from arch_competition_ops.http import HttpError
 from arch_competition_ops.models import SourceDefinition
+from arch_competition_ops.run_errors import error_class
 
 logger = logging.getLogger(__name__)
 
@@ -227,7 +229,7 @@ def collect_monaqasat_documents(
         fresh = [card for card in cards if card["tenderId"] not in seen]
         if not fresh:
             if cards:
-                unfinished_page()
+                repeated_page()
             break
         seen.update(card["tenderId"] for card in fresh)
         for card in page_items(fresh):
@@ -260,7 +262,7 @@ def collect_monaqasat_documents(
                 if len(documents) >= limit:
                     return documents
                 continue
-            logger.warning("Monaqasat tender %s detail not read: %s", card["tenderId"], exc)
+            logger.warning("Monaqasat detail not read: %s", error_class(exc))
         documents.append(
             _build_document(
                 card,

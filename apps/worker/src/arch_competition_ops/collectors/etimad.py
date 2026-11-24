@@ -46,10 +46,12 @@ from arch_competition_ops.collectors.pagination import (
     numbered_pages,
     page_items,
     page_limit,
+    repeated_page,
     unfinished_page,
 )
 from arch_competition_ops.http import HttpError, HttpStatusError
 from arch_competition_ops.models import SourceDefinition
+from arch_competition_ops.run_errors import error_class, log_url
 
 logger = logging.getLogger(__name__)
 
@@ -191,7 +193,7 @@ def _walk_scope(
         fresh = [r for r in rows or [] if isinstance(r, dict) and r.get("tenderId") not in seen]
         if not fresh:
             if rows:
-                unfinished_page()
+                repeated_page()
             return
         seen.update(r.get("tenderId") for r in fresh)
         yield from page_items(fresh)
@@ -246,7 +248,9 @@ def collect_etimad_documents(
                 if len(documents) >= limit:
                     return documents
                 continue
-            logger.warning("Etimad detail page %s not read: %s", notice_url, exc)
+            logger.warning(
+                "Etimad detail page %s not read: %s", log_url(notice_url), error_class(exc)
+            )
         documents.append(
             _build_document(
                 row,

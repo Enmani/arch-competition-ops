@@ -235,7 +235,8 @@ def test_forbidden_detail_is_queued_and_can_be_read_without_relisting(tmp_path, 
     ingest_source(
         settings, source_id="ted_design_notices", collected_documents=documents, collect_only=True
     )
-    [notice] = queued(settings.resolve_path(settings.db), "ted_design_notices", 1)
+    [item] = queued(settings.resolve_path(settings.db), "ted_design_notices", 1)
+    notice = item.document
     http, _, _ = make_client(
         [Reply(status=403), Reply(body=b"Library renovation deadline extended")]
     )

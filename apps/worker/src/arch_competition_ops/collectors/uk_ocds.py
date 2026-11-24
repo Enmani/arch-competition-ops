@@ -14,9 +14,11 @@ from arch_competition_ops.collectors.pagination import (
     page_items,
     page_limit,
     page_position,
+    repeated_page,
     unfinished_page,
 )
 from arch_competition_ops.normalizers.money import format_money_text
+from arch_competition_ops.run_errors import log_url
 
 logger = logging.getLogger(__name__)
 
@@ -44,11 +46,11 @@ def iter_ocds_releases(
         if not url:
             return
         if url in seen or urlsplit(url).netloc != host:
-            unfinished_page()
+            repeated_page()
             logger.warning(
                 "Stopped OCDS paging after %d pages at %s (repeated, foreign or over cap)",
                 len(seen),
-                url,
+                log_url(url),
             )
             return
         seen.add(url)

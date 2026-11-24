@@ -23,6 +23,7 @@ from arch_competition_ops.collectors.pagination import (
     page_items,
     page_limit,
     page_position,
+    repeated_page,
     unfinished_page,
 )
 from arch_competition_ops.http import HttpError, get_default_client
@@ -86,7 +87,10 @@ def _feed_entries(fetcher: FetchText, first_url: str, window_start: str) -> Iter
     url: str | None = page_position(first_url)
     visited: set[str] = set()
     for _ in bounded_pages(range(page_limit(FEED_MAX_FILES))):
-        if url is None or url in visited:
+        if url in visited:
+            repeated_page()
+            return
+        if url is None:
             return
         visited.add(url)
         root = ET.fromstring(fetcher(url))
@@ -106,7 +110,9 @@ def _feed_entries(fetcher: FetchText, first_url: str, window_start: str) -> Iter
             return
         url = _feed_link(root, "next")
         next_page(url)
-    if url is not None and url not in visited:
+    if url is not None and url in visited:
+        repeated_page()
+    elif url is not None:
         unfinished_page()
         logger.warning(
             "PCSP feed paging stopped after %d files; older entries were not read", FEED_MAX_FILES

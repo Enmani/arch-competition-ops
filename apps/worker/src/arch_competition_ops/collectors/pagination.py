@@ -1,10 +1,12 @@
 """Run-local listing limits. Durable continuation is committed together with discovered rows."""
 
+import hashlib
 import json
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
+from xml.etree import ElementTree
 
 
 @dataclass
@@ -14,6 +16,8 @@ class Pages:
     end: str | None
     cursor: str = ""
     complete: bool = False
+    repeated: bool = False
+    seen_pages: set[bytes] = field(default_factory=set)
     unfinished: int = 0
     used: int = 0
     rows: int = 0
@@ -47,6 +51,8 @@ def bounded_pages(numbers):
     for number in numbers:
         pages = _current.get()
         if pages:
+            if pages.repeated:
+                return
             if pages.used >= pages.maximum:
                 unfinished_page()
                 return
@@ -58,6 +64,27 @@ def unfinished_page():
     pages = _current.get()
     if pages:
         pages.unfinished += 1
+
+
+def repeated_page():
+    if state := current_pages():
+        state.repeated = True
+        unfinished_page()
+
+
+def observe_page(keys):
+    state = current_pages()
+    if state is None:
+        return True
+    encoded = sorted(json.dumps(key, sort_keys=True, default=str) for key in keys)
+    if not encoded:
+        return True
+    signature = hashlib.sha256(json.dumps(encoded).encode()).digest()
+    if signature in state.seen_pages:
+        repeated_page()
+        return False
+    state.seen_pages.add(signature)
+    return True
 
 
 def page_position(default):
@@ -94,6 +121,15 @@ def numbered_pages(numbers, *, last=None):
 
 def page_items(items):
     state = current_pages()
+    if state and iter(items) is items:
+        items = list(items)
+    if state and not observe_page(
+        ElementTree.tostring(item, encoding="unicode")
+        if isinstance(item, ElementTree.Element)
+        else item
+        for item in items
+    ):
+        return
     for index, item in enumerate(items):
         if state:
             if index < state.position:

@@ -23,10 +23,10 @@ def record_screened(
     source_id: str,
     criteria_hash: str,
     outcome: LedgerOutcome,
-    entries: Iterable[tuple[str, str]],
+    row_ids: Iterable[int],
 ) -> None:
-    """Record ``(content_hash, source_url)`` pairs once their outcome is durably known."""
-    rows = list(entries)
+    """Record the version selected from the queue, even if the hash algorithm changed."""
+    rows = list(row_ids)
     if not rows:
         return
     now = clock.now_utc()
@@ -34,19 +34,18 @@ def record_screened(
         connection.executemany(
             "INSERT INTO ai_notice_ledger "
             "(source_id, content_hash, criteria_hash, outcome, source_url, recorded_at) "
-            "VALUES (?, ?, ?, ?, ?, ?) "
+            "SELECT source_id,content_hash,?,?,source_url,? FROM notice_backlog "
+            "WHERE rowid=? AND source_id=? AND status='queued' "
             "ON CONFLICT (source_id, content_hash, criteria_hash) DO UPDATE SET "
             "outcome = excluded.outcome, source_url = excluded.source_url, "
             "recorded_at = excluded.recorded_at",
-            [
-                (source_id, content_hash, criteria_hash, outcome, url, now.isoformat())
-                for content_hash, url in rows
-            ],
+            [(criteria_hash, outcome, now.isoformat(), row_id, source_id) for row_id in rows],
         )
         connection.executemany(
             "UPDATE notice_backlog SET status='done',attempts=attempts+1,last_error=NULL,"
-            "criteria_hash=? WHERE source_id=? AND content_hash=?",
-            [(criteria_hash, source_id, key) for key, _url in rows],
+            "retry_at=NULL,transient_count=0,terminal_at=?,criteria_hash=? "
+            "WHERE source_id=? AND rowid=? AND status='queued'",
+            [(now.isoformat(), criteria_hash, source_id, row_id) for row_id in rows],
         )
         connection.execute(
             "DELETE FROM ai_notice_ledger WHERE recorded_at < ?",

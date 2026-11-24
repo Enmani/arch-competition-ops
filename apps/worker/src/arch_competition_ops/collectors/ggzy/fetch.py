@@ -18,12 +18,14 @@ from arch_competition_ops.collectors.ggzy.html_text import (
 from arch_competition_ops.collectors.pagination import (
     bounded_pages,
     current_pages,
+    observe_page,
     page_limit,
     unfinished_page,
 )
 from arch_competition_ops.http import HttpError, HttpStatusError, HttpTransportError
 from arch_competition_ops.models import SourceDefinition
 from arch_competition_ops.normalizers.dates import parse_date_string
+from arch_competition_ops.run_errors import error_class, log_url
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +72,9 @@ def fetch_list_with_retries(
         except _RETRYABLE_LIST_ERRORS as exc:
             if attempt == attempts:
                 raise
-            logger.warning("GGZY list fetch attempt %d/%d failed: %s", attempt, attempts, exc)
+            logger.warning(
+                "GGZY list fetch attempt %d/%d failed: %s", attempt, attempts, error_class(exc)
+            )
     raise AssertionError("unreachable")  # pragma: no cover
 
 
@@ -80,7 +84,7 @@ def fetch_page_or_none(url: str, *, fetch_page: PageFetcher) -> str | None:
     except _PAGE_FETCH_ERRORS as exc:
         if isinstance(exc, HttpError) and exc.status_code in {403, 429}:
             raise
-        logger.warning("GGZY page %s could not be fetched: %s", url, exc)
+        logger.warning("GGZY page %s could not be fetched: %s", log_url(url), error_class(exc))
         return None
 
 
@@ -126,6 +130,8 @@ def iter_candidate_rows(
             break
 
         before = len(seen_ids)
+        if not observe_page(r.get("id") or r for r in records if isinstance(r, dict)):
+            break
         for index, record in enumerate(records[skip:], start=skip):
             if not isinstance(record, dict):
                 continue
@@ -142,6 +148,8 @@ def iter_candidate_rows(
                 continue
             seen_ids.add(notice_id)
             candidates.append(record)
+            if window:
+                window.rows = len(candidates)
             if window and len(candidates) >= window.items:
                 window.cursor = (
                     f"{page_number}:{index + 1}"

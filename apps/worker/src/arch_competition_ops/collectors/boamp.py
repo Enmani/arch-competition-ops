@@ -16,6 +16,7 @@ from arch_competition_ops.collectors.common import (
 from arch_competition_ops.collectors.pagination import (
     bounded_pages,
     current_pages,
+    observe_page,
     page_limit,
     unfinished_page,
 )
@@ -201,6 +202,10 @@ def collect_boamp_documents(
         if not isinstance(results, list) or not results:
             return documents
 
+        if not observe_page(
+            item.get("idweb") or item for item in results if isinstance(item, dict)
+        ):
+            break
         for item in results:
             if not isinstance(item, dict):
                 continue
@@ -215,6 +220,8 @@ def collect_boamp_documents(
             if document is None:
                 continue
             documents.append(document)
+            if window:
+                window.rows = len(documents)
             if len(documents) >= limit:
                 unfinished_page()
                 return documents

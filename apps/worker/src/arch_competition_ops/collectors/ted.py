@@ -11,7 +11,9 @@ from arch_competition_ops.collectors.common import fetch_json_post
 from arch_competition_ops.collectors.pagination import (
     bounded_pages,
     current_pages,
+    observe_page,
     page_limit,
+    repeated_page,
     unfinished_page,
 )
 from arch_competition_ops.models import SourceDefinition
@@ -189,7 +191,7 @@ def _search(
     kept: list[dict[str, Any]] = []
     window = current_pages()
     token = (window.cursor or None) if window else None
-    tokens = set()
+    tokens = {token} if token else set()
     for _page in bounded_pages(range(page_limit(TED_MAX_PAGES))):
         body: dict[str, Any] = {
             "query": query,
@@ -201,10 +203,14 @@ def _search(
             body["iterationNextToken"] = token
         response = fetch(TED_SEARCH_URL, body)
         notices = response.get("notices", []) if isinstance(response, dict) else []
+        if not observe_page(_notice_key(n) or n for n in notices if isinstance(n, dict)):
+            break
         kept.extend(notice for notice in notices if isinstance(notice, dict))
+        if window:
+            window.rows = len(kept)
         token = response.get("iterationNextToken") if isinstance(response, dict) else None
         if token and token in tokens:
-            unfinished_page()
+            repeated_page()
             break
         if window:
             window.cursor = token or ""
