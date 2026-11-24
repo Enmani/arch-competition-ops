@@ -70,7 +70,7 @@ test("verification timestamps alone leave public opportunity rows untouched", (t
   t.after(() => remote.close());
   executeFiles(remote, runInto(workspace));
   const local = new Database(workspace.dbPath);
-  local.prepare("UPDATE competitions SET last_verified_at=?, discovered_at=?, updated_at=?")
+  local.prepare("UPDATE competitions SET display_title_source='new translator', last_verified_at=?, discovered_at=?, updated_at=?")
     .run("2030-01-01", "2020-01-01", "2030-01-01");
   local.close();
   assert.equal(executeFiles(remote, runInto(workspace, { now: new Date("2030-01-01") })), 0);
@@ -82,7 +82,7 @@ test("generated upserts are idempotent and use ON CONFLICT DO UPDATE", (t) => {
   const result = runInto(workspace);
 
   const allSql = result.files.map((file) => file.content).join("");
-  assert.match(allSql, /INSERT INTO "competitions" \(.*\) VALUES \(.*\) ON CONFLICT\("id"\) DO UPDATE SET/);
+  assert.match(allSql, /INSERT INTO "competitions" \(.*\) SELECT .* ON CONFLICT\("id"\) DO UPDATE SET/);
   assert.match(allSql, /INSERT INTO "source_runs" .* ON CONFLICT\("id"\) DO UPDATE SET/);
   assert.match(allSql, /INSERT INTO "source_health" .* ON CONFLICT\("source_id"\) DO UPDATE SET/);
   assert.match(allSql, /INSERT INTO "ops_review_queue_items" .* ON CONFLICT\("queue_id"\) DO UPDATE SET/);
@@ -313,9 +313,9 @@ test("publication follows the remote rows and a newer sync fences old files", (t
   assert.equal(published.next_summary_day, "2026-10-22");
   assert.equal(JSON.parse(published.payload_today).total, 2, "includes a remote-only watched notice");
   assert.equal(JSON.parse(published.payload_tomorrow).total, 1, "excludes the notice closing today");
-  assert.throws(() => remote.exec(retry.files.at(-1).content), /sync_owns_publication/);
+  remote.exec(retry.files.at(-1).content); // already published; replay is a no-op
   executeFiles(remote, retry);
-  assert.notEqual(state().version, published.version, "a replay publishes a fresh version");
+  assert.equal(state().version, published.version, "unchanged visible rows keep their version");
 });
 
 test("--prune refuses to run against an empty local competitions table", (t) => {
@@ -334,7 +334,7 @@ test("missing and low qualification scores publish while the private queue stays
   createLocalDatabase(workspace.dbPath, (db) => {
     insertCompetition(db, "no-score", { qualification_score: null });
     insertCompetition(db, "low-score", { qualification_score: 0 });
-    db.exec("CREATE TABLE notice_backlog(payload TEXT); INSERT INTO notice_backlog VALUES ('unread-private-text')");
+    db.exec("CREATE TABLE notice_backlog(status TEXT, payload TEXT); INSERT INTO notice_backlog VALUES ('failed','unread-private-text'),('expired_unread','expired-private-text'),('aged_out','old-private-text')");
   });
   const result = runInto(workspace);
   const remote = applyMigrations(new Database(":memory:"));
@@ -343,8 +343,64 @@ test("missing and low qualification scores publish while the private queue stays
     assert.deepEqual(remote.prepare("SELECT id, qualification_score AS score FROM competitions ORDER BY id").all(), [
       { id: "low-score", score: 0 }, { id: "no-score", score: null }
     ]);
-    assert.doesNotMatch(result.files.map(file => file.content).join(""), /notice_backlog|unread-private-text/);
+    assert.doesNotMatch(result.files.map(file => file.content).join(""), /notice_backlog|collection_resume|backlog_retention|private-text/);
   } finally {
     remote.close();
   }
+});
+
+test("unchanged collection writes zero rows including the publication marker", (t) => {
+  const workspace = createWorkspace(t);
+  createLocalDatabase(workspace.dbPath, seedWorkerData);
+  const remote = applyMigrations(new Database(":memory:"));
+  t.after(() => remote.close());
+  executeFiles(remote, runInto(workspace));
+  const local = new Database(workspace.dbPath);
+  local.exec("INSERT INTO source_runs(source_id,source_name,source_kind,source_tier,status,started_at) SELECT source_id,source_name,source_kind,source_tier,status,'2030-02-01' FROM source_runs");
+  local.exec("UPDATE source_health SET last_run_started_at='2030-02-01', updated_at='2030-02-01'");
+  local.close();
+  const changes = () => remote.prepare("SELECT total_changes() n").get().n;
+  const before = changes();
+  executeFiles(remote, runInto(workspace, { now:new Date("2030-02-01") }));
+  assert.equal(changes()-before, 0);
+});
+
+test("visible edits and deadline crossings change the version, while diagnostics preserve it", (t) => {
+  const workspace = createWorkspace(t);
+  createLocalDatabase(workspace.dbPath, db => {
+    seedWorkerData(db);
+    insertCompetition(db, "closes", { deadline_at: "2026-11-27" });
+  });
+  const edit = sql => {
+    const local = new Database(workspace.dbPath);
+    try { local.exec(sql); } finally { local.close(); }
+  };
+  const remote = applyMigrations(new Database(":memory:"));
+  t.after(() => remote.close());
+  let day = "2026-11-24";
+  remote.function("date", { varargs: true }, (value, modifier) => {
+    if (!value) return null;
+    const d = new Date(value === "now" ? day : value);
+    if (modifier === "+1 day") d.setUTCDate(d.getUTCDate() + 1);
+    return d.toISOString().slice(0, 10);
+  });
+  const state = () => remote.prepare("SELECT version,payload_today,next_summary_day FROM discover_publication").get();
+  const sync = () => executeFiles(remote, runInto(workspace, { now: new Date(day) }));
+  sync();
+  const original = state();
+  assert.equal(original.next_summary_day, "2026-11-28");
+  day = "2026-11-25";
+  edit("UPDATE source_health SET last_status='failed'");
+  sync();
+  assert.deepEqual(state(), original);
+  day = "2026-11-26";
+  edit("UPDATE competitions SET title='Revised title' WHERE id='closes'");
+  sync();
+  const edited = state();
+  assert.notEqual(edited.version, original.version);
+  assert.equal(edited.payload_today, original.payload_today);
+  day = "2026-11-28";
+  sync();
+  assert.notEqual(state().version, edited.version);
+  assert.equal(JSON.parse(state().payload_today).total, JSON.parse(original.payload_today).total - 1);
 });

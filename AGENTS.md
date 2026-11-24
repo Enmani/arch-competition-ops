@@ -62,6 +62,7 @@ This repository is a competition-intelligence monorepo. Agents should favor evid
 15. Mark official fields and AI screening conclusions as separate in every output (web, API, MCP). Wording on these surfaces, including MCP tool descriptions, stays neutral and plain with no filler; `official_url`, `source_url` and `evidence_note` are never dropped for brevity.
 16. The MCP entry exposes read-only tools only, and every tool is annotated read-only. Writes (saved searches, watchlists, review) stay in the web app behind login.
 17. When a new standard replaces an old one, rewrite the owning text in place instead of stacking patches.
+18. Replaying unchanged notices must use no paid reads and write no opportunity or publication rows in D1. Keep operational timestamps and queue state private to the worker.
 
 ## Routing
 

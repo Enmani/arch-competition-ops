@@ -334,8 +334,12 @@ def update_competition_geocode_fields(
     ensure_schema(db_path)
     with write_transaction(db_path) as connection:
         previous = connection.execute(
-            "SELECT updated_at FROM competitions WHERE id = ?", (competition_id,)
+            "SELECT updated_at FROM competitions WHERE id = ? AND "
+            "(location_label,geo_lat,geo_lng,geo_source,geo_confidence) IS NOT (?,?,?,?,?)",
+            (competition_id, location_label, geo_lat, geo_lng, geo_source, geo_confidence),
         ).fetchone()
+        if previous is None:
+            return
         now_iso = clock.now_utc().isoformat()
         connection.execute(
             """
@@ -358,14 +362,13 @@ def update_competition_geocode_fields(
                 competition_id,
             ),
         )
-        if previous:
-            # Coordinates are derived metadata, not a newer notice. Preserve current advice
-            # atomically; an already stale assessment must never become current again.
-            connection.execute(
-                "UPDATE ai_screening_results SET source_updated_at = ? "
-                "WHERE competition_id = ? AND source_updated_at = ?",
-                (now_iso, competition_id, previous["updated_at"]),
-            )
+        # Coordinates are derived metadata, not a newer notice. Preserve current advice
+        # atomically; an already stale assessment must never become current again.
+        connection.execute(
+            "UPDATE ai_screening_results SET source_updated_at = ? "
+            "WHERE competition_id = ? AND source_updated_at = ?",
+            (now_iso, competition_id, previous["updated_at"]),
+        )
 
 
 def list_competitions_with_generic_jurisdiction(db_path: Path) -> list[sqlite3.Row]:
@@ -392,29 +395,32 @@ def update_competition_jurisdiction(
     ensure_schema(db_path)
     with write_transaction(db_path) as connection:
         previous = connection.execute(
-            "SELECT updated_at FROM competitions WHERE id = ?", (competition_id,)
+            "SELECT updated_at FROM competitions WHERE id = ? AND jurisdiction IS NOT ?",
+            (competition_id, jurisdiction),
         ).fetchone()
+        if previous is None:
+            return
         now_iso = clock.now_utc().isoformat()
         connection.execute(
             "UPDATE competitions SET jurisdiction = ?, updated_at = ? WHERE id = ?",
             (jurisdiction, now_iso, competition_id),
         )
-        if previous:
-            # The country is read from the notice that is already stored, not a newer notice:
-            # current advice stays current, an already stale assessment stays stale.
-            connection.execute(
-                "UPDATE ai_screening_results SET source_updated_at = ? "
-                "WHERE competition_id = ? AND source_updated_at = ?",
-                (now_iso, competition_id, previous["updated_at"]),
-            )
+        # The country is read from the notice that is already stored, not a newer notice:
+        # current advice stays current, an already stale assessment stays stale.
+        connection.execute(
+            "UPDATE ai_screening_results SET source_updated_at = ? "
+            "WHERE competition_id = ? AND source_updated_at = ?",
+            (now_iso, competition_id, previous["updated_at"]),
+        )
 
 
 def update_competition_source_url(db_path: Path, *, competition_id: str, source_url: str) -> None:
     ensure_schema(db_path)
     with write_transaction(db_path) as connection:
         connection.execute(
-            "UPDATE competitions SET source_url = ?, updated_at = ? WHERE id = ?",
-            (source_url, clock.now_utc().isoformat(), competition_id),
+            "UPDATE competitions SET source_url = ?, updated_at = ? "
+            "WHERE id = ? AND source_url IS NOT ?",
+            (source_url, clock.now_utc().isoformat(), competition_id, source_url),
         )
 
 
@@ -432,14 +438,15 @@ def update_competition_status(
     """
     ensure_schema(db_path)
     clause = ""
-    parameters: list[Any] = [status, clock.now_utc().isoformat(), competition_id]
+    parameters: list[Any] = [status, clock.now_utc().isoformat(), competition_id, status]
     if only_from is not None:
         allowed = list(only_from)
         clause = f" AND status IN ({', '.join('?' for _ in allowed)})"
         parameters.extend(allowed)
     with write_transaction(db_path) as connection:
         cursor = connection.execute(
-            f"UPDATE competitions SET status = ?, updated_at = ? WHERE id = ?{clause}",
+            "UPDATE competitions SET status = ?, updated_at = ? "
+            f"WHERE id = ? AND status IS NOT ?{clause}",
             parameters,
         )
         return bool(cursor.rowcount)
@@ -457,72 +464,3 @@ def find_duplicate_records(db_path: Path) -> list[sqlite3.Row]:
             ORDER BY duplicate_count DESC, dedup_key ASC
             """
         ).fetchall()
-
-
-def migrate_legacy_source_identity(db_path: Path, sources: Iterable[tuple[str, str, bool]]) -> int:
-    """One-time backfill for rows written before ``source_id``/``source_name`` existed.
-
-    Old rows stored the platform display name in ``organizer`` and had no source columns. For each
-    ``(source_id, source_name, eligibility_was_description)`` entry, rows with
-    ``source_id IS NULL AND organizer = source_name`` receive the source columns, ``organizer``
-    becomes the stored authority (or ``''``), and values the retired extraction code invented are
-    cleared: fees (always 0.0), audience (constant), implementation path and licence/partner flags
-    (keyword guesses over descriptions), and an ``official_url`` that merely repeated
-    ``source_url``. A later ingest re-fills whatever the source states explicitly. Idempotent.
-
-    ``eligibility_summary``: the old pipeline stored the notice *description* there (the only
-    place it had for it). The caller sets ``eligibility_was_description`` for sources where that is
-    certain, i.e. no collector ever delivered an explicit eligibility/requirements field, so the
-    column can only hold prose. Where a stored value might be a genuine clause (the municipal
-    buyer-profile parser also reads "Requisiti"/"Requirements" lines from raw pages) the caller
-    passes ``False`` and the value is kept: wrongly deleting a real clause is worse than leaving an
-    ambiguous one for the next ingest to overwrite.
-    """
-    ensure_schema(db_path)
-    migrated = 0
-    with write_transaction(db_path) as connection:
-        for source_id, source_name, eligibility_was_description in sources:
-            cursor = connection.execute(
-                """
-                UPDATE competitions
-                SET source_id = :source_id,
-                    source_name = :source_name,
-                    organizer = CASE
-                        WHEN authority_name IS NULL OR authority_name = 'Unknown authority' THEN ''
-                        ELSE authority_name
-                    END,
-                    registration_fee_eur = NULL,
-                    submission_fee_eur = NULL,
-                    audience = '[]',
-                    implementation_path = NULL,
-                    licensed_architect_required = NULL,
-                    local_partner_required = NULL,
-                    eligibility_summary = CASE
-                        WHEN :clear_eligibility = 1 THEN NULL
-                        ELSE eligibility_summary
-                    END,
-                    official_url = CASE
-                        WHEN official_url = source_url THEN NULL
-                        ELSE official_url
-                    END
-                WHERE source_id IS NULL AND organizer = :source_name
-                """,
-                {
-                    "source_id": source_id,
-                    "source_name": source_name,
-                    "clear_eligibility": int(eligibility_was_description),
-                },
-            )
-            migrated += int(cursor.rowcount or 0)
-    return migrated
-
-
-def has_unattributed_rows(db_path: Path) -> bool:
-    ensure_schema(db_path)
-    with connect(db_path) as connection:
-        return (
-            connection.execute(
-                "SELECT 1 FROM competitions WHERE source_id IS NULL LIMIT 1"
-            ).fetchone()
-            is not None
-        )

@@ -123,3 +123,27 @@ def test_signed_links_in_escaped_json_are_sanitized(tmp_path):
     )
     assert "private" not in snapshot
     assert "https://city.example/a?id=4" in snapshot
+
+
+def test_structured_notice_hash_ignores_rotating_metadata_but_keeps_the_deadline():
+    from arch_competition_ops.screening.fingerprints import notice_content_hash
+
+    original = {
+        "title": "Library",
+        "csrfToken": "one",
+        "pageGeneratedAt": "09:00",
+        "deadline": "2026-12-01",
+    }
+    rotated = {
+        "deadline": "2026-12-01",
+        "pageGeneratedAt": "10:00",
+        "title": "Library",
+        "csrfToken": "two",
+    }
+
+    def version(raw):
+        return notice_content_hash(json.dumps({"rawNotice": raw}), "https://city.example/1")
+
+    assert version(original) == version(rotated)
+    rotated["deadline"] = "2026-12-03"
+    assert version(original) != version(rotated)

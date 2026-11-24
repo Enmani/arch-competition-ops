@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { fromBetterSqlite3 } from "../driver/better-sqlite3";
+import { createStorage } from "../storage";
 import { createTestStorage, seedOpportunity } from "../testing";
 import { buildAggregateStatement } from "./aggregate";
 import { normalizeQuery } from "./query";
@@ -51,4 +53,21 @@ test("day, format and sync state select the published summary or the exact live 
   assert.equal((await storage.opportunities.discover()).total, 2);
   raw.exec("DROP TABLE discover_publication");
   assert.equal((await storage.opportunities.discover()).total, 2);
+});
+
+test("a normal day between deadlines uses the existing single batch of two reads", async t => {
+  const { raw, clock, cleanup } = createTestStorage({ now: "2026-11-25" });
+  t.after(cleanup);
+  raw.prepare(`INSERT INTO discover_publication
+    (id, sync_id, syncing, version, summary_format, summary_day, next_summary_day, payload_today)
+    VALUES (1, 'sync', 0, 'version', ?, '2026-11-24', '2026-12-03',
+      (SELECT payload FROM (${buildAggregateStatement(normalizeQuery(), clock).sql})))`)
+    .run(DISCOVER_SUMMARY_FORMAT, "2026-11-24");
+  const reader = fromBetterSqlite3(raw);
+  const batch = t.mock.method(reader, "batch");
+  const prepare = t.mock.method(reader, "prepare");
+  const storage = createStorage({ reader, writer: reader, clock });
+  assert.equal((await storage.opportunities.discover()).total, 0);
+  assert.equal(batch.mock.callCount(), 1);
+  assert.equal(prepare.mock.callCount(), 2);
 });

@@ -8,6 +8,8 @@ updated_at: 2026-11-24
 
 The worker saves discovered notices before reading them. Each paid request uses one notice and the owner's screening requirement. Anthropic Messages (the default), OpenAI Responses and compatible Chat Completions services use the same local decision schema.
 
+The review added content-based deduplication, bounded retries and discovery, pre-payment expiry, bilingual titles, link sanitization and queue retention. Repeated exports preserve the catalogue version and avoid writing unchanged records. The [data contract](../DATA_CONTRACT.md) describes queue states and the [runbook](../../CLOUDFLARE_DEPLOY_RUNBOOK.md) gives a D1 cost estimate.
+
 ## Why
 
 Country, language, value and fee preferences previously affected design judgments. Unread listings could leave the discovery window during outages.

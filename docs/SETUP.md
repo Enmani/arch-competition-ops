@@ -77,7 +77,7 @@ uv run arch-competition-ops list-ai-screenings --decision recommend --json
 uv run arch-competition-ops analyze-source-file --source-id ted_design_notices --path artifacts/notice.json --source-url https://ted.europa.eu/en/notice/NOTICE/html
 ```
 
-Paid title polishing uses OpenAI Responses and requires its own OPENAI_API_KEY. The default notice screening key covers notices only.
+Title translation uses the selected screening provider, model and shared budget. Daily ingest runs it as a separate best-effort step after screening. A provider or spending pause also pauses titles.
 
 `polish-titles` derives the display titles (see `docs/DATA_CONTRACT.md`): rules for every record, then at most `--max-batches` (default 5) AI requests of 20 titles that give every title not yet derived by the current model a Chinese and an English display title; a changed source title is derived again, unchanged ones never. Requests are cached by exact input and count against the same daily/monthly AI budget; `--no-ai` runs the rules only, and ingest uses only those rules for new records. `screen-competitions` assesses stored records and publishes advice. New ingestion additionally extracts source fields. `analyze-source-file` extracts and screens a local notice snapshot without adding a canonical opportunity. Results are reused for identical evidence and configuration on any later day; `--force` on `screen-competitions` makes a new paid request. Malformed/incomplete output and a missing supported title fail visibly. Unsupported individual fields are omitted, and an unsupported decision quotation sends a recommendation, or a decision left without any supported quotation, to review. A linked PDF, login wall or unavailable page requires further review.
 
@@ -105,3 +105,5 @@ uv run playwright install chromium
 ### Using another screening service
 
 The default uses Anthropic Messages with strict output. For OpenAI Responses, set ARCH_COMPETITION_OPS_AI_PROVIDER to openai, choose an OpenAI model such as gpt-6-luna and supply OPENAI_API_KEY. For an OpenAI-compatible Chat Completions service, select openai-compatible. Set ARCH_COMPETITION_OPS_AI_CHAT_BASE_URL, ARCH_COMPETITION_OPS_AI_CHAT_API_KEY and ARCH_COMPETITION_OPS_AI_MODEL for that service. Supply its input and output rates in USD per million tokens through ARCH_COMPETITION_OPS_AI_CHAT_INPUT_USD_PER_MILLION and ARCH_COMPETITION_OPS_AI_CHAT_OUTPUT_USD_PER_MILLION. These rates fund the local reservation when reported usage is missing. Each provider must accept strict JSON Schema and the selected reasoning effort.
+
+The run report counts exhausted notices by source and error. Use `uv run arch-competition-ops requeue-failed --source-id SOURCE` to retry those notices after fixing the cause. Add `--url URL` to select one notice. The settings and defaults for attempts, waiting time and discovery limits are in `.env.example`.

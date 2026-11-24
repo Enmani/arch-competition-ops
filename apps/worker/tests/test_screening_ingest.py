@@ -90,7 +90,31 @@ def test_ingest_screens_each_listed_notice_once_until_its_content_changes(
 
     # Each stage opens and closes its own client, as create_client does in production.
     monkeypatch.setattr(service, "create_client", lambda _settings: mock_client(handler))
+    import shutil
+    import subprocess
+
+    from support import REPO_ROOT
+
+    def export_diff(sequence):
+        # Use the real exporter and its D1 schema in a local SQLite fixture. Includes marker writes.
+        process = subprocess.run(
+            [
+                shutil.which("node"),
+                str(REPO_ROOT / "tests/helpers/worker-export-diff.mjs"),
+                str(settings.resolve_path(settings.db)),
+                str(settings.root),
+                str(sequence),
+            ],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            check=True,
+        )
+        return int(process.stdout)
+
     first = ingest_source(settings, source_id="city")
+    assert export_diff(1) > 0
     calls_after_first = len(calls)
     original = listing[:]
     listing[:] = [
@@ -106,6 +130,7 @@ def test_ingest_screens_each_listed_notice_once_until_its_content_changes(
 
     with connect(settings.resolve_path(settings.db)) as db:
         assert db.execute("SELECT count(*) FROM notice_backlog").fetchone()[0] == 2
+    assert export_diff(2) == 0
     listing[:] = original
     calls_after_second = len(calls)
     # A corrigendum changes the listed content, so that notice alone is screened again.
@@ -114,10 +139,17 @@ def test_ingest_screens_each_listed_notice_once_until_its_content_changes(
     )
     third = ingest_source(settings, source_id="city")
 
-    assert calls_after_first == 2  # one triage batch, one assessment
+    assert calls_after_first == 2  # one decision per notice
     assert len(first.ingested_ids) == 2
-    # Unchanged notices are neither triaged nor assessed again, the excluded one included.
+    # Neither the kept notice nor the excluded notice needs a second assessment.
     assert calls_after_second == calls_after_first
     assert second.already_screened >= 2
     assert third.already_screened == 1
     assert calls[calls_after_second:] == ["/v1/responses"]
+
+    export_diff(3)  # Publish the amendment before comparing a new judgment of the same notice.
+    settings.ai_reasoning_effort = "medium"
+    before = len(calls)
+    ingest_source(settings, source_id="city")
+    assert len(calls) == before + 2
+    assert export_diff(4) == 0

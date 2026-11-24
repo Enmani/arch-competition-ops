@@ -1,5 +1,5 @@
 import { formatSqlValue, quoteIdentifier, SqlValueError } from "./sql-values.mjs";
-import { PRUNE_STAGING_TABLE } from "./table-specs.mjs";
+import { contentColumns, PRUNE_STAGING_TABLE } from "./table-specs.mjs";
 
 /**
  * Build `INSERT ... ON CONFLICT(pk) DO UPDATE SET ...` for one row.
@@ -31,15 +31,17 @@ export function buildUpsertStatement(spec, columns, row) {
   const assignments = updateColumns
     .map((column) => `${quoteIdentifier(column)} = excluded.${quoteIdentifier(column)}`)
     .join(", ");
-  const changes = updateColumns
-    .filter(column => !(spec.name === "competitions" && ["discovered_at", "last_verified_at", "updated_at"].includes(column))
-      && !(spec.name === "ai_screening_results" && column === "updated_at"))
+  const comparisons = contentColumns(spec, updateColumns);
+  // Advice is valid only for its source revision, including when a correction makes it stale.
+  if (spec.name === "ai_screening_results") comparisons.push("source_updated_at");
+  const changes = comparisons
     .map((column) => `${table}.${quoteIdentifier(column)} IS NOT excluded.${quoteIdentifier(column)}`)
     .join(" OR ");
   const guard = spec.conflictGuard ? `(${spec.conflictGuard}) AND (${changes})` : changes;
 
   return (
-    `INSERT INTO ${table} (${columnList}) VALUES (${values}) ` +
+    `INSERT INTO ${table} (${columnList}) SELECT ${values} WHERE EXISTS ` +
+    `(SELECT 1 FROM discover_publication WHERE id=1 AND syncing=1) ` +
     `ON CONFLICT(${quoteIdentifier(spec.primaryKey)}) DO UPDATE SET ${assignments} WHERE ${guard};`
   );
 }
@@ -85,6 +87,7 @@ export function buildPruneStatements(competitionIds, { maxStatementBytes }) {
   statements.push(
     `DELETE FROM "competitions" WHERE "id" NOT IN (SELECT "id" FROM ${staging}) ` +
       `AND "id" NOT IN (SELECT "opportunity_id" FROM "workspace_watchlist_entries");`,
+    `UPDATE discover_publication SET summary_format=0 WHERE id=1 AND changes()>0;`,
     `DROP TABLE ${staging};`,
   );
   return statements;

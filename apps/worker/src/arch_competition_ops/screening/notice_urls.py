@@ -55,7 +55,8 @@ def public_url(value: str) -> str:
             }
             or (k == "q" and re.fullmatch(r"idweb:[\w-]+", v))
         ]
-        return urlunsplit((url.scheme, host + port, url.path, urlencode(query), ""))
+        identifiers = [(k, v) for k, v in query if "://" not in v and not v.startswith("//")]
+        return urlunsplit((url.scheme, host + port, url.path, urlencode(sorted(identifiers)), ""))
     except ValueError:
         return ""
 
@@ -72,5 +73,3 @@ class PageLinks(HTMLParser):
                 absolute = urljoin(self.base_url, value)
                 if absolute.startswith(("https://", "http://")):
                     self.links.append(absolute)
-
-

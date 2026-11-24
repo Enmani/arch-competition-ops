@@ -7,7 +7,7 @@
 // ops_review_decisions, auth_*), and never emits BEGIN/COMMIT/SAVEPOINT (remote D1 import rejects them).
 // See CLOUDFLARE_DEPLOY_RUNBOOK.md for the operating procedure.
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { realpathSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,12 +21,13 @@ import {
   writeExport,
 } from "./lib/d1-sync/batching.mjs";
 import { ApplyError, applyExport, prepareApply } from "./lib/d1-sync/apply.mjs";
-import { buildPublicationFiles } from "./lib/d1-sync/publication.mjs";
+import { buildPublicationFiles, publicFields, publicNoticeIds } from "./lib/d1-sync/publication.mjs";
 import { buildRetentionStatements } from "./lib/d1-sync/retention.mjs";
 import { findSchemaProblems, loadMigratedColumns, SchemaMismatchError } from "./lib/d1-sync/schema-check.mjs";
 import { quoteIdentifier } from "./lib/d1-sync/sql-values.mjs";
 import { buildPruneStatements, buildUpsertStatement } from "./lib/d1-sync/statements.mjs";
 import {
+  contentColumns,
   DB_PATH_ENV_VAR,
   D1_DATABASE_NAME,
   DEFAULT_DB_RELATIVE_PATH,
@@ -104,6 +105,15 @@ function readTableRows(database, spec, columns) {
     : "";
   const columnList = columns.map(quoteIdentifier).join(", ") + current;
   const where = spec.rowFilter ? ` WHERE ${spec.rowFilter}` : "";
+  if (spec.name === "source_runs") {
+    // Preserve each change in diagnostic state. Repeated successful polls remain in the worker.
+    const state = "json_array(source_name,source_kind,source_tier,status,last_error,"
+      + "parse_failure_count,duplicate_group_count,max_duplicate_group_size)";
+    return database.prepare(`SELECT ${columnList} FROM (
+      SELECT *, ${state} AS diagnostic,
+        lag(${state}) OVER (PARTITION BY source_id ORDER BY id) AS previous FROM source_runs
+    ) WHERE diagnostic IS NOT previous ORDER BY id`).safeIntegers(true).all();
+  }
   const order = quoteIdentifier(spec.primaryKey);
   return database
     .prepare(`SELECT ${columnList} FROM ${quoteIdentifier(spec.name)}${where} ORDER BY ${order}`)
@@ -132,6 +142,8 @@ export function runExport({
   let tableStatements;
   let rowCounts;
   let competitionIds = null;
+  const snapshot = createHash("sha256");
+  const published = createHash("sha256");
   try {
     const problems = findSchemaProblems(database, migratedColumns);
     if (problems.length > 0) {
@@ -141,11 +153,23 @@ export function runExport({
     // One read transaction -> a consistent snapshot even if the ingest worker is writing.
     database
       .transaction(() => {
+        const visible = publicNoticeIds(database, now);
         tableStatements = [];
         rowCounts = {};
         for (const spec of SYNC_TABLES) {
           const columns = migratedColumns.get(spec.name);
           const rows = readTableRows(database, spec, columns);
+          const keys = contentColumns(spec, columns).filter(key =>
+            !spec.updateColumns || key === spec.primaryKey || spec.updateColumns.includes(key));
+          if (spec.name === "ai_screening_results") keys.push("current_revision");
+          const displayed = publicFields(spec.name, keys);
+          for (const row of rows) {
+            const data = columns => JSON.stringify([spec.name, ...columns.map(key => row[key])],
+              (_key, value) => typeof value === "bigint" ? value.toString() : value) + "\n";
+            snapshot.update(data(keys));
+            if ((spec.name === "competitions" || spec.name === "ai_screening_results") &&
+                visible.has(row[spec.primaryKey])) published.update(data(displayed));
+          }
           rowCounts[spec.name] = rows.length;
           tableStatements.push({
             table: spec.name,
@@ -173,7 +197,7 @@ export function runExport({
   }
 
   const retentionStatements = retention ? buildRetentionStatements(now) : null;
-  const publication = buildPublicationFiles(randomUUID());
+  const publication = buildPublicationFiles(randomUUID(), snapshot.digest("hex"), published.digest("hex"), prune);
   const files = planFiles({ tableStatements, retentionStatements, pruneStatements, limits, publication });
   const outputDir = path.join(outputRoot, utcTimestamp(now));
   const wranglerCommands = buildWranglerCommands({ repoRoot, outputDir, files });
@@ -184,6 +208,7 @@ export function runExport({
     d1Database: D1_DATABASE_NAME,
     prune,
     retention,
+    unchangedCheck: publication.preflight,
     limits,
     tables: Object.fromEntries(
       Object.entries(rowCounts).map(([table, rows]) => [table, { rows }]),

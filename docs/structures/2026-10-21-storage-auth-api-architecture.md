@@ -211,7 +211,7 @@ The exact aggregate deduplicates stored option values during one scan. The read 
 
 ### 13. Publishing the default discover summary
 
-The sync sets a marker before the first import and publishes a new version after retention and optional pruning. Its last file computes the current and next UTC days from the final remote data, including records retained for a watchlist. The two daily summaries share the active version and a format number in a single row. An absent, expired or incompatible summary uses the exact live aggregate. During an import or after an interrupted import, requests read the live data in a single transaction and existing browser continuations expire. See the [deploy runbook](../../CLOUDFLARE_DEPLOY_RUNBOOK.md) for the migration and sync order.
+A content signature covers the worker export. Another covers visible opportunities and their displayed fields. A matching export needs one indexed marker lookup. Time-dependent retention can still delete rows. Changed imports acquire the marker and publish only after all files finish. A diagnostics-only change preserves the public version. The summary remains valid until the next deadline changes the visible set, and a second payload covers that change day. A missing or incompatible summary and an interrupted import use the existing live read. The website reads the summary and page in the same batch. MCP keeps its existing list query. See the [deploy runbook](../../CLOUDFLARE_DEPLOY_RUNBOOK.md).
 
 ## Extension Points
 

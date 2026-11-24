@@ -108,15 +108,15 @@ def merge_evidence_note(
 ) -> str | None:
     """First line is the latest extraction note; later lines accumulate and are de-duplicated."""
     existing_lines = [line for line in (existing or "").split(NOTE_SEPARATOR) if line]
-    base = incoming or (existing_lines[0] if existing_lines else None)
-    kept = existing_lines[1:] if existing_lines else []
-
-    lines: list[str] = [base] if base else []
-    for line in [*kept, *extra_lines]:
-        if line and line not in lines:
-            lines.append(line)
-    if len(lines) > MAX_NOTE_LINES:
-        lines = [lines[0], *lines[-(MAX_NOTE_LINES - 1) :]]
+    current = list(dict.fromkeys((incoming or "").splitlines())) or existing_lines[:1]
+    # Preserve all current quotations. Bound only historical/conflict notes, in stable order.
+    history = list(
+        dict.fromkeys(
+            line for line in [*existing_lines[1:], *extra_lines] if line and line not in current
+        )
+    )
+    available = max(0, MAX_NOTE_LINES - len(current))
+    lines = current + (history[-available:] if available else [])
     return NOTE_SEPARATOR.join(lines) or None
 
 

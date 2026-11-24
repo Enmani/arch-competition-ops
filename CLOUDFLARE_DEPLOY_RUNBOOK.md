@@ -117,7 +117,7 @@ npm run d1:export-data
 ```
 
 The exporter prints the exact `wrangler d1 execute` commands and writes them to `manifest.json`.
-Run the files in the printed order. `0000-syncing.sql` marks the import as in progress. The data files follow, then retention and pruning when requested. `0100-publish.sql` publishes the new version and computes the default total and options for today and tomorrow in UTC using the remote records.
+Run the files in the printed order. `0000-syncing.sql` marks the import as in progress. The data files follow, then retention and pruning when requested. `0100-publish.sql` publishes the visible catalogue and its summary through the next deadline change, using the final remote records.
 
 ```powershell
 npm --workspace apps/web exec -- wrangler d1 execute arch-competition-ops --remote --file ../../artifacts/d1-sync/<UTC-timestamp>/0001-competitions.sql
@@ -297,7 +297,11 @@ in `apps/web/wrangler.jsonc`.
 ### D1 Import Rejects Transactions
 
 `scripts/export-d1-data.mjs` must not emit `BEGIN TRANSACTION`, `COMMIT`, `SAVEPOINT` or `ROLLBACK`.
-D1 imports apply each file separately. The syncing marker keeps readers on the live path until the final file publishes two days of summaries together. An interrupted import leaves the marker in place. The export tests cover retries, file ownership and publication after pruning.
+D1 imports apply each file separately. The syncing marker keeps readers on the live path until the final file publishes the summaries. An interrupted import leaves the marker in place. The export tests cover retries, file ownership and publication after pruning.
+
+### Estimating the D1 allowance
+
+The free allowance is 100,000 row writes and 5 million row reads per day. For normal ingest, estimate logical data writes as new or changed opportunities × up to two rows (facts and assessment), plus changed source or review diagnostics, two marker writes per changed import, and actual retention deletes. For example, 100 new opportunities with decisions add about 200 data rows. Index maintenance, cascading deletes and other users of D1 also count. Check the dashboard for billed totals. Repeating an identical import without anything due for retention writes zero rows. A singleton lookup skips all data files. Web and MCP requests use their existing reads.
 
 ### Multiple Cloudflare Accounts
 
@@ -349,9 +353,9 @@ git push
 3. `node scripts/export-d1-data.mjs --apply`: upserts the worker-owned tables into production D1 and deletes expired and excluded records there (`0090-retention.sql`);
 4. pushes the new state as a new generation (`scripts/cloud-state.mjs push`), keeping the newest 14.
 
-The ingestion step defaults to Anthropic Messages, claude-haiku-5-5 and low effort. The owner has 100 USD in monthly credit, which expires at the end of each month. GitHub Actions repository variables AI_PROVIDER, AI_MODEL and AI_REASONING_EFFORT override those defaults. For OpenAI Responses, select openai, set an OpenAI model and add OPENAI_API_KEY. For openai-compatible also set AI_CHAT_BASE_URL, AI_CHAT_INPUT_USD_PER_MILLION and AI_CHAT_OUTPUT_USD_PER_MILLION, and supply the separate AI_CHAT_API_KEY secret. Only the ingest step receives model credentials.
+The ingestion step defaults to Anthropic Messages, claude-haiku-5-5 and low effort. The owner has 100 USD in monthly credit, which expires at the end of each month. GitHub Actions repository variables AI_PROVIDER, AI_MODEL and AI_REASONING_EFFORT override those defaults. For OpenAI Responses, select openai, set an OpenAI model and add OPENAI_API_KEY. For openai-compatible also set AI_CHAT_BASE_URL, AI_CHAT_INPUT_USD_PER_MILLION and AI_CHAT_OUTPUT_USD_PER_MILLION, and supply the separate AI_CHAT_API_KEY secret. Only screening and the separate bilingual title step receive the selected model credentials. A title failure leaves collected notices and screening results intact.
 
-The state is the expensive part. Losing it, or starting from an empty database, means paying for every assessment again, so `pull` fails when the bucket has no state (only `push --init` creates the first one), and `pull`/`push` refuse to replace a state with one that has fewer `ai_notice_ledger` rows unless `--force`. Steps 3 and 4 still run when the ingest exits non-zero (some sources failing is normal) and never run when the pull failed; the job is then marked failed so the red run is visible.
+The state is the expensive part. Losing it, or starting from an empty database, means paying for every assessment again, so `pull` fails when the bucket has no state (only `push --init` creates the first one), and `pull`/`push` refuse to replace a state with one that has fewer `ai_notice_ledger` rows unless `--force`. Backup validation also checks that any decrease in queue rows is covered by the worker’s cumulative retention count. Steps 3 and 4 still run when the ingest exits non-zero (some sources failing is normal) and never run when the pull failed; the job is then marked failed so the red run is visible.
 
 ### One-time setup
 
@@ -397,7 +401,7 @@ From then on the cloud state is the master copy. To ingest locally again, run `n
 
 ### Reading the results
 
-- Actions tab, workflow "Daily ingest": the run summary shows counts only (batch line from the CLI, failed source ids, ledger/results/cost before and after, D1 rows upserted, remote competition count before and after, pushed generation). Nothing is uploaded as an artifact and no notice titles are logged, because logs of a public repository are world-readable.
+- Actions tab, workflow "Daily ingest": the run summary shows counts only (batch line from the CLI, failed source ids, ledger/results/cost before and after, exported snapshot sizes and whether the sync skipped unchanged data, pushed generation). Nothing is uploaded as an artifact and no notice titles are logged, because logs of a public repository are world-readable.
 - `gh run list --workflow daily-ingest.yml --repo Enmani/arch-competition-ops`, and `gh run view <id> --log` for the full log.
 - A red run with a green "Sync to D1" and "Push state to R2" means only that some sources failed; the data and state were still saved. A red "Pull state from R2" means nothing was changed and nothing was spent: fix the bucket or token and run again. A red "Sync to D1" means the state was pushed but D1 is behind; re-run the workflow (the upserts are idempotent and the next ingest finds nothing new, so it costs nothing).
 - Verify production with `curl.exe -s "https://arch-competition.com/api/opportunities?limit=1"` and load page two from discover after a sync.

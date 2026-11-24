@@ -1,6 +1,7 @@
 """Identity of one notice version and its assessment contract."""
 
 import hashlib
+import json
 import re
 
 from arch_competition_ops.normalizers.text import strip_html
@@ -16,8 +17,29 @@ def digest(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
 
 
+def _stable_object(pairs):
+    volatile = {
+        "csrftoken",
+        "requestverificationtoken",
+        "viewstate",
+        "sessiontoken",
+        "requesttimestamp",
+        "pagegeneratedat",
+    }
+    return {k: v for k, v in pairs if k.casefold().replace("_", "") not in volatile}
+
+
 def notice_content_hash(payload: str, url: str) -> str:
     material = notice_evidence(payload)
+    # Structured APIs can change property order or page-generation metadata on every poll.
+    if material.lstrip().startswith(("{", "[")):
+        material = material.lstrip()
+        try:
+            data, end = json.JSONDecoder(object_pairs_hook=_stable_object).raw_decode(material)
+        except ValueError:
+            pass
+        else:
+            material = canonical_json(data) + material[end:]
     visible = re.sub(r"<(script|style)\b[^>]*>.*?</\1>", " ", material, flags=re.I | re.S)
     links = PageLinks(url)
     links.feed(visible)
