@@ -38,6 +38,7 @@ from arch_competition_ops.normalizers.competition import (
     configure_procedure_registry,
 )
 from arch_competition_ops.review_queue import refresh_review_queue
+from arch_competition_ops.screening.client import ScreeningPaused
 from arch_competition_ops.screening.fingerprints import (
     notice_content_hash,
     screening_criteria_hash,
@@ -303,9 +304,11 @@ def ingest_source(
                     cache_path=settings.resolve_path(settings.geocode_cache),
                     geocoder=geocoder,
                 )
-            except ScreeningBudgetExceeded as exc:
+            except (ScreeningBudgetExceeded, ScreeningPaused) as exc:
                 # Budget deferral is not a content rejection. Keep later sources collectable.
                 result.deferred += len(documents) - position
+                if isinstance(exc, ScreeningPaused):
+                    backlog.record_failure(db_path, source_id, document, str(exc))
                 result.batch_paused = True
                 result.notes.append(str(exc))
                 break

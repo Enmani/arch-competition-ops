@@ -64,11 +64,9 @@ ARCH_COMPETITION_OPS_AI_MONTHLY_BUDGET_USD=31
 
 Edit the [screening skill](../config/skills/screen-architecture-opportunities/SKILL.md) to change how notices are judged. Existing ingestion commands use AI automatically when enabled. Source search scope and fetch limits remain controlled by the existing collector and automation configuration.
 
-The skill judges the advertised deliverable, the current participation opportunity and the difference between a mismatch and missing evidence. It covers architecture, urban and landscape design. Countries and languages are priorities, while missing prices or eligibility clauses remain gaps to check.
+Every notice is screened separately. The skill asks whether the notice offers creative spatial design work and requests exact quotations for facts. Missing evidence goes to review. Region, language, value and fees are available for people to consider after collection.
 
-Both AI stages read the same versioned skill. Source deployments use the repository file; the Python wheel bundles that file for backend deployments outside a checkout. No user-profile skill directory is required. A custom `ARCH_COMPETITION_OPS_AI_PREFERENCES` path must exist in the deployed environment; missing or empty instructions fail visibly. Rebuild the backend package after updating the skill.
-
-TED listing inputs include notice type, project description, place of performance and separate tender/request deadlines before repeated multilingual metadata. This keeps those facts available within the bounded AI preview. A country preference does not add a national portal collector or guarantee balanced sampling across countries; the source registry and query limits still determine coverage.
+The Python wheel bundles the repository skill. Rebuild the backend package after editing it. The model receives the skill text, original notice evidence, its public URL and links from that notice.
 
 ```bash
 uv run arch-competition-ops show-ai-models --live
@@ -78,7 +76,7 @@ uv run arch-competition-ops list-ai-screenings --decision recommend --json
 uv run arch-competition-ops analyze-source-file --source-id ted_design_notices --path artifacts/notice.json --source-url https://ted.europa.eu/en/notice/NOTICE/html
 ```
 
-`polish-titles` derives the display titles (see `docs/DATA_CONTRACT.md`): rules for every record, then at most `--max-batches` (default 5) AI requests of 20 titles that give every title not yet derived by the current model a Chinese and an English display title; a changed source title is derived again, unchanged ones never. Requests are cached by exact input and count against the same daily/monthly AI budget; `--no-ai` runs the rules only, and ingest runs it for the new records. `screen-competitions` assesses stored records and publishes advice. New ingestion additionally extracts source fields. `analyze-source-file` extracts and screens a local notice snapshot without adding a canonical opportunity. Results are reused for identical evidence and configuration on any later day (today's date is sent with each request but is not part of the cache identity; expiry is enforced from `deadline_at`); `--force` on `screen-competitions` makes a new paid request. Malformed/incomplete output and a missing supported title fail visibly. Unsupported individual fields are omitted, and an unsupported decision quotation sends a recommendation, or a decision left without any supported quotation, to review. A linked PDF, login wall or unavailable page requires further review.
+`polish-titles` derives the display titles (see `docs/DATA_CONTRACT.md`): rules for every record, then at most `--max-batches` (default 5) AI requests of 20 titles that give every title not yet derived by the current model a Chinese and an English display title; a changed source title is derived again, unchanged ones never. Requests are cached by exact input and count against the same daily/monthly AI budget; `--no-ai` runs the rules only, and ingest uses only those rules for new records. `screen-competitions` assesses stored records and publishes advice. New ingestion additionally extracts source fields. `analyze-source-file` extracts and screens a local notice snapshot without adding a canonical opportunity. Results are reused for identical evidence and configuration on any later day; `--force` on `screen-competitions` makes a new paid request. Malformed/incomplete output and a missing supported title fail visibly. Unsupported individual fields are omitted, and an unsupported decision quotation sends a recommendation, or a decision left without any supported quotation, to review. A linked PDF, login wall or unavailable page requires further review.
 
 For a different public notice page shape, use `collector: generic_notice_pages`, `extractor: generic_listing_html`, `scan_method: html`, and a `url_list` or `url_list_path` in the existing source registry. Each URL must identify one notice; this collector does not crawl arbitrary listings. AI must be enabled for raw HTML extraction. The existing SSRF guard, request limits and evidence archive apply.
 
@@ -100,3 +98,7 @@ uv run playwright install chromium
 ## Verify
 
 `npm run check` (see Verification in `AGENTS.md`), plus `npm run build:web` after frontend changes.
+
+### Using another screening service
+
+The default provider uses OpenAI Responses. For an OpenAI-compatible Chat Completions service set ARCH_COMPETITION_OPS_AI_PROVIDER to chat_completions. Set ARCH_COMPETITION_OPS_AI_CHAT_BASE_URL, ARCH_COMPETITION_OPS_AI_CHAT_API_KEY and ARCH_COMPETITION_OPS_AI_MODEL for that service. Supply its input and output rates in USD per million tokens through ARCH_COMPETITION_OPS_AI_CHAT_INPUT_USD_PER_MILLION and ARCH_COMPETITION_OPS_AI_CHAT_OUTPUT_USD_PER_MILLION. These rates fund the local reservation when reported usage is missing. Each provider must accept strict JSON Schema and the selected reasoning effort.

@@ -12,17 +12,16 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-from openai import APIConnectionError, APIError, APIStatusError, OpenAI
-from pydantic import ValidationError
+from openai import OpenAI
 
 from arch_competition_ops.bootstrap import initialize_database
+from arch_competition_ops.http import HttpError
 from arch_competition_ops.locking import LockHeldError, exclusive_lock
 from arch_competition_ops.models import CompetitionRecord, SourceDefinition
-from arch_competition_ops.screening.catalog import ScreeningModel, get_model
+from arch_competition_ops.screening.catalog import ScreeningModel
 from arch_competition_ops.screening.client import (
     ScreeningError,
-    call_with_rate_limit_retry,
-    create_client,
+    ScreeningPaused,
 )
 from arch_competition_ops.screening.extraction import extract_record
 from arch_competition_ops.screening.inputs import (
@@ -30,6 +29,13 @@ from arch_competition_ops.screening.inputs import (
     prepare_input,
 )
 from arch_competition_ops.screening.models import ScreeningDecision, validate_evidence
+from arch_competition_ops.screening.providers import (
+    create_screening_client as create_client,
+)
+from arch_competition_ops.screening.providers import (
+    read_notice,
+    screening_model,
+)
 from arch_competition_ops.settings import Settings
 from arch_competition_ops.storage.screening import (
     ScreeningBudgetExceeded,
@@ -80,65 +86,35 @@ def _request_one(
         budget_usd=settings.ai_monthly_budget_usd,
         daily_budget_usd=settings.ai_daily_budget_usd,
     )
-    try:
-        # HTTP 429 is retried (bounded) under the same reservation; nothing else is.
-        response = call_with_rate_limit_retry(
-            lambda: client.responses.create(**json.loads(input_json)["request"]),
-            sleep=sleep,
-        )
-    except APIStatusError as exc:
-        # Rejected 4xx calls have not generated output; 5xx/network outcomes remain reserved.
-        code = f"http_{exc.status_code}"
+    response = read_notice(
+        client, settings.ai_provider, json.loads(input_json)["request"], sleep=sleep
+    )
+    cost = None
+    if response.rejected:
+        cost = 0
+    elif response.input_tokens is not None and response.output_tokens is not None:
+        cost = model.cost(response.input_tokens, response.output_tokens)
+    accounting = dict(
+        response_id=response.response_id,
+        input_tokens=response.input_tokens,
+        output_tokens=response.output_tokens,
+        cost_usd=cost,
+    )
+    if response.error_class:
         finish_screening(
             db_path,
             request_id,
-            status="failed",
-            error_code=code,
-            cost_usd=0 if 400 <= exc.status_code < 500 else None,
-        )
-        raise ScreeningError(
-            f"OpenAI {code}; check API key, model access, credits and limits"
-        ) from None
-    except APIConnectionError:
-        finish_screening(db_path, request_id, status="uncertain", error_code="transport_error")
-        raise ScreeningError(
-            "OpenAI connection failed; cost reservation retained",
-            cost_usd=reserve,
-        ) from None
-    except APIError:
-        finish_screening(db_path, request_id, status="uncertain", error_code="api_error")
-        raise ScreeningError(
-            "OpenAI API error; cost reservation retained", cost_usd=reserve
-        ) from None
-
-    usage = response.usage
-    accounting = {
-        "response_id": response.id,
-        "input_tokens": usage.input_tokens if usage else None,
-        "output_tokens": usage.output_tokens if usage else None,
-        "cost_usd": model.cost(usage.input_tokens, usage.output_tokens) if usage else None,
-    }
-    try:
-        if response.status != "completed":
-            raise ValueError("incomplete_response")
-        decision = ScreeningDecision.model_validate_json(response.output_text)
-        validate_evidence(decision, evidence_fields)
-        if limitations:
-            decision.missing_information.extend(limitations)
-    except ValueError as exc:
-        code = "invalid_schema" if isinstance(exc, ValidationError) else str(exc)
-        finish_screening(
-            db_path,
-            request_id,
-            status="failed",
-            error_code=code,
-            result_json=json.dumps({"invalid_output": response.output_text}, ensure_ascii=False),
+            status="uncertain"
+            if response.error_class in {"api_error", "transport_error"}
+            else "failed",
+            error_code=response.error_class,
             **accounting,
         )
-        raise ScreeningError(
-            f"OpenAI output rejected ({code})",
-            cost_usd=accounting["cost_usd"] if accounting["cost_usd"] is not None else reserve,
-        ) from None
+        error = ScreeningPaused if response.pause else ScreeningError
+        raise error(response.error_class, cost_usd=reserve if cost is None else cost)
+    decision = response.decision
+    validate_evidence(decision, evidence_fields)
+    decision.missing_information.extend(limitations)
     finish_screening(
         db_path,
         request_id,
@@ -183,7 +159,7 @@ def assess_document(
     (``assess_documents``): the file lock is per process and non-blocking, so taking it again in
     every worker thread would make all but one thread fail.
     """
-    model = get_model(settings.ai_model)
+    model = screening_model(settings, settings.ai_model)
     db_path = initialize_database(settings)
     row = {
         "source_url": source_url,
@@ -265,7 +241,7 @@ def assess_documents(
     if not documents:
         return []
     stop = threading.Event()
-    budget_errors: list[ScreeningBudgetExceeded] = []
+    budget_errors: list[Exception] = []
 
     def work(item: tuple[str, str]) -> AssessmentOutcome:
         if stop.is_set():
@@ -282,7 +258,7 @@ def assess_documents(
                     source_lock=False,
                 )
             )
-        except ScreeningBudgetExceeded as exc:
+        except (ScreeningPaused, ScreeningBudgetExceeded) as exc:
             budget_errors.append(exc)  # before the event, which workers check first
             stop.set()
             return AssessmentOutcome(error=exc)
@@ -319,7 +295,7 @@ def screen_competitions(
 ) -> ScreeningBatchResult:
     if not 1 <= limit <= 500:
         raise ValueError("AI screening limit must be between 1 and 500")
-    model = get_model(model_id or settings.ai_model)
+    model = screening_model(settings, model_id or settings.ai_model)
     db_path = initialize_database(settings)
     result = ScreeningBatchResult(model=model.id)
     # Same database => same OS lock, even when workers use different roots/checkouts.
@@ -384,6 +360,9 @@ def screen_competitions(
                             **decision.model_dump(),
                         }
                     )
+                except HttpError as exc:
+                    result.errors.append(f"{row['id']}: source HTTP {exc.status_code}")
+                    continue
                 except (ScreeningError, ScreeningBudgetExceeded) as exc:
                     if isinstance(exc, ScreeningError):
                         result.cost_usd += exc.cost_usd

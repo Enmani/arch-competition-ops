@@ -148,6 +148,7 @@ def _parse_cards(page: str) -> list[dict[str, Any]]:
             continue
         cards.append(
             {
+                "listingText": block,
                 "tenderId": tender_id.group(1),
                 "tenderNumber": unescape(number.group(1)).strip() if number else None,
                 "title": clean_text(title.group(1)),
@@ -198,12 +199,8 @@ def _build_document(
         "location": "Qatar",
         "evidenceLevel": "official_notice",
         "evidenceNote": EVIDENCE_NOTE,
-        **(
-            {
-                "rawNotice": {k: str(v) if isinstance(v, date) else v for k, v in card.items()},
-                "rawNoticeHtml": detail or "",
-            }
-        ),
+        "rawNotice": card["listingText"],
+        "rawNoticeHtml": detail or "",
     }
     return CollectedSourceDocument(source_url=url, payload=json.dumps(payload, ensure_ascii=False))
 
@@ -251,7 +248,9 @@ def collect_monaqasat_documents(
         except HttpError as exc:  # a missing detail page must not drop the tender
             if exc.status_code in {403, 429}:
                 documents.append(
-                    deferred_detail(exc, NOTICE_URL.format(tender_id=card["tenderId"]), card)
+                    deferred_detail(
+                        exc, NOTICE_URL.format(tender_id=card["tenderId"]), card["listingText"]
+                    )
                 )
                 if len(documents) >= limit:
                     return documents

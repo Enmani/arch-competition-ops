@@ -49,6 +49,7 @@ export const competitionPageSchema = z.object({
   next_offset: z.number().int().nullable().describe("Offset for the next page, or null when none is available within the offset limit."),
 });
 export const competitionDetailSchema = summarySchema.extend({
+  qualification_score: z.number().nullable().describe("Worker assessment based on recorded facts. May be absent. Used for browsing only."),
   authority_name: z.string(), opportunity_type: z.string(), eligibility_summary: z.string(),
   estimated_contract_value_eur: z.number().nullable(), prize_summary: z.string().nullable(),
   documents_portal_url: z.string().nullable(), brief_pdf_url: z.string().nullable(),

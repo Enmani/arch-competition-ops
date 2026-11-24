@@ -111,6 +111,7 @@ def parse_tender_list(page: str) -> list[dict[str, str | None]]:
             continue
         tenders.append(
             {
+                "listingText": match.group(0),
                 "path": about.group(1),
                 "nodeId": node_id.group(1),
                 "title": _clean(title.group(1)),
@@ -146,7 +147,7 @@ def _build_document(tender: dict[str, str | None]) -> CollectedSourceDocument:
         "evidenceNote": "Official Islamic Development Bank project procurement notice.",
         # The notice page is server rendered with the issue date and documents, so
         # ``rawNoticeHtml`` is left out and AI enrichment reads the page itself.
-        "rawNotice": tender,
+        "rawNotice": tender["listingText"],
     }
     return CollectedSourceDocument(
         source_url=page_url, payload=json.dumps(payload, ensure_ascii=False)

@@ -41,12 +41,16 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("OPENAI_API_KEY", "ARCH_COMPETITION_OPS_OPENAI_API_KEY"),
         exclude=True,
     )
+    ai_provider: Literal["responses", "chat_completions"] = "responses"
+    ai_chat_base_url: str = ""
+    ai_chat_api_key: SecretStr = Field(default=SecretStr(""), exclude=True)
+    ai_chat_input_usd_per_million: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    ai_chat_output_usd_per_million: float | None = Field(default=None, ge=0, allow_inf_nan=False)
     ai_enabled: bool = False
     ai_model: str = "gpt-6-luna"
     ai_reasoning_effort: Literal["low", "medium", "high", "xhigh", "max"] = "low"
     ai_fetch_details: bool = True
-    # Most candidates read per source run before triage; the notice ledger skips those already
-    # screened, so this bounds only a first run or a criteria change, not daily cost.
+    # Initial discovery limit per source. The paid reading limit is set on each batch.
     ai_candidate_cap: int = Field(default=2000, ge=1, le=10000)
     ai_daily_budget_usd: float = Field(default=1, ge=0, allow_inf_nan=False)
     ai_preferences: Path = DEFAULT_AI_SKILL

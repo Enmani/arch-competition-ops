@@ -158,6 +158,7 @@ def _parse_rows(page: str) -> list[dict[str, Any]]:
         )
         rows.append(
             {
+                "listingText": block,
                 "tenderNo": number,
                 "tenderSeq": sequence,
                 "title": cells[1],
@@ -189,12 +190,8 @@ def _build_document(row: dict[str, Any]) -> CollectedSourceDocument:
         "evidenceLevel": "official_notice",
         "evidenceNote": EVIDENCE_NOTE,
         # The detail page is filled by script; the list row is the whole evidence.
-        **(
-            {
-                "rawNotice": {k: str(v) if isinstance(v, date) else v for k, v in row.items()},
-                "rawNoticeHtml": "",
-            }
-        ),
+        "rawNotice": row["listingText"],
+        "rawNoticeHtml": "",
     }
     return CollectedSourceDocument(
         source_url=row["url"], payload=json.dumps(payload, ensure_ascii=False)

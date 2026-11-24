@@ -29,6 +29,10 @@ class ScreeningError(RuntimeError):
         self.cost_usd = cost_usd
 
 
+class ScreeningPaused(ScreeningError):
+    """No further requests can start in this batch."""
+
+
 def create_client(settings: Settings) -> OpenAI:
     key = settings.openai_api_key.get_secret_value().strip()
     if not key:

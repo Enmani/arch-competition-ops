@@ -142,7 +142,7 @@ def test_a_general_procurement_notice_close_date_is_not_a_deadline() -> None:
     gpn, eoi = (json.loads(d.payload) for d in documents[1:3])
 
     assert gpn["deadline"] is None
-    assert gpn["rawNotice"]["closeDate"] == "2026-11-16"  # evidence keeps what the site says
+    assert "16 November 2026" in gpn["rawNotice"]  # evidence keeps what the site says
     assert eoi["deadline"] == "2026-11-24"
 
 

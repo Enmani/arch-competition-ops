@@ -135,6 +135,7 @@ def parse_notice_rows(fragment: str) -> tuple[int, list[dict[str, str | None]]]:
         published = _parse_day(cells[3])
         notices.append(
             {
+                "listingText": "\n".join([row["title"], *cells]),
                 "noticeId": row["noticeId"],
                 "title": row["title"],
                 "deadline": deadline.isoformat() if deadline else None,
@@ -243,7 +244,7 @@ def _build_document(notice: dict[str, str | None]) -> CollectedSourceDocument:
         "publishedAt": notice["publishedAt"],
         # The notice page is server rendered with the description, so ``rawNoticeHtml`` is left
         # out and AI enrichment reads the page itself.
-        "rawNotice": notice,
+        "rawNotice": notice["listingText"],
     }
     return CollectedSourceDocument(
         source_url=page_url, payload=json.dumps(payload, ensure_ascii=False)

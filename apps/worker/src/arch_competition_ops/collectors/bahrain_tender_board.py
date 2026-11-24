@@ -112,6 +112,7 @@ def _parse_rows(fragment: str) -> list[dict[str, Any]]:
         tender_id = parse.parse_qs(parse.urlsplit(path).query)["id"][0]
         rows.append(
             {
+                "listingText": block,
                 "tenderId": tender_id,
                 # The page's own address, as the list writes it (``%2f`` slashes, ``+`` spaces).
                 "url": SITE + path,
@@ -142,9 +143,7 @@ def _parse_detail(page: str) -> dict[str, Any]:
     }
 
 
-def _build_document(
-    row: dict[str, Any], detail: dict[str, Any] | None, *, ai: bool
-) -> CollectedSourceDocument:
+def _build_document(row: dict[str, Any], detail: dict[str, Any] | None) -> CollectedSourceDocument:
     url = row["url"]
     payload = {
         "title": row["title"],
@@ -162,16 +161,9 @@ def _build_document(
         "evidenceLevel": "official_notice",
         "evidenceNote": EVIDENCE_NOTE,
         # The detail page is read here and the list row is kept as the raw notice.
-        **(
-            {
-                "rawNotice": {
-                    **{k: str(v) if isinstance(v, date) else v for k, v in row.items()},
-                    "detail": detail,
-                },
-                "rawNoticeHtml": (detail or {}).get("description") or "",
-            }
-            if ai
-            else {}
+        "rawNotice": row["listingText"],
+        "rawNoticeHtml": "\n".join(
+            filter(None, [(detail or {}).get("description"), (detail or {}).get("cpvText")])
         ),
     }
     return CollectedSourceDocument(source_url=url, payload=json.dumps(payload, ensure_ascii=False))
@@ -216,12 +208,12 @@ def collect_bahrain_tender_board_documents(
                 detail = _parse_detail(get(row["url"]))
             except HttpError as exc:
                 if exc.status_code in {403, 429}:
-                    documents.append(deferred_detail(exc, row["url"], row))
+                    documents.append(deferred_detail(exc, row["url"], row["listingText"]))
                     if len(documents) >= limit:
                         return documents
                     continue
                 logger.warning("Bahrain tender %s detail not read: %s", row["tenderId"], exc)
-            documents.append(_build_document(row, detail, ai=True))
+            documents.append(_build_document(row, detail))
             if len(documents) >= limit:
                 break
         dated = [row["published"] for row in fresh if row["published"]]

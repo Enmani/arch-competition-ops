@@ -51,10 +51,10 @@ Data flows one way: the worker writes opportunities, the web app reads them and 
 | `apps/web` | Pages, route handlers (thin), auth and CSRF, migrations | Source parsing, inventing facts |
 | `packages/storage` | Queries and row mapping for every web read and write, password hashing, sessions | HTTP, cookies, business-rule copies |
 | `packages/core` | Vocabularies, zod contracts, fee rule, logger | Database access |
-| `config/` | Source registry and packs, filters, taxonomy, automation batches | Secrets |
+| `config/` | Source registry and packs, screening requirement, taxonomy, automation batches | Secrets |
 | `scripts/` | D1 export, Windows scheduled ingestion, docs scan | Runtime logic |
 
-Storage, authentication and the API contract are specified in `docs/structures/2026-10-21-storage-auth-api-architecture.md`. The migrations in `apps/web/migrations/` are the only schema authority; the worker's `storage/schema.py` mirrors them and `apps/worker/tests/test_schema_parity.py` fails on drift.
+Storage, authentication and the API contract are specified in `docs/structures/2026-10-21-storage-auth-api-architecture.md`. The migrations in `apps/web/migrations/` own the published schema; the worker's `storage/schema.py` mirrors them and `apps/worker/tests/test_schema_parity.py` fails on drift.
 
 ## Worker Layout
 
@@ -65,7 +65,7 @@ Storage, authentication and the API contract are specified in `docs/structures/2
 - `http/` the single HTTP client: retries for GET, per-host rate limit, size cap, charset detection, SSRF guards, optional raw-response archive under `artifacts/html`.
 - `storage/` SQLite connection, schema mirror, field-level merge upsert (`merge.py`), run history, review queue.
 - `postprocess/` source-specific maintenance tasks registered by `source_id` (ANAC, GETS), so core modules stay source-agnostic.
-- `screening/` calls the OpenAI Responses API for source-grounded field extraction and targeting decisions. With AI enabled, collection bypasses client-side relevance gates and the worker uses shared AI extraction. A source-specific parser retains upstream notice ids and CPV identifiers. Portal search queries, pagination, authentication and transport remain with collectors.
+- The screening module reads one notice, decides whether it offers creative design work and extracts quoted facts. The same requirement and response schema apply to Responses and Chat Completions. Collectors handle source requests and pagination.
 - `locking.py` OS-level lock that serializes scheduled batches; `clock.py` the single clock, overridable with `ARCH_COMPETITION_TODAY`.
 - `ingest.py`, `automation.py`, `maintenance.py`, `diagnostics.py`, `cli.py` the pipeline, batches, clean-up, health checks and command line.
 
@@ -79,7 +79,7 @@ Fee, currency, eligibility, identity and merge rules are in `docs/DATA_CONTRACT.
 
 ## Qualification
 
-`qualification_score` is a professional viability score, not a popularity score. Positive signals: an official notice, an explicit authority and procedure type, a downstream implementation route, architect qualification required, a visible budget and an available brief. Negative signals: participation fees with no implementation path, student-only or open-to-all calls, no identifiable authority or notice id, and rights-heavy publicity contests. The score does not decide admission. It is computed in the worker (`normalizers/competition.py`) and only displayed by the web app.
+The worker calculates an optional qualification score from recorded facts such as a named authority, a contract value or an implementation route. The web and MCP can read the score. Publication accepts missing and low scores.
 
 ## AI Extraction And Screening
 
@@ -87,7 +87,7 @@ The default screening model is gpt-6-luna with low reasoning effort. The worker 
 
 An assessment returns source-language fields with exact quotations, plus a bilingual recommendation: `recommend`, `exclude` or `needs_review`. The extraction boundary checks quotations, supplied URLs, monetary values/currency, date consistency and allowed taxonomy labels. Unknown fields remain empty. Quotes and unresolved claims are retained in `evidence_note`; AI extraction still passes through verification and geocoding. Linked PDFs are not read by this path.
 
-A notice version includes its URL and content. A finished judgment also identifies the requirement text, response schema, provider, model and reasoning effort. Changes invalidate reuse. The model receives no taxonomy configuration. The response schema names the decision, field and excerpt types needed to validate its answer.
+A notice version includes its URL and content. A finished judgment also identifies the requirement text, response schema, provider, model and reasoning effort. Changes invalidate reuse. The model receives no taxonomy configuration. The schema limits decision labels to recommend, exclude and needs_review. The five excerpt labels are timeline, commercial, eligibility, scope and submission. Extracted-field names identify the destination for each quoted value. The worker checks taxonomy values after receiving the response.
 
 The worker collects each source before paid reading. Its private SQLite queue preserves pending notices beyond the discovery window. Source failures retain the window start. After a page cap the worker replays the window with a larger limit. A repeated listing does not spend another reading slot. Collection-only runs report new notices, text lengths, a lower bound on unfinished pages and the age of the oldest queued notice.
 
@@ -95,9 +95,9 @@ Adapter-generated classifications and evidence annotations are removed from mode
 
 Where an adapter supplies `rawNoticeHtml` or `rawNotice`, the model receives that original content rather than locally guessed fields. API adapters preserve original records so an upstream field rename cannot silently erase the only usable title or qualification clause. Without a raw envelope only the original listing title and category are eligible.
 
-SIMAP search requires explicit project subtypes. AI mode supplies every subtype from the public search UI, including services and study contracts, rather than restricting retrieval to design contests.
+SIMAP uses the publication window and rolling pagination. Its collection request has no procedure or design-code filter.
 
-`ingest-batch --batch-id all_enabled` resolves every currently enabled source from the registry, with a 30-day publication window and a default 20 detail assessments per source. AI batches run at most three sources concurrently by default (`max_workers`, capped at four), while the ingest lock prevents overlapping batches. Batch results distinguish collected documents, model first-pass exclusions, processed records, document failures and deferred candidates. Budget exhaustion stops paid detail work for the source without treating the remaining candidates as irrelevant, and collection continues for later sources.
+The daily batch discovers up to 2,000 notices per source initially, within seven days by default. Its separate reading limit is 100 notices per source. Across sources it serves the oldest queued notices first. A budget or provider quota pause leaves the remaining notices in the worker database.
 
 The same detail response extracts source-backed participation excerpts under five categories: timeline, commercial, eligibility, scope and submission. These are short original-language clauses, not inferred qualification decisions. They live in `ai_screening_results.result_json.notice_details`; the detail read model validates their shape and displays only the current source revision. Country, source notice id and languages can also be normalized when the notice explicitly supports them.
 
@@ -107,7 +107,7 @@ Success means a source-grounded title and usable candidate record, not complete 
 
 `ai_screening_runs` is a local ledger and exact-input cache. Source-specific AI locks serialize requests for the same source across checkouts; each reservation is checked and written in one database transaction so concurrent sources, and concurrent assessments within one ingest, share the daily/monthly ceiling. Ambiguous network outcomes retain their reservation. Automatic paid retries are disabled, with one exception: an HTTP 429 (rate limit) generated nothing and is retried up to 3 times with exponential backoff and jitter (a `Retry-After` header is honoured, capped at 60 seconds) under the same reservation; other 4xx, 5xx and connection errors are not retried.
 
-Within one source's ingest the detailed assessments run on `ai_concurrency` threads (default 1; the cloud workflow uses 8), each with its own client, holding the source lock once for the whole pass. Results are consumed in input order, so parsing, verification, geocoding (paced for Nominatim) and storage stay sequential. The first budget error stops the pass: notices not yet started are deferred, and one that finished after the stop point in input order is left for the next run, which reuses its stored result at no cost. The default estimated limits are USD 1 per UTC day and USD 31 per UTC calendar month, including other models using the same database. These estimates ignore cache discounts and are not the organization's invoice or credit balance.
+Within one source's ingest the detailed assessments run on `ai_concurrency` threads (default 1; the cloud workflow uses 8), each with its own client, holding the source lock once for the whole pass. Results are consumed in input order, so parsing, verification, geocoding (paced for Nominatim) and storage stay sequential. Budget exhaustion, provider quota exhaustion and a persistent rate limit pause the whole batch: notices not yet started are deferred, and one that finished after the stop point in input order is left for the next run, which reuses its stored result at no cost. The default estimated limits are USD 1 per UTC day and USD 31 per UTC calendar month, including other models using the same database. These estimates ignore cache discounts and are not the organization's invoice or credit balance.
 
 `ai_screening_results` is the latest published assessment per opportunity and is exported to D1. Discovery hides `exclude` only while its source revision matches the record; `shortlisted` and `verified` human statuses remain visible. Detail and watchlist lookups keep access to the record. The ledger, full prompts and API key are not exported. A failed assessment is reported as a document failure rather than silently substituting rule-based extraction.
 

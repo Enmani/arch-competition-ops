@@ -4,6 +4,7 @@ import hashlib
 
 from arch_competition_ops.screening.models import ScreeningDecision, canonical_json
 from arch_competition_ops.screening.preferences import load_screening_instructions
+from arch_competition_ops.screening.providers import provider_identity
 from arch_competition_ops.screening.source_evidence import notice_evidence
 from arch_competition_ops.settings import Settings
 
@@ -22,7 +23,7 @@ def screening_criteria_hash(settings: Settings) -> str:
             [
                 load_screening_instructions(settings),
                 ScreeningDecision.model_json_schema(),
-                "responses",
+                provider_identity(settings),
                 settings.ai_model,
                 settings.ai_reasoning_effort,
                 settings.ai_max_input_chars,

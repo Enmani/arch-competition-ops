@@ -282,7 +282,7 @@ def test_payload_carries_explicit_facts_and_the_row_as_evidence() -> None:
     assert payload["publishedAt"] == "2026-11-14"
     assert payload["procedureType"] == "Public tender"
     assert payload["country"] == "Jordan"
-    assert payload["rawNotice"]["tenderNo"] == "2026004748"
+    assert "2026004748" in payload["rawNotice"]
     # The detail page fills itself by script, so enrichment must not fetch it again.
     assert payload["rawNoticeHtml"] == ""
 

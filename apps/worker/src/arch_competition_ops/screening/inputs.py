@@ -14,6 +14,7 @@ from arch_competition_ops.normalizers.text import strip_html
 from arch_competition_ops.screening.fingerprints import notice_content_hash
 from arch_competition_ops.screening.models import ScreeningDecision, canonical_json
 from arch_competition_ops.screening.preferences import load_screening_instructions
+from arch_competition_ops.screening.providers import provider_identity
 from arch_competition_ops.screening.source_evidence import notice_evidence
 from arch_competition_ops.settings import Settings
 
@@ -48,6 +49,13 @@ def public_url(value: str) -> str:
                 "oid",
                 "publicationid",
                 "tenderid",
+                "tendno",
+                "tendseq",
+                "frameworkagreementseq",
+                "tendcategcd",
+                "intrllocaltypecd",
+                "tendmthodcd",
+                "invtyn",
                 "stenderid",
                 "noticeversion",
                 "pid",
@@ -128,11 +136,7 @@ def prepare_input(
     fetch_source: bool = True,
 ) -> tuple[str, dict[str, str], list[str]]:
     limitations: list[str] = []
-    source_url = (
-        row["source_url"]
-        if source_payload is not None
-        else row.get("official_url") or row["source_url"]
-    )
+    source_url = row["source_url"]
     if source_payload is None and fetch_source:
         try:
             response = get_default_client().get(
@@ -144,7 +148,7 @@ def prepare_input(
             if "pdf" in media.lower():
                 limitations.append("PDF content was not read; structured record only")
             else:
-                source_payload = response.text
+                source_payload = json.dumps({"rawNotice": response.text}, ensure_ascii=False)
         except HttpError as exc:
             if exc.status_code in {403, 429}:
                 raise
@@ -202,8 +206,25 @@ def prepare_input(
             }
         },
     }
+    if settings.ai_provider == "chat_completions":
+        fmt = request["text"]["format"]
+        request = {
+            "model": request["model"],
+            "messages": [
+                {"role": "system", "content": request["instructions"]},
+                {"role": "user", "content": request["input"]},
+            ],
+            "reasoning_effort": settings.ai_reasoning_effort,
+            "max_tokens": settings.ai_max_output_tokens,
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {k: v for k, v in fmt.items() if k != "type"},
+            },
+        }
     return (
-        canonical_json({"provider": "responses", "notice_version": version, "request": request}),
+        canonical_json(
+            {"provider": provider_identity(settings), "notice_version": version, "request": request}
+        ),
         fields,
         sorted(set(limitations)),
     )

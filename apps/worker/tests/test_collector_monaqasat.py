@@ -225,7 +225,7 @@ def test_payload_carries_explicit_facts_and_the_detail_block() -> None:
     assert payload["summary"] == "نبذة مختصرة تصميم وإشراف"
     assert payload["rawNoticeHtml"].startswith("بيانات المناقصة")
     assert "boilerplate" not in payload["rawNoticeHtml"]
-    assert payload["rawNotice"]["published"] == "2026-11-14"
+    assert "14/11/2026" in payload["rawNotice"]
 
     record = parse_generic_listing_notice(document.payload, _source(), document.source_url)
     assert record.official_url == NOTICE.format(662029)

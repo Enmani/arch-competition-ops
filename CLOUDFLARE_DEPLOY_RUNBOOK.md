@@ -349,6 +349,8 @@ git push
 3. `node scripts/export-d1-data.mjs --apply`: upserts the worker-owned tables into production D1 and deletes expired and excluded records there (`0090-retention.sql`);
 4. pushes the new state as a new generation (`scripts/cloud-state.mjs push`), keeping the newest 14.
 
+The ingestion step defaults to Responses, gpt-6-luna and low reasoning effort. GitHub Actions repository variables AI_PROVIDER, AI_MODEL and AI_REASONING_EFFORT override those defaults. For chat_completions also set AI_CHAT_BASE_URL, AI_CHAT_INPUT_USD_PER_MILLION and AI_CHAT_OUTPUT_USD_PER_MILLION, and supply the separate AI_CHAT_API_KEY secret. Only the ingest step receives model credentials.
+
 The state is the expensive part. Losing it, or starting from an empty database, means paying for every assessment again, so `pull` fails when the bucket has no state (only `push --init` creates the first one), and `pull`/`push` refuse to replace a state with one that has fewer `ai_notice_ledger` rows unless `--force`. Steps 3 and 4 still run when the ingest exits non-zero (some sources failing is normal) and never run when the pull failed; the job is then marked failed so the red run is visible.
 
 ### One-time setup

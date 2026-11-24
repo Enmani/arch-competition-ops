@@ -315,3 +315,23 @@ test("--prune refuses to run against an empty local competitions table", (t) => 
 // Value-escaping, batching and CLI cases live in a helper module so each file stays under 500 lines;
 // importing it registers them in this same test run.
 import "./helpers/d1-sync-format-tests.mjs";
+
+test("missing and low qualification scores publish while the private queue stays local", (t) => {
+  const workspace = createWorkspace(t);
+  createLocalDatabase(workspace.dbPath, (db) => {
+    insertCompetition(db, "no-score", { qualification_score: null });
+    insertCompetition(db, "low-score", { qualification_score: 0 });
+    db.exec("CREATE TABLE notice_backlog(payload TEXT); INSERT INTO notice_backlog VALUES ('unread-private-text')");
+  });
+  const result = runInto(workspace);
+  const remote = applyMigrations(new Database(":memory:"));
+  try {
+    executeFiles(remote, result);
+    assert.deepEqual(remote.prepare("SELECT id, qualification_score AS score FROM competitions ORDER BY id").all(), [
+      { id: "low-score", score: 0 }, { id: "no-score", score: null }
+    ]);
+    assert.doesNotMatch(result.files.map(file => file.content).join(""), /notice_backlog|unread-private-text/);
+  } finally {
+    remote.close();
+  }
+});

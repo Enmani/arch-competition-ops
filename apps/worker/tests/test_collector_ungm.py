@@ -243,7 +243,7 @@ def test_payload_carries_explicit_facts_and_leaves_the_server_rendered_page_to_e
     assert payload["publishedAt"] == "2026-11-15"
     assert payload["country"] == payload["location"] == "Jordan"
     assert payload["noticeType"] == "Request for quotation"
-    assert payload["rawNotice"]["reference"] == "RFQG 3126001168 (YB)"
+    assert "RFQG 3126001168 (YB)" in payload["rawNotice"]
     # The notice page is server rendered with the description: no empty ``rawNoticeHtml``.
     assert "rawNoticeHtml" not in payload
 

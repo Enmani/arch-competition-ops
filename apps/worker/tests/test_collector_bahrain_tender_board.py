@@ -263,7 +263,10 @@ def test_payload_carries_explicit_facts() -> None:
     assert payload["cpv"] == ["71000000"]
     assert payload["procedureType"] == "Pre-qualification"
     assert payload["summary"] == "Prequalify consultants for design."
-    assert payload["rawNoticeHtml"] == "Prequalify consultants for design."
+    assert (
+        "Prequalify consultants for design." in payload["rawNoticeHtml"]
+        and "71000000" in payload["rawNoticeHtml"]
+    )
     assert payload["country"] == "Bahrain"
     assert "var x" not in json.dumps(payload)
 

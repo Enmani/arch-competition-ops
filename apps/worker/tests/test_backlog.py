@@ -45,3 +45,45 @@ def test_collection_resumes_after_outage_and_read_budget(tmp_path, monkeypatch):
     assert queued(db, source, 10) == [old, amended, new]
     with connect(db) as cx:
         assert cx.execute("SELECT count(*) FROM competitions").fetchone()[0] == 0
+
+
+def test_quota_pauses_all_sources_and_preserves_oldest_notice(tmp_path, monkeypatch):
+    import httpx
+    from test_ai_screening import mock_client
+
+    from arch_competition_ops.automation import run_automation_batch
+    from arch_competition_ops.screening import service
+
+    sources = ["ted_design_notices", "simap_public_design_notices"]
+    write_source_catalog(tmp_path, *sources)
+    (tmp_path / "config/automation.yml").write_text(
+        "batches:\n  - batch_id: all\n    max_workers: 1\n", encoding="utf8"
+    )
+    settings = Settings(root=tmp_path, ai_enabled=True, ai_concurrency=1, ai_fetch_details=False)
+    calls = []
+
+    def fail(request):
+        calls.append(request.read())
+        return httpx.Response(
+            429, json={"error": {"code": "insufficient_quota", "message": "quota"}}
+        )
+
+    monkeypatch.setattr(service, "create_client", lambda _: mock_client(fail))
+    monkeypatch.setattr(
+        "arch_competition_ops.ingest.collect_source_documents",
+        lambda source, **kwargs: [
+            CollectedSourceDocument(f"https://city.example/{source.source_id}", "Library")
+        ],
+    )
+    run_automation_batch(settings, batch_id="all")
+    monkeypatch.setattr("arch_competition_ops.ingest.collect_source_documents", lambda *a, **k: [])
+    run_automation_batch(settings, batch_id="all")
+    assert len(calls) == 2 and calls[0] == calls[1]
+    with connect(settings.resolve_path(settings.db)) as cx:
+        rows = cx.execute(
+            "SELECT source_id,status,attempts,last_error FROM notice_backlog ORDER BY rowid"
+        ).fetchall()
+    assert [tuple(r) for r in rows] == [
+        (sources[0], "queued", 2, "insufficient_quota"),
+        (sources[1], "queued", 0, None),
+    ]

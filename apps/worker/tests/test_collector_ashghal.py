@@ -178,7 +178,7 @@ def test_payload_takes_the_full_title_from_the_detail_page() -> None:
     assert payload["publishedAt"] == "2026-11-12"
     assert payload["tenderType"] == "STC"
     assert payload["country"] == "Qatar"
-    assert payload["rawNotice"]["title"] == "Supervision Consultancy Services for Roads"
+    assert "Supervision Consultancy Services for Roads" in payload["rawNotice"]
     assert payload["rawNoticeHtml"].startswith("PC Consultancy Services")
     assert "var x" not in payload["rawNoticeHtml"]
     assert "Contact Details" not in payload["rawNoticeHtml"]

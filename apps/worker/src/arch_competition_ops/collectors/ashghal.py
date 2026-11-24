@@ -71,6 +71,7 @@ def _parse_rows(page: str, kind: str) -> list[dict]:
         query = parse.parse_qs(parse.urlsplit(path).query)
         rows.append(
             {
+                "listingText": block,
                 "tenderNumber": cells[0],
                 "tenderType": cells[1] or None,
                 "title": cells[2],
@@ -121,12 +122,8 @@ def _build_document(row: dict, detail: dict[str, str] | None) -> CollectedSource
         "location": "Qatar",
         "evidenceLevel": "official_notice",
         "evidenceNote": EVIDENCE_NOTE,
-        **(
-            {
-                "rawNotice": {k: str(v) if isinstance(v, date) else v for k, v in row.items()},
-                "rawNoticeHtml": (detail or {}).get("block") or "",
-            }
-        ),
+        "rawNotice": row["listingText"],
+        "rawNoticeHtml": (detail or {}).get("block") or "",
     }
     return CollectedSourceDocument(
         source_url=row["url"], payload=json.dumps(payload, ensure_ascii=False)
@@ -163,7 +160,7 @@ def collect_ashghal_documents(
             detail = _detail(get(row["url"]))
         except HttpError as exc:  # the list row alone is still a valid record
             if exc.status_code in {403, 429}:
-                documents.append(deferred_detail(exc, row["url"], row))
+                documents.append(deferred_detail(exc, row["url"], row["listingText"]))
                 if len(documents) >= limit:
                     return documents
                 continue

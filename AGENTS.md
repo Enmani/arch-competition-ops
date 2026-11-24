@@ -35,7 +35,8 @@ This repository is a competition-intelligence monorepo. Agents should favor evid
 - `docs/changelog/**`: dated closeout trace for governed changes
 - `apps/worker/src/arch_competition_ops/*`: ingestion and normalization logic
 - `apps/web/src/*`: website and API surface
-- `apps/web/migrations/*.sql`: the only database schema authority (the worker's `storage/schema.py` mirrors it)
+- `apps/web/migrations/*.sql`: the shared database schema authority (the worker's `storage/schema.py` mirrors it)
+- Worker-only collection state lives in SQLite. The D1 migrations and export omit the backlog and interrupted collection windows.
 - `packages/storage/src/*`: the one storage implementation for the web app (D1 binding and better-sqlite3)
 - `packages/core/src/*`: shared vocabularies, zod API contracts, fee rule and logger
 - `docs/DATA_CONTRACT.md`: data layers and the truth rules stored records follow

@@ -94,7 +94,7 @@ export const createCompetitionServer = (
     const item = await read(async () => (await getReads()).getBySlug(slug));
     if (!item) return toolError("Competition not found. Copy an exact slug from search_competitions.");
     return result({
-      ...summary(item), authority_name: item.authorityName,
+      ...summary(item), authority_name: item.authorityName, qualification_score: item.qualificationScore,
       opportunity_type: item.opportunityTypeKey, eligibility_summary: item.eligibilitySummary,
       estimated_contract_value_eur: item.estimatedContractValueEur, prize_summary: item.prizeSummary,
       documents_portal_url: item.documentsPortalUrl, brief_pdf_url: item.briefPdfUrl,

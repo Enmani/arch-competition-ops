@@ -68,9 +68,9 @@ test("search filters before paging, preserves fee evidence and returns verifiabl
     deadline_at: "2026-05-01", licensed_architect_required: 1, registration_fee_eur: 0,
   };
   for (const id of ["aa", "bb"]) seedOpportunity(db.raw, {
-    ...common, id, submission_fee_eur: 0, official_url: "https://example.org/buyer", evidence_note: "Official notice checked",
+    ...common, id, qualification_score: 0, submission_fee_eur: 0, official_url: "https://example.org/buyer", evidence_note: "Official notice checked",
   });
-  seedOpportunity(db.raw, { ...common, id: "partial", submission_fee_eur: null });
+  seedOpportunity(db.raw, { ...common, id: "partial", qualification_score: null, submission_fee_eur: null });
   seedOpportunity(db.raw, { ...common, id: "paid", registration_fee_eur: null, submission_fee_eur: 20 });
   seedOpportunity(db.raw, { id: "different", ...common, regions: '["asia"]', submission_fee_eur: 0 });
   const filters = {
@@ -95,6 +95,8 @@ test("search filters before paging, preserves fee evidence and returns verifiabl
   assert.equal((await search({ ...filters, deadlineBefore: "9999-12-31" })).competitions[0].slug, "aa");
   const detail = async (slug: string) => competitionDetailSchema.parse((await call(handle, "get_competition", { slug })).structuredContent);
   const item = await detail("aa");
+  assert.equal(item.qualification_score, 0);
+  assert.equal((await detail("partial")).qualification_score, null);
   assert.equal(item.official_url, "https://example.org/buyer");
   assert.equal(item.source_url, "https://example.org/notice");
   assert.equal(item.evidence_note, "Official notice checked");
