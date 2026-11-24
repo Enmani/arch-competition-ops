@@ -106,6 +106,22 @@ def test_quota_pauses_all_sources_and_preserves_oldest_notice(tmp_path, monkeypa
             "SELECT source_id,status,attempts,last_error FROM notice_backlog ORDER BY rowid"
         ).fetchall()
     assert [tuple(r) for r in rows] == [
-        (sources[0], "queued", 2, "insufficient_quota"),
+        (sources[0], "queued", 0, "insufficient_quota"),
         (sources[1], "queued", 0, None),
     ]
+
+
+def test_poison_notice_releases_slot_and_changed_criteria_requeues(tmp_path):
+    from arch_competition_ops.bootstrap import initialize_database
+    from arch_competition_ops.storage import backlog
+
+    db = initialize_database(Settings(root=tmp_path))
+    docs = [CollectedSourceDocument(f"https://city.example/{n}", f"Project {n}") for n in range(2)]
+    backlog.enqueue(db, "city", docs, "v1", unfinished=0, cap=2)
+    for _ in range(3):
+        backlog.record_failure(db, "city", docs[0], "invalid_schema", criteria="v1", limit=3)
+    assert queued(db, "city", 1) == docs[1:]
+    backlog.enqueue(db, "city", [], "v1", unfinished=0, cap=2)
+    assert queued(db, "city", 1) == docs[1:]
+    backlog.enqueue(db, "city", [], "v2", unfinished=0, cap=2)
+    assert queued(db, "city", 1) == docs[:1]

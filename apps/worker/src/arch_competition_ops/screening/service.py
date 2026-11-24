@@ -172,7 +172,8 @@ def assess_document(
         "source_tier": source.source_tier,
         "source_id": source.source_id,
     }
-    payload = enrich_notice_payload(payload, source_url, settings)
+    detail_limits = []
+    payload = enrich_notice_payload(payload, source_url, settings, limitations=detail_limits)
     with (
         exclusive_lock(
             source_lock_path(db_path, source.source_id), label="AI extraction and screening"
@@ -186,6 +187,7 @@ def assess_document(
             source_payload=payload,
             fetch_source=False,
         )
+        limitations.extend(detail_limits)
         cached = find_cached_screening(db_path, source_url, model.id, input_json)
         if cached and not force:
             decision = ScreeningDecision.model_validate_json(cached["result_json"])

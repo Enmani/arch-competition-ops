@@ -19,7 +19,9 @@ from arch_competition_ops.screening.source_evidence import notice_evidence
 from arch_competition_ops.settings import Settings
 
 
-def enrich_notice_payload(payload: str, source_url: str, settings: Settings) -> str:
+def enrich_notice_payload(
+    payload: str, source_url: str, settings: Settings, *, limitations=None
+) -> str:
     """API listing summaries often omit the very fields we need; also read the linked notice."""
     if not payload.lstrip().startswith("{"):
         return payload
@@ -41,8 +43,28 @@ def enrich_notice_payload(payload: str, source_url: str, settings: Settings) -> 
             max_bytes=2 * 1024 * 1024,
         )
     except HttpError as exc:
-        if pending or exc.status_code in {403, 429}:
+        raw = envelope.get("rawNotice", envelope)
+        if isinstance(raw, dict):
+            has_listing = any(
+                raw.get(key)
+                for key in (
+                    "title",
+                    "heading",
+                    "description",
+                    "name",
+                    "summary",
+                    "objet",
+                    "description-proc",
+                )
+            ) or bool(envelope.get("title"))
+        else:
+            has_listing = bool(isinstance(raw, str) and raw.strip())
+        if not has_listing and (pending or exc.status_code in {403, 429}):
             raise
+        if limitations is not None:
+            limitations.append(
+                f"Detail unavailable (HTTP {exc.status_code}); only listing evidence was read"
+            )
         # The existing listing remains usable evidence; its missing fields stay visible.
         return payload
     media = response.headers.get("Content-Type", response.headers.get("content-type", ""))

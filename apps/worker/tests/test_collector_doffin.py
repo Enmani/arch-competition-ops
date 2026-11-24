@@ -213,7 +213,6 @@ def test_ai_mode_drops_a_plain_works_notice_whose_detail_names_no_design_and_bui
 
 
 def test_forbidden_detail_is_queued_and_can_be_read_without_relisting(tmp_path, monkeypatch):
-    import pytest
     from http_fakes import Reply, make_client
     from support import write_source_catalog
 
@@ -241,8 +240,12 @@ def test_forbidden_detail_is_queued_and_can_be_read_without_relisting(tmp_path, 
         [Reply(status=403), Reply(body=b"Library renovation deadline extended")]
     )
     monkeypatch.setattr("arch_competition_ops.screening.inputs.get_default_client", lambda: http)
-    with pytest.raises(HttpStatusError):
-        enrich_notice_payload(notice.payload, notice.source_url, settings)
+    limits = []
+    assert (
+        enrich_notice_payload(notice.payload, notice.source_url, settings, limitations=limits)
+        == notice.payload
+    )
+    assert "403" in limits[0]
     payload = enrich_notice_payload(notice.payload, notice.source_url, settings)
     _, fields, _ = prepare_input(
         {"source_url": notice.source_url}, settings, source_payload=payload

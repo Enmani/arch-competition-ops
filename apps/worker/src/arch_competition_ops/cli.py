@@ -44,6 +44,7 @@ from arch_competition_ops.screening import commands as screening_commands
 from arch_competition_ops.screening.client import ScreeningError
 from arch_competition_ops.settings import Settings
 from arch_competition_ops.storage import list_competitions
+from arch_competition_ops.storage.backlog import requeue_failed
 from arch_competition_ops.titles import commands as title_commands
 
 EXIT_FAILURE = 1
@@ -131,6 +132,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ingest_parser.add_argument("--source-id", required=True)
     ingest_parser.add_argument("--limit", type=int, default=20)
+    retry = subparsers.add_parser("requeue-failed", help="Retry failed notices from one source")
+    retry.add_argument("--source-id", required=True)
+    retry.add_argument("--url")
     ingest_parser.add_argument("--collect-only", action="store_true")
     ingest_parser.add_argument("--publication-date-from")
 
@@ -415,6 +419,12 @@ def _handler_for(args: argparse.Namespace) -> Callable[[Settings, argparse.Names
         "cleanup-expired-competitions": _handle_cleanup,
         "show-sources": _handle_show_sources,
         "show-country-coverage": _handle_show_country_coverage,
+        "requeue-failed": lambda settings, a: (
+            _safe_print(
+                f"Requeued {requeue_failed(initialize_database(settings), a.source_id, a.url)}"
+            )
+            or 0
+        ),
         "ingest-source": _handle_ingest_source,
         "ingest-batch": _handle_ingest_batch,
         "ingest-lock-status": _handle_ingest_lock_status,

@@ -54,6 +54,7 @@ class Settings(BaseSettings):
     ai_reasoning_effort: Literal["low", "medium", "high", "xhigh", "max"] = "low"
     ai_fetch_details: bool = True
     # Initial discovery limit per source. The paid reading limit is set on each batch.
+    ai_notice_max_attempts: int = Field(default=3, ge=1)
     ai_candidate_cap: int = Field(default=2000, ge=1, le=10000)
     ai_daily_budget_usd: float = Field(default=5, ge=0, allow_inf_nan=False)
     ai_preferences: Path = DEFAULT_AI_SKILL

@@ -308,7 +308,15 @@ def ingest_source(
                 # Budget deferral is not a content rejection. Keep later sources collectable.
                 result.deferred += len(documents) - position
                 if isinstance(exc, ScreeningPaused):
-                    backlog.record_failure(db_path, source_id, document, str(exc))
+                    backlog.record_failure(
+                        db_path,
+                        source_id,
+                        document,
+                        str(exc),
+                        criteria=criteria_hash,
+                        limit=settings.ai_notice_max_attempts,
+                        paused=True,
+                    )
                 result.batch_paused = True
                 result.notes.append(str(exc))
                 break
@@ -322,7 +330,16 @@ def ingest_source(
                 )
                 if isinstance(exc, ScreeningError):
                     error_class = str(exc)
-                backlog.record_failure(db_path, source_id, document, error_class)
+                status = backlog.record_failure(
+                    db_path,
+                    source_id,
+                    document,
+                    error_class,
+                    criteria=criteria_hash,
+                    limit=settings.ai_notice_max_attempts,
+                )
+                if status == "failed":
+                    result.notes.append(f"failed[{source_id}/{error_class}]=1")
                 last_error = str(exc)
                 continue
             records.append(record)
