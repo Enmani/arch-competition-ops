@@ -10,9 +10,8 @@ from dataclasses import dataclass
 from typing import TypeVar
 
 from openai import APIStatusError, OpenAI
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
-from arch_competition_ops.screening.models import ScreeningDecision
 from arch_competition_ops.settings import Settings
 
 T = TypeVar("T")
@@ -85,7 +84,7 @@ def call_with_rate_limit_retry(
 
 @dataclass
 class ProviderResult:
-    decision: ScreeningDecision | None = None
+    decision: BaseModel | None = None
     error_class: str | None = None
     response_id: str | None = None
     input_tokens: int | None = None
@@ -95,8 +94,16 @@ class ProviderResult:
     rejected: bool = False
     pause: bool = False
 
-    def parse_decision(self, text: str) -> None:
+    def cost(self, model, per_attempt):
+        used = per_attempt
+        if self.rejected:
+            used = 0
+        elif self.input_tokens is not None and self.output_tokens is not None:
+            used = model.cost(self.input_tokens, self.output_tokens, self.cache_read_tokens)
+        return used + self.uncertain_retries * per_attempt
+
+    def parse_decision(self, text: str, output_type: type[BaseModel]) -> None:
         try:
-            self.decision = ScreeningDecision.model_validate_json(text)
+            self.decision = output_type.model_validate_json(text)
         except ValidationError:
             self.error_class = "invalid_schema"

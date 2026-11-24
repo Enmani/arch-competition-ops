@@ -9,12 +9,11 @@ from urllib.parse import urlsplit
 
 from arch_competition_ops.http import HttpError, get_default_client
 from arch_competition_ops.normalizers.text import strip_html
-from arch_competition_ops.screening.anthropic import strip_integer_bounds
 from arch_competition_ops.screening.fingerprints import notice_content_hash
 from arch_competition_ops.screening.models import ScreeningDecision, canonical_json
 from arch_competition_ops.screening.notice_urls import URL, PageLinks, public_url
 from arch_competition_ops.screening.preferences import load_screening_instructions
-from arch_competition_ops.screening.providers import provider_identity
+from arch_competition_ops.screening.providers import provider_identity, structured_request
 from arch_competition_ops.screening.source_evidence import notice_evidence
 from arch_competition_ops.settings import Settings
 
@@ -140,49 +139,16 @@ def prepare_input(
         remaining -= len(fields[name])
     schema = ScreeningDecision.model_json_schema()
     schema["required"] = list(schema["properties"])
-    request = {
-        "model": model_id or settings.ai_model,
-        "instructions": load_screening_instructions(settings),
-        "input": canonical_json({"evidence_fields": fields}),
-        "max_output_tokens": settings.ai_max_output_tokens,
-        "reasoning": {"effort": settings.ai_reasoning_effort},
-        "store": False,
-        "service_tier": "default",
-        "text": {
-            "format": {
-                "type": "json_schema",
-                "name": "competition_screening",
-                "strict": True,
-                "schema": schema,
-            }
-        },
-    }
-    if settings.ai_provider == "anthropic":
-        request = {
-            "model": request["model"],
-            "max_tokens": settings.ai_max_output_tokens,
-            "system": request["instructions"],
-            "messages": [{"role": "user", "content": request["input"]}],
-            "output_config": {
-                "effort": settings.ai_reasoning_effort,
-                "format": {"type": "json_schema", "schema": strip_integer_bounds(schema)},
-            },
-        }
-    elif settings.ai_provider == "openai-compatible":
-        fmt = request["text"]["format"]
-        request = {
-            "model": request["model"],
-            "messages": [
-                {"role": "system", "content": request["instructions"]},
-                {"role": "user", "content": request["input"]},
-            ],
-            "reasoning_effort": settings.ai_reasoning_effort,
-            "max_tokens": settings.ai_max_output_tokens,
-            "response_format": {
-                "type": "json_schema",
-                "json_schema": {k: v for k, v in fmt.items() if k != "type"},
-            },
-        }
+    request = structured_request(
+        settings.ai_provider,
+        model_id or settings.ai_model,
+        load_screening_instructions(settings),
+        canonical_json({"evidence_fields": fields}),
+        schema,
+        "competition_screening",
+        settings.ai_max_output_tokens,
+        settings.ai_reasoning_effort,
+    )
     return (
         canonical_json(
             {"provider": provider_identity(settings), "notice_version": version, "request": request}

@@ -149,6 +149,25 @@ jobs:
           echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
           exit 0
 
+      - name: Polish titles
+        if: ${{ steps.ingest.outcome == 'success' && inputs.dry_run != true && inputs.collect_only != true }}
+        continue-on-error: true
+        timeout-minutes: 20
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ARCH_COMPETITION_OPS_AI_PROVIDER: ${{ vars.AI_PROVIDER || 'anthropic' }}
+          ARCH_COMPETITION_OPS_AI_MODEL: ${{ vars.AI_MODEL || 'claude-haiku-5-5' }}
+          ARCH_COMPETITION_OPS_AI_REASONING_EFFORT: ${{ vars.AI_REASONING_EFFORT || 'low' }}
+          ARCH_COMPETITION_OPS_AI_CHAT_BASE_URL: ${{ vars.AI_CHAT_BASE_URL }}
+          ARCH_COMPETITION_OPS_AI_CHAT_API_KEY: ${{ secrets.AI_CHAT_API_KEY }}
+          ARCH_COMPETITION_OPS_AI_CHAT_INPUT_USD_PER_MILLION: ${{ vars.AI_CHAT_INPUT_USD_PER_MILLION }}
+          ARCH_COMPETITION_OPS_AI_CHAT_OUTPUT_USD_PER_MILLION: ${{ vars.AI_CHAT_OUTPUT_USD_PER_MILLION }}
+        run: |
+          if [[ -z "$ARCH_COMPETITION_OPS_AI_CHAT_INPUT_USD_PER_MILLION" ]]; then unset ARCH_COMPETITION_OPS_AI_CHAT_INPUT_USD_PER_MILLION; fi
+          if [[ -z "$ARCH_COMPETITION_OPS_AI_CHAT_OUTPUT_USD_PER_MILLION" ]]; then unset ARCH_COMPETITION_OPS_AI_CHAT_OUTPUT_USD_PER_MILLION; fi
+          uv run arch-competition-ops polish-titles --max-batches 100
+
       - name: Check the D1 export (dry run)
         if: ${{ inputs.dry_run == true }}
         run: node scripts/export-d1-data.mjs --retention | tee "$RUNNER_TEMP/d1.log"

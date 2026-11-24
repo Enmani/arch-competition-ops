@@ -29,7 +29,7 @@ class AnthropicMessages(requests.Session):
         self.headers.update({"x-api-key": key, "anthropic-version": "2026-10-21"})
         self.timeout = settings.ai_timeout_seconds
 
-    def read_notice(self, request, *, sleep=None):
+    def read_notice(self, request, *, sleep, output_type):
         uncertain = 0
         for attempt in range(RATE_LIMIT_RETRIES + 1):
             try:
@@ -100,5 +100,5 @@ class AnthropicMessages(requests.Session):
         ):
             result.error_class = "invalid_schema"
         else:
-            result.parse_decision(block["text"])
+            result.parse_decision(block["text"], output_type)
         return result

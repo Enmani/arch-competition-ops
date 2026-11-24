@@ -5,13 +5,14 @@ from urllib.parse import urlsplit
 
 from openai import APIConnectionError, APIError, APIStatusError, OpenAI
 
-from arch_competition_ops.screening.anthropic import AnthropicMessages
+from arch_competition_ops.screening.anthropic import AnthropicMessages, strip_integer_bounds
 from arch_competition_ops.screening.catalog import ScreeningModel, get_model
 from arch_competition_ops.screening.client import (
     ProviderResult,
     call_with_rate_limit_retry,
     create_client,
 )
+from arch_competition_ops.screening.models import ScreeningDecision
 from arch_competition_ops.settings import Settings
 
 _sdk_decode_lock = Lock()
@@ -69,10 +70,12 @@ def create_screening_client(settings):
     )
 
 
-def read_notice(client, provider, request, *, sleep=None) -> ProviderResult:
+def read_notice(
+    client, provider, request, *, sleep=None, output_type=ScreeningDecision
+) -> ProviderResult:
     """Send one notice and validate the reply against the shared decision schema."""
     if provider == "anthropic":
-        return client.read_notice(request, sleep=sleep)
+        return client.read_notice(request, sleep=sleep, output_type=output_type)
     chat = provider == "openai-compatible"
     api = client.chat.completions if chat else client.responses
     try:
@@ -108,5 +111,52 @@ def read_notice(client, provider, request, *, sleep=None) -> ProviderResult:
     if not complete:
         result.error_class = "incomplete_response"
     else:
-        result.parse_decision(raw or "")
+        result.parse_decision(raw or "", output_type)
     return result
+
+
+def structured_request(provider, model, instructions, material, schema, name, max_tokens, effort):
+    request = {
+        "model": model,
+        "instructions": instructions,
+        "input": material,
+        "max_output_tokens": max_tokens,
+        "reasoning": {"effort": effort},
+        "store": False,
+        "service_tier": "default",
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": name,
+                "strict": True,
+                "schema": schema,
+            }
+        },
+    }
+    if provider == "anthropic":
+        request = {
+            "model": request["model"],
+            "max_tokens": max_tokens,
+            "system": request["instructions"],
+            "messages": [{"role": "user", "content": request["input"]}],
+            "output_config": {
+                "effort": effort,
+                "format": {"type": "json_schema", "schema": strip_integer_bounds(schema)},
+            },
+        }
+    elif provider == "openai-compatible":
+        fmt = request["text"]["format"]
+        request = {
+            "model": request["model"],
+            "messages": [
+                {"role": "system", "content": request["instructions"]},
+                {"role": "user", "content": request["input"]},
+            ],
+            "reasoning_effort": effort,
+            "max_tokens": max_tokens,
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {k: v for k, v in fmt.items() if k != "type"},
+            },
+        }
+    return request

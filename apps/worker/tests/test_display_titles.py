@@ -139,7 +139,13 @@ LONG_TITLE = (
 def title_workspace(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     write_minimal_config(tmp_path, "sources: []")
-    return Settings(root=tmp_path, _env_file=None, openai_api_key="test-secret")
+    return Settings(
+        root=tmp_path,
+        ai_provider="openai",
+        ai_model="gpt-6-luna",
+        _env_file=None,
+        openai_api_key="test-secret",
+    )
 
 
 def _record(title: str, **overrides) -> CompetitionRecord:
@@ -377,3 +383,35 @@ def test_chinese_titles_get_a_space_between_scripts():
         == "Ohourere 水处理厂电气升级（第 2 阶段）"
     )
     assert space_cjk_latin("Haus der Kinder 幼儿园") == "Haus der Kinder 幼儿园"
+
+
+def test_default_provider_translates_titles_with_isolated_prompt(title_workspace, monkeypatch):
+    from test_anthropic_screening import reply
+
+    from arch_competition_ops.screening.anthropic import AnthropicMessages
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "fixture-only")
+    settings = Settings(root=title_workspace.root, _env_file=None)
+    (record,) = _store(settings, "Library renovation")
+    calls = []
+
+    def send(self, request, **kwargs):
+        calls.append(json.loads(request.body))
+        text = json.dumps(
+            {"items": [{"id": 0, "title_en": "Library renovation", "title_zh": "图书馆改造"}]}
+        )
+        return reply(
+            content=[{"type": "text", "text": text}],
+            usage={"input_tokens": 300, "output_tokens": 25},
+        )
+
+    monkeypatch.setattr(AnthropicMessages, "send", send)
+    result = polish_titles(settings, use_ai=True)
+    assert result.condensed == 1 and result.cost_usd > 0
+    assert _row(settings, record)["display_title_zh"] == "图书馆改造"
+    assert calls[0]["model"] == settings.ai_model
+    assert json.loads(calls[0]["messages"][0]["content"]) == {
+        "titles": [{"id": 0, "title": "Library renovation"}]
+    }
+    assert calls[0]["output_config"]["format"]["type"] == "json_schema"
+    assert polish_titles(settings, use_ai=True).batches == 0

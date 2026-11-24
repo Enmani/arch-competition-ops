@@ -83,8 +83,8 @@ test("only the configured project secrets are used, each on the steps that need 
   assert.doesNotMatch(code, /secrets\.\w+/.exec(code.split("steps:")[0]) ?? /(?!)/, "no secret at workflow or job level");
   assert.doesNotMatch(code.split("steps:")[0], /secrets\./, "no secret at workflow or job level");
   const steps = code.split(/\n +- name:/);
-  assert.equal(steps.filter(step => step.includes("secrets.ANTHROPIC_API_KEY")).length, 1);
-  assert.match(steps.find(step => step.includes("secrets.ANTHROPIC_API_KEY")), /^ Ingest batch/);
+  assert.deepEqual(steps.filter(step => step.includes("secrets.ANTHROPIC_API_KEY"))
+    .map(step => step.trimStart().split("\n")[0]), ["Ingest batch", "Polish titles"]);
   assert.doesNotMatch(code, /toJSON\(secrets\)|secrets\[/);
 });
 

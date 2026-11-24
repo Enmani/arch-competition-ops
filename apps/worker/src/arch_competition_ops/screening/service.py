@@ -94,12 +94,7 @@ def _request_one(
     response = read_notice(
         client, settings.ai_provider, json.loads(input_json)["request"], sleep=sleep
     )
-    cost = per_attempt
-    if response.rejected:
-        cost = 0
-    elif response.input_tokens is not None and response.output_tokens is not None:
-        cost = model.cost(response.input_tokens, response.output_tokens, response.cache_read_tokens)
-    cost += per_attempt * response.uncertain_retries
+    cost = response.cost(model, per_attempt)
     accounting = dict(
         response_id=response.response_id,
         input_tokens=response.input_tokens,

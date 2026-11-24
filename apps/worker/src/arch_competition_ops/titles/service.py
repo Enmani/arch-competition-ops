@@ -17,8 +17,8 @@ from openai import OpenAI
 
 from arch_competition_ops.bootstrap import initialize_database
 from arch_competition_ops.locking import exclusive_lock
-from arch_competition_ops.screening.catalog import get_model
-from arch_competition_ops.screening.client import ScreeningError, create_client
+from arch_competition_ops.screening.client import ScreeningError
+from arch_competition_ops.screening.providers import create_screening_client, screening_model
 from arch_competition_ops.settings import Settings
 from arch_competition_ops.storage.screening import ScreeningBudgetExceeded
 from arch_competition_ops.storage.titles import list_title_candidates, write_display_titles
@@ -57,7 +57,6 @@ def _title_input(row: sqlite3.Row, cleaned: str) -> TitleInput:
         competition_id=row["id"],
         source_title=row["title"],
         cleaned_title=cleaned,
-        country=row["jurisdiction"],
     )
 
 
@@ -73,7 +72,7 @@ def polish_titles(
 ) -> TitleBatchSummary:
     """Clean stale titles, then translate/condense new ones in at most ``max_batches`` requests."""
     summary = TitleBatchSummary()
-    model = get_model(settings.ai_model if settings.ai_provider == "openai" else "gpt-6-luna")
+    model = screening_model(settings, settings.ai_model)
     ai_token = ai_source_token(model.id)
     db_path = initialize_database(settings)
 
@@ -110,11 +109,15 @@ def polish_titles(
             return summary
 
         # Stage 2: AI, for every title not yet derived by this model.
-        if client is None and not settings.openai_api_key.get_secret_value().strip():
-            summary.errors.append("OPENAI_API_KEY is not set; kept rule-cleaned titles")
+        try:
+            session = (
+                nullcontext(client) if client is not None else create_screening_client(settings)
+            )
+        except ValueError as exc:
+            summary.errors.append(str(exc))
             return summary
         titles_by_id = {row["id"]: row["title"] for row in rows}
-        with nullcontext(client) if client is not None else create_client(settings) as api:
+        with session as api:
             for start in range(0, min(len(pending), max_batches * BATCH_SIZE), BATCH_SIZE):
                 chunk = pending[start : start + BATCH_SIZE]
                 try:
