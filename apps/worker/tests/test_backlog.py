@@ -249,7 +249,7 @@ def test_same_day_repeat_keeps_a_separate_read_allowance_for_each_source(tmp_pat
 
     db = initialize_database(Settings(root=tmp_path))
     for index, source in enumerate(["A", "B", "A"]):
-        url = "https://example.org/" + source
+        url = "https://example.org/shared"  # Two platforms link to one official notice.
         backlog.enqueue(db, source, [CollectedSourceDocument(url, source)], "", unfinished=0, cap=5)
         args = dict(
             competition_id=None,

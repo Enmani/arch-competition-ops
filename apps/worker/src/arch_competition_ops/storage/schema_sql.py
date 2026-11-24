@@ -125,7 +125,12 @@ CREATE TABLE IF NOT EXISTS notice_backlog (
     PRIMARY KEY(source_id, content_hash)
 );
 CREATE INDEX IF NOT EXISTS idx_backlog_queue ON notice_backlog(status, first_seen);
-CREATE INDEX IF NOT EXISTS idx_backlog_source_url ON notice_backlog(source_id, source_url);
+CREATE TABLE IF NOT EXISTS daily_notice_reads (
+    request_id TEXT PRIMARY KEY,
+    source_id TEXT NOT NULL,
+    day TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_daily_notice_reads ON daily_notice_reads(day,source_id);
 CREATE TABLE IF NOT EXISTS backlog_retention (
     id INTEGER PRIMARY KEY CHECK (id=1),
     removed INTEGER NOT NULL DEFAULT 0

@@ -85,6 +85,7 @@ def test_the_worker_and_the_web_app_have_the_same_tables() -> None:
         "collection_resume",
         "backlog_retention",
         "collection_coverage_gaps",
+        "daily_notice_reads",
     }
 
 

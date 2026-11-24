@@ -79,14 +79,13 @@ def reserve_screening(
     day_start = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
     request_id = str(uuid4())
     with write_transaction(db_path) as connection:
+        day = now.date().isoformat()
+        if source_id:
+            connection.execute("DELETE FROM daily_notice_reads WHERE day < ?", (day,))
         if source_daily_limit and source_id:
             reads = connection.execute(
-                "SELECT count(*) FROM ai_screening_runs r WHERE started_at>=? "
-                "AND coalesce(error_code,'') NOT IN "
-                "('http_429','insufficient_quota','http_401','http_402','http_403') "
-                "AND EXISTS (SELECT 1 FROM notice_backlog b "
-                "WHERE b.source_id=? AND b.source_url=r.source_url)",
-                (day_start, source_id),
+                "SELECT count(*) FROM daily_notice_reads WHERE day=? AND source_id=?",
+                (day, source_id),
             ).fetchone()[0]
             if reads >= source_daily_limit:
                 raise SourceDailyLimitReached(f"Daily notice limit reached for {source_id}")
@@ -129,6 +128,11 @@ def reserve_screening(
                 now.isoformat(),
             ),
         )
+        if source_id:
+            connection.execute(
+                "INSERT INTO daily_notice_reads(request_id,source_id,day) VALUES(?,?,?)",
+                (request_id, source_id, day),
+            )
     return request_id
 
 
@@ -146,6 +150,8 @@ def finish_screening(
 ) -> None:
     # Unknown network outcomes keep their reservation, including across process restarts.
     with write_transaction(db_path) as connection:
+        if error_code in {"http_429", "insufficient_quota", "http_401", "http_402", "http_403"}:
+            connection.execute("DELETE FROM daily_notice_reads WHERE request_id=?", (request_id,))
         connection.execute(
             "UPDATE ai_screening_runs SET status = ?, result_json = ?, error_code = ?, "
             "response_id = ?, input_tokens = ?, output_tokens = ?, "
