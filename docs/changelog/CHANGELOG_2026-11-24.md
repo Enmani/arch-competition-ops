@@ -12,6 +12,8 @@ The review added content-based deduplication, bounded retries and discovery, pre
 
 Worker review fixes cover mixed thinking/text responses, restoration of public notice links, transient retry delays, terminal text retention and safe run logs. Reading now groups by source and finishes the original queue row. Broken or repeated pages are reported and restarted.
 
+Screening now corrects citations that name a key inside the original notice. Decisions, extracted facts and participation excerpts keep the verified quote and its actual input field.
+
 ## Why
 
 Country, language, value and fee preferences previously affected design judgments. Unread listings could leave the discovery window during outages.

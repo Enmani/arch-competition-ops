@@ -78,15 +78,44 @@ class ScreeningDecision(BaseModel):
     notice_details: list[NoticeDetail] = Field(default_factory=list)
 
 
+_NOTICE_FIELDS = ("notice_title", "notice_url", "notice_text", "notice_links")
+
+
+def _locate_quote(
+    field: str, quote: str, evidence_fields: dict[str, str]
+) -> tuple[str, str] | None:
+    # A valid attribution must stand on its own. Only an unknown label triggers a search.
+    candidates = (field,) if field in _NOTICE_FIELDS else _NOTICE_FIELDS
+    for candidate in candidates:
+        original = source_quote(quote, evidence_fields.get(candidate, ""))
+        if original is not None:
+            return candidate, original
+    return None
+
+
+def grounded_extracted_fields(
+    claims: list[ExtractedField], evidence_fields: dict[str, str], warnings: list[str]
+) -> list[ExtractedField]:
+    supported = []
+    for claim in claims:
+        match = _locate_quote(claim.evidence_field, claim.quote, evidence_fields)
+        if match is None:
+            warnings.append(f"{claim.field}: unsupported source quote")
+            continue
+        claim.evidence_field, claim.quote = match
+        supported.append(claim)
+    return supported
+
+
 def validate_evidence(decision: ScreeningDecision, evidence_fields: dict[str, str]) -> list[str]:
     warnings: list[str] = []
     supported: list[Evidence] = []
     for evidence in decision.evidence:
-        original = source_quote(evidence.quote, evidence_fields.get(evidence.field, ""))
-        if original is None:
+        match = _locate_quote(evidence.field, evidence.quote, evidence_fields)
+        if match is None:
             warnings.append(f"Unsupported decision evidence: {evidence.field}")
         else:
-            evidence.quote = original
+            evidence.field, evidence.quote = match
             supported.append(evidence)
     decision.evidence = supported
     if not supported:
@@ -96,14 +125,17 @@ def validate_evidence(decision: ScreeningDecision, evidence_fields: dict[str, st
     # A recommendation is shown to the reader, so any unsupported claim still downgrades it.
     if not supported or (warnings and decision.decision == "recommend"):
         decision.decision = "needs_review"
+    decision.extracted_fields = grounded_extracted_fields(
+        decision.extracted_fields, evidence_fields, warnings
+    )
     details: list[NoticeDetail] = []
     for detail in decision.notice_details:
-        original = source_quote(detail.quote, evidence_fields.get(detail.evidence_field, ""))
-        text = source_quote(detail.text, original or "")
-        if not detail.evidence_field.startswith("notice_") or not original or not text:
+        match = _locate_quote(detail.evidence_field, detail.quote, evidence_fields)
+        if match is None or (text := source_quote(detail.text, match[1])) is None:
             warnings.append(f"Unsupported participation excerpt: {detail.category}")
             continue
-        detail.quote, detail.text = original, text
+        detail.evidence_field, detail.quote = match
+        detail.text = text
         if sum(d.category == detail.category for d in details) < 2 and not any(
             d.category == detail.category and d.text == detail.text for d in details
         ):
@@ -115,12 +147,13 @@ def validate_evidence(decision: ScreeningDecision, evidence_fields: dict[str, st
 
 
 def source_quote(quote: str, text: str) -> str | None:
-    """Return source characters; tolerate casing only, never changed words or punctuation."""
-    if not quote.strip():
+    """Return the source characters, preserving its spelling, punctuation and whitespace."""
+    if not text or not quote.strip():
         return None
     if quote in text:
         return quote
-    match = re.search(re.escape(quote), text, flags=re.IGNORECASE)
+    pattern = r"\s+".join(re.escape(word) for word in quote.split())
+    match = re.search(pattern, text, flags=re.IGNORECASE)
     return match.group(0) if match else None
 
 

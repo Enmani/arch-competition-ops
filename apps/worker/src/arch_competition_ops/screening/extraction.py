@@ -13,7 +13,11 @@ from arch_competition_ops.location import get_country_label_for_jurisdiction
 from arch_competition_ops.models import CompetitionRecord, SourceDefinition
 from arch_competition_ops.normalizers.dates import parse_date, slash_order_for_jurisdiction
 from arch_competition_ops.normalizers.money import MONEY_NUMBER_PATTERN, parse_money_number
-from arch_competition_ops.screening.models import ScreeningDecision, source_quote
+from arch_competition_ops.screening.models import (
+    ScreeningDecision,
+    grounded_extracted_fields,
+    source_quote,
+)
 from arch_competition_ops.screening.notice_urls import stored_link
 from arch_competition_ops.settings import Settings
 
@@ -58,20 +62,12 @@ def extract_record(
         evidence_notes.append("Source URL: credential-like parameters removed.")
     taxonomy = load_taxonomy(settings)
     seen: set[str] = set()
-    for claim in decision.extracted_fields:
+    for claim in grounded_extracted_fields(decision.extracted_fields, evidence_fields, warnings):
         field, value, quote = claim.field, claim.value.strip(), claim.quote
-        evidence = evidence_fields.get(claim.evidence_field, "")
-        original_quote = source_quote(quote, evidence)
-        if (
-            field in seen
-            or not claim.evidence_field.startswith("notice_")
-            or original_quote is None
-        ):
-            warnings.append(f"{field}: missing, duplicated or unsupported source quote")
+        if field in seen:
+            warnings.append(f"{field}: duplicate extracted field")
             continue
         seen.add(field)
-        quote = original_quote
-        claim.quote = quote
         converted: object = value
         valid = True
         if field in _URL_FIELDS:

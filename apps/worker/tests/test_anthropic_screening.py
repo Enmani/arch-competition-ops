@@ -69,6 +69,29 @@ def run_fixture(workspace, replies, monkeypatch):
     return outcome, row, waits
 
 
+def test_json_key_citations_are_corrected_before_caching_and_extraction(workspace, monkeypatch):
+    decision = decision_payload(decision="exclude")
+    decision["evidence"][0]["field"] = "description"
+    decision["evidence"].append({"field": "summary", "quote": "invented"})
+    decision["extracted_fields"][0]["evidence_field"] = "title"
+    decision["notice_details"] = [
+        {
+            "category": "eligibility",
+            "evidence_field": "lot_description",
+            "quote": "Open to registered architects.",
+            "text": "registered architects",
+        }
+    ]
+    result, row, _ = run_fixture(workspace, [completion(decision=decision)], monkeypatch)
+    saved = json.loads(row["result_json"])
+    assert saved["decision"] == "exclude"
+    assert len(saved["evidence"]) == 1
+    assert saved["evidence"][0]["field"] == "notice_text"
+    assert saved["extracted_fields"][0]["evidence_field"] == "notice_text"
+    assert saved["notice_details"][0]["evidence_field"] == "notice_text"
+    assert result.record.title == "Civic School Design Competition"
+
+
 def test_default_settings_accounting_and_evidence(workspace, monkeypatch):
     settings, _ = workspace
     assert (settings.ai_provider, settings.ai_model, settings.ai_reasoning_effort) == (
