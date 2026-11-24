@@ -49,10 +49,6 @@ def record_screened(
             [(criteria_hash, source_id, key) for key, _url in rows],
         )
         connection.execute(
-            "DELETE FROM notice_backlog WHERE status='done' AND first_seen < ?",
-            ((now - timedelta(days=_RETENTION_DAYS)).isoformat(),),
-        )
-        connection.execute(
             "DELETE FROM ai_notice_ledger WHERE recorded_at < ?",
             ((now - timedelta(days=_RETENTION_DAYS)).isoformat(),),
         )

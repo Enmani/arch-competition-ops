@@ -121,9 +121,14 @@ CREATE TABLE IF NOT EXISTS notice_backlog (
     last_error TEXT,
     criteria_hash TEXT,
     expires_on TEXT,
+    queued_at TEXT,
     PRIMARY KEY(source_id, content_hash)
 );
 CREATE INDEX IF NOT EXISTS idx_backlog_queue ON notice_backlog(status, first_seen);
+CREATE TABLE IF NOT EXISTS backlog_retention (
+    id INTEGER PRIMARY KEY CHECK (id=1),
+    removed INTEGER NOT NULL DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS collection_resume (
     source_id TEXT PRIMARY KEY,
     date_from TEXT NOT NULL,

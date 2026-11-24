@@ -284,3 +284,16 @@ test("arguments are validated", async (t) => {
     assert.equal(result.code, 1, argv.join(" "));
   }
 });
+
+test("push refuses to replace a backup with missing backlog rows", async (t) => {
+  const ctx = setup(t);
+  seedLocal(ctx.dbPath, 1);
+  const db = new Database(ctx.dbPath);
+  db.exec("CREATE TABLE notice_backlog(id INT); INSERT INTO notice_backlog VALUES(1)");
+  assert.equal((await run(ctx, ["push", "--init"])).code, 0);
+  db.exec("DELETE FROM notice_backlog");
+  db.close();
+  const result = await run(ctx, ["push"], { now: new Date("2026-11-16T02:00:00Z") });
+  assert.equal(result.code, 1);
+  assert.match(result.err, /notice_backlog/);
+});

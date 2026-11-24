@@ -171,3 +171,23 @@ def test_expired_and_aged_notices_do_not_spend_read_slots(tmp_path):
         cx.commit()
     _, count, report, _ = backlog.enqueue(db, "city", [], "v", unfinished=0, cap=2)
     assert count == 0 and "expired_unread=1" in report and "aged_out=1" in report
+
+
+def test_completed_payload_is_cleared_but_can_be_read_after_rule_change(tmp_path):
+    from arch_competition_ops.bootstrap import initialize_database
+    from arch_competition_ops.storage import backlog
+    from arch_competition_ops.storage.screening import shrink_old_screening_runs
+
+    db = initialize_database(Settings(root=tmp_path))
+    doc = CollectedSourceDocument("https://city.example/id", "Library design")
+    backlog.enqueue(db, "city", [doc], "v1", unfinished=0, cap=1)
+    with connect(db) as cx:
+        cx.execute(
+            "UPDATE notice_backlog SET status='done',criteria_hash='v1',first_seen='2001-01-01'"
+        )
+        cx.commit()
+    shrink_old_screening_runs(db, started_before=date(2001, 3, 1))
+    with connect(db) as cx:
+        assert cx.execute("SELECT payload FROM notice_backlog").fetchone()[0] == ""
+    backlog.enqueue(db, "city", [doc], "v2", unfinished=0, cap=1)
+    assert queued(db, "city", 1) == [doc]

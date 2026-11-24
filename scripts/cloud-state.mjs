@@ -49,7 +49,7 @@ export const KEEP_GENERATIONS = 14;
 export const POINTER_KEY = "latest.json";
 const DB_FILE = "competitions.sqlite";
 const GEOCODE_FILE = "geocoding-cache.json";
-const COUNTED_TABLES = ["competitions", "ai_notice_ledger", "ai_screening_results", "ai_screening_runs"];
+const COUNTED_TABLES = ["competitions", "ai_notice_ledger", "notice_backlog", "ai_screening_results", "ai_screening_runs"];
 const KEY_PATTERN = /^state\/[0-9A-Za-z-]+\/[0-9A-Za-z._-]+$/;
 const BUCKET_PATTERN = /^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/;
 const MISSING_OBJECT_PATTERN = /does not exist|not found|NoSuchKey|10007/i;
@@ -126,6 +126,8 @@ export function readCounts(dbPath) {
         ? Number(database.prepare(`SELECT COUNT(*) AS n FROM "${table}"`).get().n)
         : 0;
     }
+    counts.backlog_removed = tableExists(database, "backlog_retention")
+      ? Number(database.prepare("SELECT removed FROM backlog_retention WHERE id=1").get()?.removed ?? 0) : 0;
     return counts;
   } finally {
     database.close();
@@ -258,6 +260,11 @@ async function push({ context, dbPath, options, now }) {
       `Refusing to push: local ai_notice_ledger has ${counts.ai_notice_ledger} rows, ` +
         `the stored state has ${pointer.counts.ai_notice_ledger}. Use --force only if that is intended.`,
     );
+  }
+
+  if (pointer && !options.force && counts.notice_backlog + counts.backlog_removed <
+      (pointer.counts.notice_backlog ?? 0) + (pointer.counts.backlog_removed ?? 0)) {
+    throw new StateError("Refusing to push: notice_backlog has lost rows outside recorded retention.");
   }
 
   // A generation id never repeats: bump by a second until it is unused.

@@ -59,7 +59,7 @@ def retire_unread(cx, source_id, age_days):
     )
     cx.execute(
         "UPDATE notice_backlog SET status='aged_out' WHERE source_id=? AND status='queued' "
-        "AND first_seen<?",
+        "AND COALESCE(queued_at,first_seen)<?",
         (source_id, (clock.now_utc() - timedelta(days=age_days)).isoformat()),
     )
     return expired.rowcount
@@ -75,10 +75,10 @@ def enqueue(
         if criteria is not None:
             cx.execute(
                 "UPDATE notice_backlog SET "
-                "attempts=0,status='queued',last_error=NULL,criteria_hash=? "
+                "attempts=0,status='queued',last_error=NULL,queued_at=?,criteria_hash=? "
                 "WHERE source_id=? AND status IN ('failed','queued') AND attempts>0 "
                 "AND criteria_hash IS NOT ?",
-                (criteria, source_id, criteria),
+                (now.isoformat(),criteria, source_id, criteria),
             )
         for document in documents:
             version = notice_content_hash(document.payload, document.source_url)
@@ -99,10 +99,10 @@ def enqueue(
             if not inserted and criteria is not None:
                 cx.execute(
                     "UPDATE notice_backlog "
-                    "SET status='queued',last_error=NULL "
+                    "SET status='queued',attempts=0,last_error=NULL,payload=?,queued_at=? "
                     "WHERE source_id=? AND content_hash=? AND status='done' "
                     "AND criteria_hash IS NOT ?",
-                    (source_id, version, criteria),
+                    (document.payload, now.isoformat(), source_id, version, criteria),
                 )
                 already += cx.execute(
                     "SELECT status='done' FROM notice_backlog WHERE source_id=? AND content_hash=?",
@@ -130,7 +130,7 @@ def enqueue(
 
 def queue_stats(cx, source_id, *, new=0, lengths=(), unfinished=1):
     count, oldest = cx.execute(
-        "SELECT count(*),min(first_seen) FROM notice_backlog WHERE source_id=? AND status='queued'",
+        "SELECT count(*),min(coalesce(queued_at,first_seen)) FROM notice_backlog WHERE source_id=? AND status='queued'",
         (source_id,),
     ).fetchone()
     age = (clock.now_utc() - datetime.fromisoformat(oldest)).days if oldest else 0
@@ -194,7 +194,7 @@ def record_failure(db, source_id, document, error, *, criteria, limit, paused=Fa
 def requeue_failed(db, source_id, url=None):
     with write_transaction(db) as cx:
         return cx.execute(
-            "UPDATE notice_backlog SET attempts=0,status='queued',last_error=NULL "
+            "UPDATE notice_backlog SET attempts=0,status='queued',last_error=NULL,queued_at=? "
             "WHERE source_id=? AND status='failed' AND (? IS NULL OR source_url=?)",
-            (source_id, url, url),
+            (clock.now_utc().isoformat(),source_id, url, url),
         ).rowcount

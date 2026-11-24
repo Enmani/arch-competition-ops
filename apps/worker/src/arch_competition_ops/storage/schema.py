@@ -175,6 +175,7 @@ def _apply_schema(db_path: Path) -> None:
                 ("collection_resume", "date_to", "TEXT"),
                 ("collection_resume", "cursor", "TEXT NOT NULL DEFAULT ''"),
                 ("notice_backlog", "expires_on", "TEXT"),
+                ("notice_backlog", "queued_at", "TEXT"),
             ):
                 if column not in {
                     row[1] for row in connection.execute(f"PRAGMA table_info({table})")

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -189,6 +189,27 @@ def shrink_old_screening_runs(db_path: Path, *, started_before: date) -> int:
     """
     ensure_schema(db_path)
     with write_transaction(db_path) as connection:
+        # The ledger records completion time; pre-ledger rows fall back to first discovery.
+        stamp = (
+            "COALESCE((SELECT recorded_at FROM ai_notice_ledger l WHERE "
+            "l.source_id=notice_backlog.source_id AND l.content_hash=notice_backlog.content_hash "
+            "AND l.criteria_hash=notice_backlog.criteria_hash),first_seen)"
+        )
+        connection.execute(
+            f"UPDATE notice_backlog SET payload='' WHERE status='done' AND payload!='' "
+            f"AND {stamp} < ?",
+            (started_before.isoformat(),),
+        )
+        removed = connection.execute(
+            f"DELETE FROM notice_backlog WHERE status='done' AND {stamp} < ?",
+            ((started_before - timedelta(days=400 - 45)).isoformat(),),
+        ).rowcount
+        if removed:
+            connection.execute(
+                "INSERT INTO backlog_retention VALUES(1,?) ON CONFLICT(id) "
+                "DO UPDATE SET removed=removed+excluded.removed",
+                (removed,),
+            )
         cursor = connection.execute(
             "UPDATE ai_screening_runs SET input_json = '', result_json = NULL "
             "WHERE started_at < ? AND (input_json != '' OR result_json IS NOT NULL)",
