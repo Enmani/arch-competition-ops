@@ -2,7 +2,13 @@
 
 from contextvars import ContextVar
 
-from anthropic import Anthropic, APIConnectionError, APIStatusError, DefaultHttpxClient
+from anthropic import (
+    Anthropic,
+    APIConnectionError,
+    APIStatusError,
+    APITimeoutError,
+    DefaultHttpxClient,
+)
 
 from arch_competition_ops.screening.client import MAX_PROVIDER_RETRIES, ProviderResult
 
@@ -55,6 +61,9 @@ def read_messages(client, request, output_type):
         result.error_class = "insufficient_quota" if quota else f"http_{status}"
         result.pause = quota or status in {401, 403, 429}
         result.rejected = status < 500
+    except APITimeoutError:
+        # A notice that outruns the timeout is that notice's problem, not an outage.
+        result.error_class = "timeout"
     except APIConnectionError:
         result.error_class = "transport_error"
     else:
@@ -75,7 +84,7 @@ def read_messages(client, request, output_type):
             result.error_class = "missing_text"
         else:
             result.parse_decision(block.text, output_type)
-    ambiguous_final = result.error_class == "transport_error" or (
+    ambiguous_final = result.error_class in {"transport_error", "timeout"} or (
         result.error_class or ""
     ).startswith("http_5")
     result.uncertain_retries = max(0, _pending.get() - int(ambiguous_final))

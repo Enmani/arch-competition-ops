@@ -108,7 +108,7 @@ class IngestResult:
     batch_paused: bool = False
     deferred: int = 0
     # Listed notices skipped because the same content was already screened under the same
-    # criteria (see storage/notice_ledger.py).
+    # criteria (see storage/backlog.py).
     already_screened: int = 0
 
     @property
@@ -294,6 +294,9 @@ def ingest_source(
     # enter the ledger only once the records are durably written.
     screened: list[tuple[int, str]] = []
     last_error: str | None = None
+    # Consecutive provider 400s: three in a row point at the account or request shape, not at the
+    # notices, so they are deferred (not counted against a notice) and the batch pauses.
+    bad_request_streak = 0
     # The paid assessments run first, concurrently and in input order; everything after them
     # (parse, verify, geocode, store) stays sequential. Geocoding is paced at one request a second.
     outcomes = (
@@ -314,6 +317,7 @@ def ingest_source(
                 if outcome.error is not None:
                     raise outcome.error
                 assessment = outcome.assessment
+                bad_request_streak = 0
                 record = assessment.record
                 if record is None:
                     exclusions[assessment.request_id] = exclusion_identity(
@@ -391,6 +395,7 @@ def ingest_source(
                 code = provider_code(exc) if isinstance(exc, ScreeningError) else error_class(exc)
                 url = log_url(document.source_url)
                 logger.warning("Notice %s at %s: %s", url, stage, code)
+                bad_request_streak = bad_request_streak + 1 if code == "http_400" else 0
                 result.failures.append(DocumentFailure(url, stage, code))
                 specific = (
                     code
@@ -400,8 +405,8 @@ def ingest_source(
                         "incomplete_response",
                         "max_tokens",
                         "refusal",
-                        "http_400",
                         "http_413",
+                        "timeout",
                     }
                     or isinstance(exc, NoticeValidationError)
                     or (stage in {"parse", "verify"} and isinstance(exc, ValueError | KeyError))
@@ -420,6 +425,11 @@ def ingest_source(
                     retry = backlog.defer(db_path, pending[position].row_id, code, criteria_hash)
                     result.notes.append(f"deferred[{source_id}/{code}] retry_at={retry}")
                     result.deferred += 1
+                    if bad_request_streak >= 3:
+                        result.deferred += len(documents) - position - 1
+                        result.notes.append(f"paused[{source_id}/http_400] repeated bad requests")
+                        result.batch_paused = True
+                        break
                 last_error = code
                 continue
             assessment.record = record

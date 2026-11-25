@@ -35,6 +35,7 @@ def provider_code(error):
         "max_tokens",
         "refusal",
         "transport_error",
+        "timeout",
         "api_error",
         "insufficient_quota",
     }:

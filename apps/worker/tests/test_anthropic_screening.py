@@ -154,6 +154,28 @@ def test_error_mapping_and_budget(
     assert row["cost_usd"] == pytest.approx(attempts * reserve if status >= 500 else 0)
 
 
+def test_timeout_is_the_notices_problem_and_does_not_pause(workspace, monkeypatch):
+    import httpx
+
+    settings, source = workspace
+    waits = []
+    monkeypatch.setattr("anthropic._base_client.time.sleep", waits.append)
+
+    def slow(*_a, **_kw):
+        raise httpx.ReadTimeout("too slow")
+
+    monkeypatch.setattr(HTTPTransport, "handle_request", slow)
+    with pytest.raises(ScreeningError) as caught:
+        service.assess_document(
+            settings, source=source, source_url="https://city.example/n/1", payload=NOTICE
+        )
+    assert not isinstance(caught.value, ScreeningPaused)
+    assert str(caught.value) == "timeout"
+    with connect(settings.resolve_path(settings.db)) as cx:
+        row = cx.execute("SELECT status, error_code FROM ai_screening_runs").fetchone()
+    assert (row["status"], row["error_code"]) == ("uncertain", "timeout")
+
+
 def test_recovered_server_error_keeps_ambiguous_cost(workspace, monkeypatch):
     result, row, waits = run_fixture(workspace, [reply(529), reply(429), completion()], monkeypatch)
     assert waits == [7, 7]
@@ -205,9 +227,11 @@ def test_failed_notice_stays_queued_while_next_notice_is_published(workspace, mo
     result = ingest_source(settings, source_id=source.source_id)
     assert [f.source_url for f in result.failures] == [docs[0].source_url]
     assert len(result.ingested_ids) == 1
-    assert [
+    # A 400 is deferred to a later day (it may be the account, not the notice); the rest are retried.
+    waiting = [
         item.document for item in queued(settings.resolve_path(settings.db), source.source_id, 5)
-    ] == [docs[0]]
+    ]
+    assert waiting == ([] if stop == "invalid_request" else [docs[0]])
     with connect(settings.resolve_path(settings.db)) as db:
         error = db.execute("SELECT last_error FROM items WHERE status='queued'").fetchone()[0]
         assert error == ("http_400" if stop == "invalid_request" else stop)

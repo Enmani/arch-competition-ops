@@ -138,7 +138,8 @@ def test_ingest_screens_each_listed_notice_once_until_its_content_changes(
 
     with connect(settings.resolve_path(settings.db)) as db:
         assert db.execute("SELECT count(*) FROM items").fetchone()[0] == 2
-    assert export_diff(2) == 0
+    # Only the source's last_success_at moves (one row and its indexes); no notice is rewritten.
+    assert export_diff(2) <= 3
     listing[:] = original
     calls_after_second = len(calls)
     # A corrigendum changes the listed content, so that notice alone is screened again.
@@ -160,7 +161,7 @@ def test_ingest_screens_each_listed_notice_once_until_its_content_changes(
     before = len(calls)
     ingest_source(settings, source_id="city")
     assert len(calls) == before + 2
-    assert export_diff(4) == 0
+    assert export_diff(4) <= 3  # source health only
 
     from arch_competition_ops.screening.models import ScreeningAnswer
 
@@ -169,4 +170,40 @@ def test_ingest_screens_each_listed_notice_once_until_its_content_changes(
     for index in (1, 2):
         ingest_source(settings, source_id="city", limit=1)
         assert len(calls) == before + 2 + index
-    assert export_diff(5) == 0
+    assert export_diff(5) <= 3
+
+
+def test_repeated_bad_requests_pause_the_batch_without_failing_notices(
+    ai_workspace,  # noqa: F811
+    monkeypatch,
+):
+    import httpx
+    import yaml
+
+    from arch_competition_ops.collectors.base import CollectedSourceDocument
+    from arch_competition_ops.ingest import ingest_source
+    from arch_competition_ops.screening import service
+
+    settings, source = ai_workspace
+    settings.ai_enabled = True
+    (settings.root / "config" / "sources.yml").write_text(
+        yaml.safe_dump({"sources": [source.model_dump()]}), encoding="utf-8"
+    )
+    listing = [
+        CollectedSourceDocument(f"https://city.example/n/{n}", NOTICE + f"<p>{n}</p>")
+        for n in range(5)
+    ]
+    monkeypatch.setattr(
+        "arch_competition_ops.ingest.collect_source_documents", lambda *_a, **_kw: list(listing)
+    )
+    refuse = lambda _request: httpx.Response(  # noqa: E731
+        400, json={"error": {"type": "invalid_request_error", "message": "account problem"}}
+    )
+    monkeypatch.setattr(service, "create_client", lambda _settings: mock_client(refuse))
+
+    result = ingest_source(settings, source_id="city")
+
+    assert result.batch_paused and result.deferred == 5
+    assert not any(note.startswith("failed[") for note in result.notes)
+    with connect(settings.resolve_path(settings.db)) as db:
+        assert db.execute("SELECT count(*) FROM items WHERE status='failed'").fetchone()[0] == 0

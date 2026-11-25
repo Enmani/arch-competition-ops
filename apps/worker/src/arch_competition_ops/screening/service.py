@@ -124,7 +124,9 @@ def _request_one(client, settings, db_path, model, row, prepared, sleep):
         finish_screening(
             db_path,
             request_id,
-            status="uncertain" if outage else "failed" if code else "completed",
+            status="uncertain" if outage or code == "timeout" else (
+                "failed" if code else "completed"
+            ),
             error_code=code,
             result_json=decision.model_dump_json() if decision else None,
             cost_usd=cost,

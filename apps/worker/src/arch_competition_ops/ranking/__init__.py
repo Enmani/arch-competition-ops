@@ -1,1 +1,1 @@
-"""Ranking logic will score competitions against active targeting filters."""
+"""Ranking logic will score competitions against the screening requirements."""

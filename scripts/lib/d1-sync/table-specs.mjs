@@ -93,10 +93,12 @@ export const SYNC_TABLES = Object.freeze([
 ]);
 
 // Operational heartbeats stay in worker SQLite. D1 carries changes to source health.
+// last_success_at is deliberately not volatile: the ops page reads it for freshness, so a source
+// that succeeds daily must move it (one row per source per day).
 const volatileColumns = {
   competitions: ["updated_at", "last_verified_at", "discovered_at", "display_title_source"],
   ai_screening_results: ["updated_at", "source_updated_at"],
-  source_health: ["last_run_started_at", "last_run_completed_at", "last_success_at", "updated_at",
+  source_health: ["last_run_started_at", "last_run_completed_at", "updated_at",
     "last_document_count", "last_upserted_count"],
   ops_review_queue_items: ["first_detected_at", "last_detected_at", "updated_at"],
 };

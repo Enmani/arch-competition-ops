@@ -52,13 +52,13 @@ def workspace(ai_workspace, monkeypatch):  # noqa: F811
                 "missing_text",
                 "max_tokens",
                 "refusal",
-                "http_400",
+                "timeout",
                 "http_413",
             )
         ],
         *[
             (ScreeningError(code), False)
-            for code in ("http_500", "http_529", "transport_error", "api_error")
+            for code in ("http_400", "http_500", "http_529", "transport_error", "api_error")
         ],
         (ScreeningPaused("http_429"), False),
         (ScreeningPaused("insufficient_quota"), False),

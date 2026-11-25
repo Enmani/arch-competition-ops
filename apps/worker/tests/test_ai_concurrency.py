@@ -214,7 +214,7 @@ def test_one_failing_notice_does_not_sink_the_others_or_enter_the_ledger(
     assert [f.source_url for f in result.failures] == [url(2)]
     assert result.failures[0].stage == "ai_extract_and_screen"
     assert len(result.ingested_ids) == 5
-    assert result.deferred == 0
+    assert result.deferred == 1  # a lone 400 is deferred, not counted against the notice
     assert ledger_rows(settings) == 5  # the failed notice is retried on the next run
 
 

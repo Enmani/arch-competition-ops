@@ -365,6 +365,19 @@ test("unchanged collection writes zero rows including the publication marker", (
   assert.equal(changes()-before, 0);
 });
 
+test("a source that succeeds on a new day moves last_success_at in D1", (t) => {
+  const workspace = createWorkspace(t);
+  createLocalDatabase(workspace.dbPath, seedWorkerData);
+  const remote = applyMigrations(new Database(":memory:"));
+  t.after(() => remote.close());
+  executeFiles(remote, runInto(workspace));
+  const local = new Database(workspace.dbPath);
+  local.exec("UPDATE source_health SET last_success_at='2031-01-01T00:00:00+00:00'");
+  local.close();
+  executeFiles(remote, runInto(workspace, { now: new Date("2031-01-01") }));
+  assert.equal(remote.prepare("SELECT last_success_at v FROM source_health").get().v, "2031-01-01T00:00:00+00:00");
+});
+
 test("visible edits and deadline crossings change the version, while diagnostics preserve it", (t) => {
   const workspace = createWorkspace(t);
   createLocalDatabase(workspace.dbPath, db => {

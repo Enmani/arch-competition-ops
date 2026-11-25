@@ -2,7 +2,7 @@
 
 Produce a compact operator summary with these sections:
 
-1. Fit with active targeting filters
+1. Fit with the screening requirements
 2. Key deadlines and fees
 3. Eligibility and deliverables
 4. Primary design topic
