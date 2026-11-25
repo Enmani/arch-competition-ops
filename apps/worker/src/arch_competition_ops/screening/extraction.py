@@ -37,6 +37,7 @@ def extract_record(
     decision: ScreeningDecision,
     evidence_fields: dict[str, str],
     *,
+    mapped_names=frozenset(),
     original_links: dict[str, set[str]] | None = None,
     source: SourceDefinition,
     source_url: str,
@@ -90,7 +91,10 @@ def extract_record(
                 amount is not None
                 and math.isfinite(amount)
                 and amount in cited
-                and bool(re.search(r"€|\bEUR\b|\beuros?\b", quote, re.I))
+                and (
+                    quote.startswith("estimatedValueEur: ")
+                    or bool(re.search(r"€|\bEUR\b|\beuros?\b", quote, re.I))
+                )
             )
             converted = amount
         elif spec.kind == "date":
@@ -126,7 +130,8 @@ def extract_record(
             warnings.append(f"{field}: value not supported by the cited source")
             continue
         updates[field] = converted
-        evidence_notes.append(f"AI {field} [{source_url}]: {quote}")
+        origin = "Source" if field in mapped_names else "AI"
+        evidence_notes.append(f"{origin} {field} [{source_url}]: {quote}")
     title = updates.pop("title", "")
     if (original := evidence_fields.get("notice_title")) and original != title:
         title = original

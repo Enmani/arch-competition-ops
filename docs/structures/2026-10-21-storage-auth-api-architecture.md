@@ -231,3 +231,6 @@ A content signature covers the worker export. Another covers visible opportuniti
 - `docs/plans/2026-04-30-cloudflare-workers-d1-deployment-plan.md`
 
 The collection queue, retry times, page positions and coverage gaps live only in worker SQLite. Web, MCP and D1 export continue to read published records. A missing or low qualification score is eligible for publication.
+
+
+The experimental worker stores discovery, retry state and completion in `items`. It joins the receipt by request ID for the judgment and usage. Local migration preserves existing queue rows and imports historical ledger-only notices. Historical web migration 0008 still defines the unused legacy ledger on the web side. Neither registry is published. Public reads and the changed-only export retain their existing contracts.

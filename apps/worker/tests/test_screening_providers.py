@@ -1,5 +1,3 @@
-import json
-
 import httpx
 import pytest
 from test_ai_screening import (  # noqa: F401
@@ -15,40 +13,13 @@ from arch_competition_ops.screening.client import ScreeningError, ScreeningPause
 from arch_competition_ops.storage.connection import connect
 
 
-@pytest.fixture(params=["openai", "openai-compatible"])
-def configured(ai_workspace, request):  # noqa: F811
-    settings, source = ai_workspace
-    settings.ai_provider = request.param
-    settings.ai_chat_base_url = "https://provider.example/v1"
-    settings.ai_chat_input_usd_per_million = 1
-    settings.ai_chat_output_usd_per_million = 2
-    return settings, source
-
-
 @pytest.mark.parametrize("outcome", ["valid", "unknown_cost", "invalid"])
-def test_providers_share_decision_usage_and_validation(configured, outcome):
-    settings, source = configured
+def test_providers_share_decision_usage_and_validation(ai_workspace, outcome):  # noqa: F811
+    settings, source = ai_workspace
     payload = decision_payload() if outcome != "invalid" else {"decision": "invented"}
 
     def handle(req):
-        if settings.ai_provider == "openai":
-            body = response(payload).json()
-        else:
-            assert req.url.path.endswith("/chat/completions")
-            body = {
-                "id": "reply",
-                "object": "chat.completion",
-                "created": 1,
-                "model": settings.ai_model,
-                "choices": [
-                    {
-                        "index": 0,
-                        "message": {"role": "assistant", "content": json.dumps(payload)},
-                        "finish_reason": "stop",
-                    }
-                ],
-                "usage": {"prompt_tokens": 2000, "completion_tokens": 1000, "total_tokens": 3000},
-            }
+        body = response(payload).json()
         if outcome == "unknown_cost":
             body.pop("usage")
         return httpx.Response(200, json=body)
@@ -85,8 +56,8 @@ def test_providers_share_decision_usage_and_validation(configured, outcome):
 
 
 @pytest.mark.parametrize("code,count", [("insufficient_quota", 1), ("rate_limit_exceeded", 4)])
-def test_quota_stops_further_notices(configured, monkeypatch, code, count):
-    settings, source = configured
+def test_quota_stops_further_notices(ai_workspace, monkeypatch, code, count):  # noqa: F811
+    settings, source = ai_workspace
     calls = []
 
     def fail(request):

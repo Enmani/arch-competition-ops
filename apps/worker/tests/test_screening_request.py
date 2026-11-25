@@ -11,8 +11,8 @@ from arch_competition_ops.screening.providers import read_notice
 from arch_competition_ops.settings import Settings
 
 
-@pytest.mark.parametrize("provider", ["openai", "openai-compatible", "anthropic"])
-def test_only_one_original_notice_reaches_the_model(tmp_path, provider):
+@pytest.mark.parametrize("provider", ["openai", "anthropic"])
+def test_only_one_original_notice_reaches_the_model(tmp_path, provider, monkeypatch):
     skill = tmp_path / "rule.md"
     skill.write_text("---\nmetadata: hidden\n---\nRead the notice.", encoding="utf8")
     settings = Settings(
@@ -24,7 +24,6 @@ def test_only_one_original_notice_reaches_the_model(tmp_path, provider):
         anthropic_api_key="fixture-only",
         _env_file=None,
     )
-    settings.ai_chat_base_url = "https://provider.example/v1"
     row = {
         "source_url": "https://user:password@city.example/n?id=1&signature=secret",
         "title": "Library",
@@ -61,25 +60,6 @@ def test_only_one_original_notice_reaches_the_model(tmp_path, provider):
             "messages": [{"role": "user", "content": expected["input"]}],
             "output_config": {"effort": "low", "format": {"type": "json_schema", "schema": schema}},
         }
-    if provider == "openai-compatible":
-        fmt = expected["text"]["format"]
-        expected = {
-            "model": "gpt-6-luna",
-            "messages": [
-                {"role": "system", "content": expected["instructions"]},
-                {"role": "user", "content": expected["input"]},
-            ],
-            "reasoning_effort": "low",
-            "max_tokens": 12288,
-            "response_format": {
-                "type": "json_schema",
-                "json_schema": {
-                    "schema": fmt["schema"],
-                    "name": "competition_screening",
-                    "strict": True,
-                },
-            },
-        }
     sent = []
 
     def capture(req):
@@ -87,22 +67,18 @@ def test_only_one_original_notice_reaches_the_model(tmp_path, provider):
         return httpx.Response(400, json={"error": {"message": "fixture"}})
 
     if provider == "anthropic":
-        from requests import Response
+        from httpx import HTTPTransport, Response
 
-        def send(req, **kwargs):
-            assert req.method == "POST" and req.url == "https://api.anthropic.com/v1/messages"
+        def send(_, req):
+            assert req.method == "POST" and str(req.url) == "https://api.anthropic.com/v1/messages"
             assert req.headers["x-api-key"] == "fixture-only"
             assert req.headers["anthropic-version"] == "2026-10-21"
             assert req.headers["content-type"] == "application/json"
-            assert not kwargs["allow_redirects"]
-            sent.append(json.loads(req.body))
-            reply = Response()
-            reply.status_code = 400
-            reply._content = b"{}"
-            return reply
+            sent.append(json.loads(req.content))
+            return Response(400, json={})
 
+        monkeypatch.setattr(HTTPTransport, "handle_request", send)
         with create_screening_client(settings) as client:
-            client.send = send
             read_notice(client, provider, request)
         assert sent == [expected]
         return

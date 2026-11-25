@@ -386,9 +386,8 @@ def test_chinese_titles_get_a_space_between_scripts():
 
 
 def test_default_provider_translates_titles_with_isolated_prompt(title_workspace, monkeypatch):
+    from httpx import HTTPTransport
     from test_anthropic_screening import reply
-
-    from arch_competition_ops.screening.anthropic import AnthropicMessages
 
     monkeypatch.setenv("ANTHROPIC_API_KEY", "fixture-only")
     settings = Settings(root=title_workspace.root, _env_file=None)
@@ -396,7 +395,7 @@ def test_default_provider_translates_titles_with_isolated_prompt(title_workspace
     calls = []
 
     def send(self, request, **kwargs):
-        calls.append(json.loads(request.body))
+        calls.append(json.loads(request.content))
         text = json.dumps(
             {"items": [{"id": 0, "title_en": "Library renovation", "title_zh": "图书馆改造"}]}
         )
@@ -405,7 +404,7 @@ def test_default_provider_translates_titles_with_isolated_prompt(title_workspace
             usage={"input_tokens": 300, "output_tokens": 25},
         )
 
-    monkeypatch.setattr(AnthropicMessages, "send", send)
+    monkeypatch.setattr(HTTPTransport, "handle_request", send)
     result = polish_titles(settings, use_ai=True)
     assert result.condensed == 1 and result.cost_usd > 0
     assert _row(settings, record)["display_title_zh"] == "图书馆改造"

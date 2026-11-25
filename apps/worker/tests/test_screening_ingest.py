@@ -137,7 +137,7 @@ def test_ingest_screens_each_listed_notice_once_until_its_content_changes(
     from arch_competition_ops.storage.connection import connect
 
     with connect(settings.resolve_path(settings.db)) as db:
-        assert db.execute("SELECT count(*) FROM notice_backlog").fetchone()[0] == 2
+        assert db.execute("SELECT count(*) FROM items").fetchone()[0] == 2
     assert export_diff(2) == 0
     listing[:] = original
     calls_after_second = len(calls)

@@ -11,6 +11,7 @@ class Fact:
     kind: str
     description: str
     taxonomy: str | None = None
+    paths: tuple[str, ...] = ()
 
 
 KIND_FORMAT = {
@@ -44,9 +45,14 @@ FIELDS = {
             "notice_title when supplied, otherwise look in notice_text. Return an empty "
             "string only if the notice states no title."
         ),
+        paths=("title", "objet", "notice-title.eng", "listing.title.en"),
     ),
     "organizer": Fact("text", "Named body organizing the competition or commissioning the work."),
-    "authority_name": Fact("text", "Contracting authority or buyer as named in the notice."),
+    "authority_name": Fact(
+        "text",
+        "Contracting authority or buyer as named in the notice.",
+        paths=("buyer", "authority", "nomacheteur", "agency_name", "organisation-name-buyer.eng"),
+    ),
     "official_url": Fact("url", "Public notice or project page for this specific commission."),
     "location_label": Fact(
         "text", "Project site or address as written, excluding the buyer's office."
@@ -59,6 +65,14 @@ FIELDS = {
             "Deadline for submitting the tender, entry or application. Put other milestones "
             "in timeline excerpts."
         ),
+        paths=(
+            "deadline",
+            "tenderDeadline",
+            "submission_deadline_date",
+            "datelimitereponse",
+            "deadline-receipt-tender-date-lot",
+            "detail.project-info.deadlines.date",
+        ),
     ),
     "registration_fee_eur": Fact(
         "money", "Fee to register, including zero only when explicitly priced in euros."
@@ -67,6 +81,7 @@ FIELDS = {
     "estimated_contract_value_eur": Fact(
         "money",
         "Estimated value of the commissioned contract, distinct from the construction budget.",
+        paths=("estimatedValueEur",),
     ),
     "estimated_contract_value_text": Fact(
         "text", "Original wording for the contract value, retaining currency and qualifications."
@@ -81,7 +96,10 @@ FIELDS = {
         "label", "Kind of design commission being offered.", "opportunity_types"
     ),
     "procedure_type": Fact(
-        "label", "Procurement or competition procedure stated by the buyer.", "procedure_types"
+        "label",
+        "Procurement or competition procedure stated by the buyer.",
+        "procedure_types",
+        paths=("procedureType", "procedure-type", "procurement_method_name"),
     ),
     "implementation_path": Fact(
         "label",
@@ -115,15 +133,20 @@ FIELDS = {
         "label-list", "Languages explicitly specified for participation or submission.", "languages"
     ),
     "official_notice_id": Fact(
-        "text", "Identifier assigned to the notice by the issuing authority."
+        "text",
+        "Identifier assigned to the notice by the issuing authority.",
+        paths=("officialNoticeId", "noticeId", "notice-identifier", "idweb", "bid_reference_no"),
     ),
 }
 FactName = Literal[*FIELDS]
+FIELD_BY_PATH = {path: name for name, spec in FIELDS.items() for path in spec.paths}
 
 
-def render_contract(taxonomy: Taxonomy) -> str:
+def render_contract(taxonomy: Taxonomy, known=frozenset()) -> str:
     lines = [
-        FIELDS["title"].description,
+        "The source title is already available. Leave title_quote empty."
+        if "title" in known
+        else FIELDS["title"].description,
         "Extract all supported facts for both recommend and needs_review notices.",
         (
             "Consider every field below. Include each supported fact once. For text, give its "
@@ -134,7 +157,7 @@ def render_contract(taxonomy: Taxonomy) -> str:
         *(f"{kind}: {rule}" for kind, rule in KIND_FORMAT.items()),
     ]
     for name, fact in FIELDS.items():
-        if name == "title":
+        if name == "title" or name in known:
             continue
         line = f"{name} ({fact.kind}): {fact.description}"
         if fact.taxonomy:

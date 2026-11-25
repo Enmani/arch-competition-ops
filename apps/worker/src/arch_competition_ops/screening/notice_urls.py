@@ -1,7 +1,6 @@
 import ipaddress
 import re
-from html.parser import HTMLParser
-from urllib.parse import parse_qsl, unquote, urlencode, urljoin, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, unquote, urlencode, urlsplit, urlunsplit
 
 URL = re.compile(r"""https?://[^\s<>"'\\]+""", re.I)
 
@@ -106,17 +105,3 @@ def stored_link(original):
         if _CREDENTIAL_KEY.search(name) or _embedded_credentials(value):
             sensitive = True
     return (clean, True) if sensitive else (original, False)
-
-
-class PageLinks(HTMLParser):
-    def __init__(self, base_url: str):
-        super().__init__(convert_charrefs=True)
-        self.base_url = base_url
-        self.links: list[str] = []
-
-    def handle_starttag(self, tag, attrs):
-        for key, value in attrs:
-            if key == "href" and value:
-                absolute = urljoin(self.base_url, value)
-                if absolute.startswith(("https://", "http://")):
-                    self.links.append(absolute)

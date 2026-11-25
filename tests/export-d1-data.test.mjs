@@ -334,7 +334,7 @@ test("missing and low qualification scores publish while the private queue stays
   createLocalDatabase(workspace.dbPath, (db) => {
     insertCompetition(db, "no-score", { qualification_score: null });
     insertCompetition(db, "low-score", { qualification_score: 0 });
-    db.exec("CREATE TABLE notice_backlog(status TEXT, payload TEXT); INSERT INTO notice_backlog VALUES ('failed','unread-private-text'),('expired_unread','expired-private-text'),('aged_out','old-private-text')");
+    db.exec("CREATE TABLE items(status TEXT, payload TEXT); INSERT INTO items VALUES ('failed','unread-private-text'),('expired_unread','expired-private-text'),('aged_out','old-private-text')");
   });
   const result = runInto(workspace);
   const remote = applyMigrations(new Database(":memory:"));
@@ -343,7 +343,7 @@ test("missing and low qualification scores publish while the private queue stays
     assert.deepEqual(remote.prepare("SELECT id, qualification_score AS score FROM competitions ORDER BY id").all(), [
       { id: "low-score", score: 0 }, { id: "no-score", score: null }
     ]);
-    assert.doesNotMatch(result.files.map(file => file.content).join(""), /notice_backlog|collection_resume|backlog_retention|private-text/);
+    assert.doesNotMatch(result.files.map(file => file.content).join(""), /items|collection_resume|backlog_retention|private-text/);
   } finally {
     remote.close();
   }

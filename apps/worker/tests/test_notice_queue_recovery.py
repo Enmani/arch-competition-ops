@@ -84,7 +84,7 @@ def test_notice_attempts_and_transient_backoff(workspace, monkeypatch, error, sp
 
     result = run()
     with connect(db) as cx:
-        assert tuple(cx.execute("SELECT attempts,status FROM notice_backlog").fetchone()) == (
+        assert tuple(cx.execute("SELECT attempts,status FROM items").fetchone()) == (
             int(specific),
             "queued",
         )
@@ -104,7 +104,7 @@ def test_prior_hash_is_finished_by_row_id(workspace, monkeypatch, fails):
         settings, source_id=source.source_id, collected_documents=[DOC], collect_only=True
     )
     with connect(db) as cx:
-        cx.execute("UPDATE notice_backlog SET content_hash='old-hash'")
+        cx.execute("UPDATE items SET content_hash='old-hash'")
     if fails:
 
         def fail(*args, **kw):
@@ -113,13 +113,14 @@ def test_prior_hash_is_finished_by_row_id(workspace, monkeypatch, fails):
         monkeypatch.setattr(service, "assess_document", fail)
     ingest_source(settings, source_id=source.source_id, collected_documents=[])
     with connect(db) as cx:
-        assert tuple(cx.execute("SELECT status,attempts FROM notice_backlog").fetchone()) == (
+        assert tuple(cx.execute("SELECT status,attempts FROM items").fetchone()) == (
             "queued" if fails else "done",
             1,
         )
         if not fails:
             assert (
-                cx.execute("SELECT content_hash FROM ai_notice_ledger").fetchone()[0] == "old-hash"
+                cx.execute("SELECT content_hash FROM items WHERE status='done'").fetchone()[0]
+                == "old-hash"
             )
 
 
@@ -163,16 +164,14 @@ def test_terminal_payload_retention_preserves_reason_and_pending_text(tmp_path):
     with connect(db) as cx:
         for state in states:
             cx.execute(
-                "INSERT INTO notice_backlog(source_id,source_url,content_hash,payload,"
+                "INSERT INTO items(source_id,source_url,content_hash,payload,"
                 "first_seen,status,last_error) VALUES('city','https://city.example',?,"
                 "'private text','2026-01-01',?,'reason')",
                 (state, state),
             )
     shrink_old_screening_runs(db, started_before=date(2026, 2, 1))
     with connect(db) as cx:
-        rows = list(
-            cx.execute("SELECT status,payload,last_error FROM notice_backlog ORDER BY rowid")
-        )
+        rows = list(cx.execute("SELECT status,payload,last_error FROM items ORDER BY rowid"))
     assert [tuple(r) for r in rows] == [
         (s, "private text" if s == "queued" else "", "reason") for s in states
     ]
@@ -233,7 +232,7 @@ def test_invalid_cursor_and_repeated_pages_recover_first_page(tmp_path, monkeypa
         assert any("cursor_reset=http_400" in line for line in recovered.notes)
     assert calls == [None, "page1", None]
     with connect(settings.resolve_path(settings.db)) as cx:
-        assert cx.execute("SELECT count(*) FROM notice_backlog").fetchone()[0] == 2
+        assert cx.execute("SELECT count(*) FROM items").fetchone()[0] == 2
 
 
 def test_changed_model_reopens_failed_with_fresh_attempts_during_discovery_outage(
@@ -263,7 +262,7 @@ def test_changed_model_reopens_failed_with_fresh_attempts_during_discovery_outag
         ingest_source(settings, source_id=source.source_id, queued_row_ids=[row.row_id])
     assert len(calls) == 6
     with connect(db) as cx:
-        assert tuple(cx.execute("SELECT status,attempts FROM notice_backlog").fetchone()) == (
+        assert tuple(cx.execute("SELECT status,attempts FROM items").fetchone()) == (
             "failed",
             3,
         )

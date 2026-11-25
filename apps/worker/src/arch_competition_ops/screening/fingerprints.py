@@ -7,7 +7,7 @@ from arch_competition_ops.screening.models import ScreeningAnswer, canonical_jso
 from arch_competition_ops.screening.notice_urls import URL, public_url
 from arch_competition_ops.screening.preferences import answer_format
 from arch_competition_ops.screening.providers import provider_identity
-from arch_competition_ops.screening.readability import VisibleNotice
+from arch_competition_ops.screening.readability import visible_text
 from arch_competition_ops.screening.source_evidence import notice_evidence, notice_title
 from arch_competition_ops.settings import Settings
 
@@ -39,12 +39,9 @@ def notice_content_hash(payload: str, url: str, *, collected=True) -> str:
             pass
         else:
             material = canonical_json(data) + material[end:]
-    page = VisibleNotice(url)
-    page.feed(material)
-    page.close()
-    text = URL.sub(lambda m: public_url(m[0]), " ".join(page.text))
-    text = " ".join(text.split())
-    targets = sorted({target for link in page.links if (target := public_url(link))})
+    text, links = visible_text(material, url)
+    text = " ".join(URL.sub(lambda m: public_url(m[0]), text).split())
+    targets = sorted({target for link in links if (target := public_url(link))})
     identity = [public_url(url) or url, text, targets]
     if title := notice_title(payload):
         identity.append(" ".join(URL.sub(lambda m: public_url(m[0]), title).split()))

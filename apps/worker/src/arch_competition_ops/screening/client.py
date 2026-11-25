@@ -68,6 +68,7 @@ class ProviderResult:
     input_tokens: int | None = None
     output_tokens: int | None = None
     cache_read_tokens: int = 0
+    validation_error: str = ""
     retry_after: str = ""
     uncertain_retries: int = 0
     rejected: bool = False
@@ -84,24 +85,24 @@ class ProviderResult:
     def parse_decision(self, text: str, output_type: type[BaseModel]) -> None:
         try:
             self.decision = output_type.model_validate_json(text)
-        except ValidationError:
+        except ValidationError as exc:
+            self.validation_error = ", ".join(
+                dict.fromkeys(
+                    f"{e['loc'][0]}: {e['type']}"
+                    if e["loc"] and e["loc"][0] in output_type.model_fields
+                    else e["type"]
+                    for e in exc.errors(include_input=False)
+                )
+            )[:256]
             self.error_class = "invalid_schema"
 
 
 def read_with_retries(
     send: Callable[[], ProviderResult], *, provider: str, sleep=None
 ) -> ProviderResult:
-    retry_server_errors = billable_attempt_limit(provider) > 1
-    uncertain = 0
     for attempt in range(MAX_PROVIDER_RETRIES + 1):
         result = send()
-        server_retry = retry_server_errors and (result.error_class or "").startswith("http_5")
-        if attempt == MAX_PROVIDER_RETRIES or not (
-            result.error_class == "http_429" or server_retry
-        ):
-            result.uncertain_retries = uncertain
+        if result.error_class != "http_429" or attempt == MAX_PROVIDER_RETRIES:
             return result
-        if server_retry:
-            uncertain += 1  # An earlier server failure may already have consumed tokens.
         (sleep or time.sleep)(retry_delay(result.retry_after, attempt))
     raise AssertionError("unreachable")

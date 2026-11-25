@@ -7,30 +7,36 @@ import re
 import threading
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import ExitStack, nullcontext
+from contextlib import nullcontext
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from anthropic import Anthropic
 from openai import OpenAI
+from pydantic import ValidationError
 
 from arch_competition_ops.bootstrap import initialize_database
+from arch_competition_ops.config_loader import load_source_catalog
 from arch_competition_ops.http import HttpError
 from arch_competition_ops.locking import LockHeldError, exclusive_lock
 from arch_competition_ops.models import CompetitionRecord, SourceDefinition
-from arch_competition_ops.screening.anthropic import AnthropicMessages
-from arch_competition_ops.screening.catalog import ScreeningModel
+from arch_competition_ops.run_errors import provider_code
 from arch_competition_ops.screening.client import (
     ScreeningError,
     ScreeningPaused,
     billable_attempt_limit,
 )
-from arch_competition_ops.screening.extraction import extract_record
+from arch_competition_ops.screening.extraction import NoticeValidationError, extract_record
 from arch_competition_ops.screening.inputs import (
     enrich_notice_payload,
     prepare_input,
 )
-from arch_competition_ops.screening.models import ScreeningDecision, validate_evidence
+from arch_competition_ops.screening.models import (
+    ScreeningDecision,
+    canonical_json,
+    validate_evidence,
+)
 from arch_competition_ops.screening.providers import (
     create_screening_client as create_client,
 )
@@ -46,6 +52,7 @@ from arch_competition_ops.storage.screening import (
     finish_screening,
     load_screening_candidates,
     publish_screening,
+    request_hash,
     reserve_screening,
 )
 
@@ -65,79 +72,94 @@ class ScreeningBatchResult:
         return asdict(self)
 
 
-def _request_one(
-    client: OpenAI | AnthropicMessages,
-    settings: Settings,
-    db_path: Path,
-    model: ScreeningModel,
-    row: dict[str, Any],
-    input_json: str,
-    evidence_fields: dict[str, str],
-    limitations: list[str],
-    *,
-    sleep: Callable[[float], None] | None = None,
-) -> tuple[ScreeningDecision, float, str]:
-    per_attempt = model.reservation(len(input_json.encode("utf-8")), settings.ai_max_output_tokens)
-    # A 5xx can arrive after generation. Reserve for every potentially billable attempt.
-    attempts = billable_attempt_limit(settings.ai_provider)
-    reserve = per_attempt * attempts
-    request_id = reserve_screening(
-        db_path,
-        competition_id=row.get("id"),
-        source_url=row["source_url"],
-        model=model.id,
-        input_json=input_json,
-        reserve_usd=reserve,
-        budget_usd=settings.ai_monthly_budget_usd,
-        daily_budget_usd=settings.ai_daily_budget_usd,
-        run_since=settings._reading_run_since,
-        source_id=row.get("source_id"),
-        source_daily_limit=settings._source_daily_limit,
-    )
-    response = read_notice(
-        client, settings.ai_provider, json.loads(input_json)["request"], sleep=sleep
-    )
-    cost = response.cost(model, per_attempt)
-    accounting = dict(
-        response_id=response.response_id,
-        input_tokens=response.input_tokens,
-        output_tokens=response.output_tokens,
-        cost_usd=cost,
-    )
-    if response.error_class:
-        outage = response.error_class.startswith("http_5") or response.error_class in {
-            "transport_error",
-            "api_error",
-        }
+def _judge(settings, db_path, model, row, prepared, client, force, sleep=None):
+    if not force:
+        cached = find_cached_screening(db_path, row["source_url"], model.id, prepared[0])
+        if cached:
+            decision = ScreeningDecision.model_validate_json(cached["result_json"])
+            return DocumentAssessment(None, decision, cached["id"], model.id, True, 0)
+    with nullcontext(client) if client is not None else create_client(settings) as api:
+        return _request_one(api, settings, db_path, model, row, prepared, sleep)
+
+
+def _request_one(client, settings, db_path, model, row, prepared, sleep):
+    input_json, evidence_fields, limitations = prepared
+    snapshot = json.loads(input_json)
+    request = snapshot["request"]
+    initial_hash = request_hash(input_json)
+    total = 0.0
+    tokens = [0, 0]
+    for attempt in range(2):
+        per_attempt = model.reservation(len(input_json.encode()), settings.ai_max_output_tokens)
+        try:
+            request_id = reserve_screening(
+                db_path,
+                competition_id=row.get("id"),
+                source_url=row["source_url"],
+                model=model.id,
+                input_json=input_json,
+                reserve_usd=per_attempt * billable_attempt_limit(settings.ai_provider),
+                budget_usd=settings.ai_monthly_budget_usd,
+                daily_budget_usd=settings.ai_daily_budget_usd,
+                run_since=settings._reading_run_since,
+                source_id=row.get("source_id") if not attempt else None,
+                source_daily_limit=settings._source_daily_limit,
+            )
+        except ScreeningBudgetExceeded as exc:
+            exc.cost_usd, exc.usage = total, tuple(tokens)
+            raise
+        reply = read_notice(client, settings.ai_provider, request, sleep=sleep)
+        cost = reply.cost(model, per_attempt)
+        total += cost
+        tokens = [
+            None if a is None or b is None else a + b
+            for a, b in zip(tokens, (reply.input_tokens, reply.output_tokens), strict=True)
+        ]
+        code = reply.error_class
+        outage = (code or "").startswith("http_5") or code in {"transport_error", "api_error"}
+        decision = None
+        if not code:
+            decision = validate_evidence(reply.decision, evidence_fields, snapshot["mapped_facts"])
+            decision.missing_information.extend(limitations)
         finish_screening(
             db_path,
             request_id,
-            status="uncertain" if outage else "failed",
-            error_code=response.error_class,
-            **accounting,
+            status="uncertain" if outage else "failed" if code else "completed",
+            error_code=code,
+            result_json=decision.model_dump_json() if decision else None,
+            cost_usd=cost,
+            input_tokens=reply.input_tokens,
+            output_tokens=reply.output_tokens,
+            response_id=reply.response_id,
         )
-        error = ScreeningPaused if response.pause or outage else ScreeningError
-        raise error(response.error_class, cost_usd=cost)
-    decision = validate_evidence(response.decision, evidence_fields)
-    decision.missing_information.extend(limitations)
-    finish_screening(
-        db_path,
-        request_id,
-        status="completed",
-        result_json=decision.model_dump_json(),
-        **accounting,
-    )
-    return decision, cost, request_id
+        if decision:
+            return DocumentAssessment(
+                None, decision, request_id, model.id, False, total, tuple(tokens)
+            )
+        if attempt == 0 and reply.validation_error:
+            key = "system" if settings.ai_provider == "anthropic" else "instructions"
+            request[key] += (
+                "\nCorrect the previous answer's schema errors: " + reply.validation_error
+            )
+            input_json = canonical_json({**snapshot, "retry_of": initial_hash})
+            continue
+        error = (ScreeningPaused if reply.pause or outage else ScreeningError)(code, cost_usd=total)
+        error.usage = tuple(tokens)
+        raise error
 
 
 @dataclass
 class DocumentAssessment:
     record: CompetitionRecord | None
-    decision: ScreeningDecision
+    decision: ScreeningDecision | None
     request_id: str
     model: str
     cached: bool
     cost_usd: float
+
+    usage: tuple[int | None, int | None] = (0, 0)
+
+    failure: str | None = None
 
     def publication(self):
         return dict(
@@ -161,28 +183,20 @@ def assess_document(
     source: SourceDefinition,
     source_url: str,
     payload: str,
-    client: OpenAI | AnthropicMessages | None = None,
+    client: OpenAI | Anthropic | None = None,
     force: bool = False,
+    supplied_row: dict | None = None,
     source_lock: bool = True,
     sleep: Callable[[float], None] | None = None,
 ) -> DocumentAssessment:
-    """AI-first entry: no source-specific parser or keyword gate is needed for a notice.
-
-    ``source_lock=False`` is for a caller that already holds the source lock for a whole pass
-    (``assess_documents``): the file lock is per process and non-blocking, so taking it again in
-    every worker thread would make all but one thread fail.
-    """
     model = screening_model(settings, settings.ai_model)
     db_path = initialize_database(settings)
-    row = {
-        "source_url": source_url,
-        "source_name": source.name,
-        "jurisdiction": source.jurisdiction,
-        "source_tier": source.source_tier,
-        "source_id": source.source_id,
-    }
+    row = {"source_url": source_url, "source_id": source.source_id}
     detail_limits = []
-    payload = enrich_notice_payload(payload, source_url, settings, limitations=detail_limits)
+    if supplied_row is None:
+        payload = enrich_notice_payload(payload, source_url, settings, limitations=detail_limits)
+    else:
+        row["title"] = supplied_row.get("title")
     with (
         exclusive_lock(
             source_lock_path(db_path, source.source_id), label="AI extraction and screening"
@@ -196,39 +210,63 @@ def assess_document(
             settings,
             original_links=original_links,
             source_payload=payload,
-            collected=True,
+            collected=supplied_row is None,
             fetch_source=False,
         )
         limitations.extend(detail_limits)
-        cached = find_cached_screening(db_path, source_url, model.id, input_json)
-        if cached and not force:
-            decision = ScreeningDecision.model_validate_json(cached["result_json"])
-            cost, request_id = 0, cached["id"]
-        else:
-            with nullcontext(client) if client is not None else create_client(settings) as api:
-                decision, cost, request_id = _request_one(
-                    api,
-                    settings,
-                    db_path,
-                    model,
-                    row,
-                    input_json,
-                    fields,
-                    limitations,
-                    sleep=sleep,
-                )
-        record, _warnings = extract_record(
-            decision,
-            fields,
-            original_links=original_links,
-            source=source,
-            source_url=source_url,
-            settings=settings,
+        advice = _judge(
+            settings, db_path, model, row, (input_json, fields, limitations), client, force, sleep
         )
-        if record is not None:
-            record.source_url_is_notice = source.collector == "generic_notice_pages"
+        try:
+            advice.record, _ = extract_record(
+                advice.decision,
+                fields,
+                original_links=original_links,
+                mapped_names={f["field"] for f in json.loads(input_json)["mapped_facts"]},
+                source=source,
+                source_url=source_url,
+                settings=settings,
+            )
+        except (NoticeValidationError, ValidationError) as exc:
+            exc.cost_usd, exc.usage = advice.cost_usd, advice.usage
+            raise
+        if advice.record is not None:
+            advice.record.source_url_is_notice = source.collector == "generic_notice_pages"
+        return advice
+
+
+def screen_notice(settings: Settings, row: dict, payload: str) -> DocumentAssessment:
+    """Read supplied material without fetching. The row names its registry source and notice URL."""
+    model = settings.ai_model
+    url = row.get("source_url")
+    source = next(
+        (s for s in load_source_catalog(settings).sources if s.source_id == row.get("source_id")),
+        None,
+    )
+    if not source or not url:
+        return DocumentAssessment(None, None, "", model, False, 0, failure="invalid_source")
+    try:
+        return assess_document(
+            settings, source=source, source_url=url, payload=payload, supplied_row=row
+        )
+    except (
+        NoReadableText,
+        NoticeValidationError,
+        ValidationError,
+        ScreeningError,
+        ScreeningBudgetExceeded,
+        LockHeldError,
+    ) as exc:
+        failure = "no_readable_text" if isinstance(exc, NoReadableText) else provider_code(exc)
         return DocumentAssessment(
-            record, decision, request_id, model.id, bool(cached and not force), cost
+            None,
+            None,
+            "",
+            model,
+            False,
+            getattr(exc, "cost_usd", 0),
+            getattr(exc, "usage", (0, 0)),
+            failure,
         )
 
 
@@ -246,18 +284,6 @@ def assess_documents(
     source: SourceDefinition,
     documents: Sequence[tuple[str, str]],
 ) -> list[AssessmentOutcome]:
-    """Assess ``(source_url, payload)`` notices on ``settings.ai_concurrency`` threads.
-
-    Outcomes come back in input order. The source lock is taken once for the whole pass instead
-    of once per notice. Reservations stay safe under threads: ``reserve_screening`` checks the
-    spent total and inserts its reservation in one ``BEGIN IMMEDIATE`` transaction.
-
-    The first ``ScreeningBudgetExceeded`` stops the pass: notices not yet started return that same
-    error without a request, and the caller treats the first error in input order as the stop
-    point. A notice that finished after that point is not consumed; its paid result is stored in
-    ``ai_screening_runs`` under its exact input, so the next run reuses it at no cost. Any other
-    exception ends only its own notice.
-    """
     if not documents:
         return []
     stop = threading.Event()
@@ -311,7 +337,7 @@ def screen_competitions(
     dry_run: bool = False,
     source_payloads: dict[str, str] | None = None,
     fetch_source: bool = True,
-    client: OpenAI | AnthropicMessages | None = None,
+    client: OpenAI | Anthropic | None = None,
 ) -> ScreeningBatchResult:
     if not 1 <= limit <= 500:
         raise ValueError("AI screening limit must be between 1 and 500")
@@ -327,79 +353,55 @@ def screen_competitions(
             return result
         if not rows:
             return result
-        with ExitStack() as clients:
-            api = client
-            for row in rows:
-                result.attempted += 1
-                try:
-                    input_json, fields, limitations = prepare_input(
-                        row,
-                        settings,
-                        model_id=model.id,
-                        source_payload=(source_payloads or {}).get(row["id"]),
-                        collected=True,
-                        fetch_source=fetch_source,
-                    )
-                    with exclusive_lock(
-                        source_lock_path(db_path, row.get("source_id")),
-                        label="AI screening source",
-                    ):
-                        cached = find_cached_screening(
-                            db_path, row["source_url"], model.id, input_json
-                        )
-                        if cached and not force:
-                            decision = ScreeningDecision.model_validate_json(cached["result_json"])
-                            request_id = cached["id"]
-                            result.cached += 1
-                        else:
-                            if api is None:
-                                api = clients.enter_context(create_client(settings))
-                            decision, cost, request_id = _request_one(
-                                api,
-                                settings,
-                                db_path,
-                                model,
-                                row,
-                                input_json,
-                                fields,
-                                limitations,
-                            )
-                            result.cost_usd += cost
-                            result.completed += 1
-                    publish_screening(
-                        db_path,
-                        competition_id=row["id"],
-                        request_id=request_id,
-                        model=model.id,
-                        decision=decision.decision,
-                        relevance_score=decision.relevance_score,
-                        result_json=decision.model_dump_json(),
-                        source_updated_at=row["updated_at"],
-                    )
-                    result.results.append(
-                        {
-                            "competition_id": row["id"],
-                            "title": row["title"],
-                            "cached": bool(cached and not force),
-                            **decision.model_dump(),
-                        }
-                    )
-                except NoReadableText as exc:
-                    result.results.append(
-                        {
-                            "competition_id": row["id"],
-                            "outcome": str(exc),
-                            "source_id": row.get("source_id"),
-                            "url_class": exc.url_class,
-                        }
-                    )
-                except HttpError as exc:
-                    result.errors.append(f"{row['id']}: source HTTP {exc.status_code}")
-                    continue
-                except (ScreeningError, ScreeningBudgetExceeded) as exc:
-                    if isinstance(exc, ScreeningError):
-                        result.cost_usd += exc.cost_usd
-                    result.errors.append(f"{row['id']}: {exc}")
-                    if isinstance(exc, ScreeningPaused | ScreeningBudgetExceeded):
-                        break
+        for row in rows:
+            result.attempted += 1
+            try:
+                prepared = prepare_input(
+                    row,
+                    settings,
+                    model_id=model.id,
+                    source_payload=(source_payloads or {}).get(row["id"]),
+                    collected=True,
+                    fetch_source=fetch_source,
+                )
+                with exclusive_lock(
+                    source_lock_path(db_path, row.get("source_id")),
+                    label="AI screening source",
+                ):
+                    advice = _judge(settings, db_path, model, row, prepared, client, force)
+                    result.cached += int(advice.cached)
+                    result.completed += int(not advice.cached)
+                    result.cost_usd += advice.cost_usd
+                publish_screening(
+                    db_path,
+                    competition_id=row["id"],
+                    source_updated_at=row["updated_at"],
+                    **advice.publication(),
+                )
+                result.results.append(
+                    {
+                        "competition_id": row["id"],
+                        "title": row["title"],
+                        "cached": advice.cached,
+                        **advice.decision.model_dump(),
+                    }
+                )
+            except NoReadableText as exc:
+                result.results.append(
+                    {
+                        "competition_id": row["id"],
+                        "outcome": str(exc),
+                        "source_id": row.get("source_id"),
+                        "url_class": exc.url_class,
+                    }
+                )
+            except HttpError as exc:
+                result.errors.append(f"{row['id']}: source HTTP {exc.status_code}")
+                continue
+            except (ScreeningError, ScreeningBudgetExceeded) as exc:
+                if isinstance(exc, ScreeningError):
+                    result.cost_usd += exc.cost_usd
+                result.errors.append(f"{row['id']}: {exc}")
+                if isinstance(exc, ScreeningPaused | ScreeningBudgetExceeded):
+                    break
     return result

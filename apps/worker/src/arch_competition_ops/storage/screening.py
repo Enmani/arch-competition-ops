@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 from datetime import date, timedelta
@@ -50,12 +51,18 @@ def load_screening_candidates(
         ]
 
 
+def request_hash(input_json):
+    return hashlib.sha256(input_json.encode()).hexdigest()
+
+
 def find_cached_screening(db_path: Path, source_url: str, model: str, input_json: str):
     with connect(db_path) as connection:
         return connection.execute(
             "SELECT * FROM ai_screening_runs WHERE source_url = ? AND model = ? "
-            "AND input_json = ? AND status = 'completed' ORDER BY started_at DESC LIMIT 1",
-            (source_url, model, input_json),
+            "AND status = 'completed' AND (input_json=? OR "
+            "json_extract(CASE WHEN json_valid(input_json) THEN input_json END,'$.retry_of')=?) "
+            "ORDER BY started_at DESC LIMIT 1",
+            (source_url, model, input_json, request_hash(input_json)),
         ).fetchone()
 
 
@@ -88,31 +95,22 @@ def reserve_screening(
             ).fetchone()[0]
             if reads >= source_daily_limit:
                 raise SourceDailyLimitReached(f"Daily notice limit reached for {source_id}")
-        used = connection.execute(
-            "SELECT COALESCE(SUM(cost_usd), 0) FROM ai_screening_runs WHERE started_at >= ?",
-            (month_start,),
-        ).fetchone()[0]
-        if used + reserve_usd > budget_usd:
-            raise ScreeningBudgetExceeded(
-                f"AI monthly budget reached: ${used:.4f} used/reserved, "
-                f"${reserve_usd:.4f} needed, ${budget_usd:.2f} limit"
-            )
-        used_today = connection.execute(
-            "SELECT COALESCE(SUM(cost_usd), 0) FROM ai_screening_runs WHERE started_at >= ?",
-            (day_start,),
-        ).fetchone()[0]
+        windows = [
+            ("monthly budget", month_start, budget_usd),
+            ("daily budget", day_start, daily_budget_usd),
+        ]
         if run_since and run_since < day_start:
-            run_spend = connection.execute(
-                "SELECT COALESCE(SUM(cost_usd),0) FROM ai_screening_runs WHERE started_at>=?",
-                (run_since,),
+            windows.append(("reading run", run_since, daily_budget_usd))
+        for label, start, limit in windows:
+            used = connection.execute(
+                "SELECT coalesce(sum(cost_usd),0) FROM ai_screening_runs WHERE started_at>=?",
+                (start,),
             ).fetchone()[0]
-            if run_spend + reserve_usd > daily_budget_usd:
-                raise ScreeningBudgetExceeded("AI reading run reached the daily spending cap")
-        if used_today + reserve_usd > daily_budget_usd:
-            raise ScreeningBudgetExceeded(
-                f"AI daily budget reached: ${used_today:.4f} used/reserved, "
-                f"${daily_budget_usd:.2f} limit"
-            )
+            if used + reserve_usd > limit:
+                raise ScreeningBudgetExceeded(
+                    f"AI {label} reached: ${used:.4f} used/reserved, "
+                    f"${reserve_usd:.4f} needed, ${limit:.2f} limit"
+                )
         connection.execute(
             "INSERT INTO ai_screening_runs "
             "(id, competition_id, source_url, model, input_json, status, cost_usd, started_at) "
@@ -211,20 +209,16 @@ def shrink_old_screening_runs(db_path: Path, *, started_before: date) -> int:
     """
     ensure_schema(db_path)
     with write_transaction(db_path) as connection:
-        # The ledger records completion time; pre-ledger rows fall back to first discovery.
-        stamp = (
-            "COALESCE(terminal_at,(SELECT recorded_at FROM ai_notice_ledger l WHERE "
-            "l.source_id=notice_backlog.source_id AND l.content_hash=notice_backlog.content_hash "
-            "AND l.criteria_hash=notice_backlog.criteria_hash),first_seen)"
-        )
+        # Legacy queue rows without a terminal timestamp use their first discovery.
+        stamp = "COALESCE(terminal_at,first_seen)"
         connection.execute(
-            f"UPDATE notice_backlog SET payload='' WHERE status IN ('done','failed',"
+            f"UPDATE items SET payload='' WHERE status IN ('done','failed',"
             "'aged_out','expired_unread','no_readable_text') AND payload!='' "
             f"AND {stamp} < ?",
             (started_before.isoformat(),),
         )
         removed = connection.execute(
-            f"DELETE FROM notice_backlog WHERE status='done' AND {stamp} < ?",
+            f"DELETE FROM items WHERE status='done' AND {stamp} < ?",
             ((started_before - timedelta(days=400 - 45)).isoformat(),),
         ).rowcount
         if removed:
@@ -326,7 +320,7 @@ def _previously_published(connection, identity):
     return None
 
 
-def upsert_screened_competitions(db_path: Path, assessments) -> list[str]:
+def upsert_screened_competitions(db_path: Path, assessments, receipts, criteria) -> list[str]:
     """Publish decisions in notice order. An exclusion can update an existing record only."""
     ensure_schema(db_path)
     ids: list[str] = []
@@ -350,6 +344,12 @@ def upsert_screened_competitions(db_path: Path, assessments) -> list[str]:
                 source_updated_at=stored["updated_at"],
                 **publication,
             )
+        connection.executemany(
+            "UPDATE items SET status='done',attempts=attempts+1,last_error=NULL,retry_at=NULL,"
+            "transient_count=0,terminal_at=?,criteria_hash=?,request_id=? "
+            "WHERE rowid=? AND status='queued'",
+            [(now_iso, criteria, request, row) for row, request in receipts],
+        )
     return ids
 
 

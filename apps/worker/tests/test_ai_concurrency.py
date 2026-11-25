@@ -104,7 +104,7 @@ def collect(monkeypatch, documents) -> None:
 
 def ledger_rows(settings: Settings) -> int:
     with connect(settings.resolve_path(settings.db)) as connection:
-        return connection.execute("SELECT COUNT(*) FROM ai_notice_ledger").fetchone()[0]
+        return connection.execute("SELECT COUNT(*) FROM items WHERE status='done'").fetchone()[0]
 
 
 # -- concurrency ---------------------------------------------------------------------------------

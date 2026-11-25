@@ -1,9 +1,31 @@
-"""Strict JSON Messages transport. Source notices and keys never enter error messages."""
+"""Anthropic's SDK owns transport, response decoding and bounded retries."""
 
-import requests
+from contextvars import ContextVar
 
-from arch_competition_ops.screening.client import ProviderResult, read_with_retries
-from arch_competition_ops.screening.models import ScreeningAnswer
+from anthropic import Anthropic, APIConnectionError, APIStatusError, DefaultHttpxClient
+
+from arch_competition_ops.screening.client import MAX_PROVIDER_RETRIES, ProviderResult
+
+# Track unacknowledged attempts across SDK retries, independently for each concurrent call.
+_pending = ContextVar("unacknowledged", default=0)
+
+
+def make_client(settings):
+    key = settings.anthropic_api_key.get_secret_value().strip()
+    if not key:
+        raise ValueError("Set ANTHROPIC_API_KEY before using Anthropic screening")
+    hooks = {
+        "request": [lambda _: _pending.set(_pending.get() + 1)],
+        "response": [lambda r: _pending.set(_pending.get() - int(r.status_code < 500))],
+    }
+    return Anthropic(
+        api_key=key,
+        base_url="https://api.anthropic.com",
+        default_headers={"anthropic-version": "2026-10-21"},
+        timeout=settings.ai_timeout_seconds,
+        max_retries=MAX_PROVIDER_RETRIES,
+        http_client=DefaultHttpxClient(event_hooks=hooks, follow_redirects=False),
+    )
 
 
 def strip_integer_bounds(schema):
@@ -18,80 +40,43 @@ def strip_integer_bounds(schema):
     return schema
 
 
-class AnthropicMessages(requests.Session):
-    def __init__(self, settings):
-        super().__init__()
-        key = settings.anthropic_api_key.get_secret_value().strip()
-        if not key:
-            raise ValueError("Set ANTHROPIC_API_KEY before using Anthropic screening")
-        self.headers.update({"x-api-key": key, "anthropic-version": "2026-10-21"})
-        self.timeout = settings.ai_timeout_seconds
-
-    def read_notice(self, request, *, sleep=None, output_type=ScreeningAnswer):
-        return read_with_retries(
-            lambda: self._read(request, output_type), sleep=sleep, provider="anthropic"
+def read_messages(client, request, output_type):
+    _pending.set(0)
+    result = ProviderResult()
+    try:
+        message = client.messages.create(**request)
+    except APIStatusError as exc:
+        status = exc.status_code
+        error = exc.body.get("error", exc.body) if isinstance(exc.body, dict) else {}
+        kind = error.get("type") if isinstance(error, dict) else None
+        quota = status == 402 or (
+            status == 400 and bool({"billing", "credit", "credits"} & set(str(kind).split("_")))
         )
-
-    def _read(self, request, output_type):
-        try:
-            reply = self.post(
-                "https://api.anthropic.com/v1/messages",
-                json=request,
-                timeout=self.timeout,
-                allow_redirects=False,
+        result.error_class = "insufficient_quota" if quota else f"http_{status}"
+        result.pause = quota or status in {401, 403, 429}
+        result.rejected = status < 500
+    except APIConnectionError:
+        result.error_class = "transport_error"
+    else:
+        result.response_id = message.id
+        usage = message.usage
+        if usage and usage.input_tokens is not None and usage.output_tokens is not None:
+            result.cache_read_tokens = usage.cache_read_input_tokens or 0
+            result.input_tokens = (
+                usage.input_tokens
+                + result.cache_read_tokens
+                + (usage.cache_creation_input_tokens or 0)
             )
-        except requests.RequestException:
-            return ProviderResult(error_class="transport_error")
-        status = reply.status_code
-        result = ProviderResult(retry_after=reply.headers.get("retry-after", ""))
-        try:
-            body = reply.json()
-        except ValueError:
-            body = {}
-        if not isinstance(body, dict):
-            body = {}
-        if status != 200:
-            error = body.get("error")
-            kind = error.get("type") if isinstance(error, dict) else None
-            quota = status == 402 or (
-                status == 400
-                and isinstance(kind, str)
-                and bool({"billing", "credit", "credits"}.intersection(kind.split("_")))
-            )
-            result.error_class = "insufficient_quota" if quota else f"http_{status}"
-            result.rejected = 400 <= status < 500
-            result.pause = bool(quota) or status in {401, 403, 429}
-            return result
-
-        usage = body.get("usage")
-        if isinstance(usage, dict):
-            counts = [
-                usage.get("input_tokens"),
-                usage.get("cache_read_input_tokens", 0),
-                usage.get("cache_creation_input_tokens", 0),
-                usage.get("output_tokens"),
-            ]
-            if all(type(count) is int and count >= 0 for count in counts):
-                result.input_tokens = sum(counts[:3])
-                result.cache_read_tokens = counts[1]
-                result.output_tokens = counts[3]
-        stop = body.get("stop_reason")
-        if stop in ("max_tokens", "refusal"):
-            result.error_class = stop
-            return result
-        content = body.get("content")
-        block = (
-            next(
-                (part for part in content if isinstance(part, dict) and part.get("type") == "text"),
-                None,
-            )
-            if isinstance(content, list)
-            else None
-        )
-        if block is None:
+            result.output_tokens = usage.output_tokens
+        block = next((b for b in (message.content or []) if b.type == "text"), None)
+        if message.stop_reason in {"max_tokens", "refusal"}:
+            result.error_class = message.stop_reason
+        elif block is None:
             result.error_class = "missing_text"
-        elif not isinstance(block.get("text"), str):
-            result.error_class = "invalid_schema"
         else:
-            result.parse_decision(block["text"], output_type)
-        return result
+            result.parse_decision(block.text, output_type)
+    ambiguous_final = result.error_class == "transport_error" or (
+        result.error_class or ""
+    ).startswith("http_5")
+    result.uncertain_retries = max(0, _pending.get() - int(ambiguous_final))
+    return result

@@ -79,7 +79,7 @@ test("third-party actions are pinned to a version tag like ci.yml", () => {
 test("only the configured project secrets are used, each on the steps that need it", () => {
   const code = CODE.join("\n");
   const secrets = new Set([...code.matchAll(/secrets\.(\w+)/g)].map((match) => match[1]));
-  assert.deepEqual([...secrets].sort(), ["AI_CHAT_API_KEY", "ANTHROPIC_API_KEY", "CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN", "OPENAI_API_KEY"]);
+  assert.deepEqual([...secrets].sort(), ["ANTHROPIC_API_KEY", "CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN", "OPENAI_API_KEY"]);
   assert.doesNotMatch(code, /secrets\.\w+/.exec(code.split("steps:")[0]) ?? /(?!)/, "no secret at workflow or job level");
   assert.doesNotMatch(code.split("steps:")[0], /secrets\./, "no secret at workflow or job level");
   const steps = code.split(/\n +- name:/);

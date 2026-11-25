@@ -79,7 +79,7 @@ def test_unreadable_notices_refetched_without_paid_calls(ai_workspace, monkeypat
         assert not run.failures and not calls
     assert fetches == [url, url]
     with connect(settings.resolve_path(settings.db)) as cx:
-        row = cx.execute("SELECT status,attempts FROM notice_backlog").fetchone()
+        row = cx.execute("SELECT status,attempts FROM items").fetchone()
         assert tuple(row) == ("no_readable_text", 0)
         assert not cx.execute("SELECT count(*) FROM ai_screening_runs").fetchone()[0]
 
@@ -139,7 +139,7 @@ def test_refetched_notice_can_be_read_and_saved(ai_workspace, monkeypatch):  # n
     assert len(run([]).ingested_ids) == 1
     assert len(calls) == 1
     with connect(settings.resolve_path(settings.db)) as cx:
-        assert cx.execute("SELECT status FROM notice_backlog").fetchone()[0] == "done"
+        assert cx.execute("SELECT status FROM items").fetchone()[0] == "done"
         assert cx.execute("SELECT title FROM competitions").fetchone()[0] == title
 
 

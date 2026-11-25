@@ -56,7 +56,6 @@ from arch_competition_ops.storage import (
     record_source_run,
 )
 from arch_competition_ops.storage.connection import connect
-from arch_competition_ops.storage.notice_ledger import record_screened
 from arch_competition_ops.storage.screening import (
     ScreeningBudgetExceeded,
     SourceDailyLimitReached,
@@ -293,7 +292,7 @@ def ingest_source(
     exclusions = {}
     # Documents whose paid assessment finished, including those then dropped as expired; they
     # enter the ledger only once the records are durably written.
-    screened: list[int] = []
+    screened: list[tuple[int, str]] = []
     last_error: str | None = None
     # The paid assessments run first, concurrently and in input order; everything after them
     # (parse, verify, geocode, store) stays sequential. Geocoding is paced at one request a second.
@@ -322,7 +321,7 @@ def ingest_source(
                     )
                     result.filtered_out += 1
                     assessments.append(assessment)
-                    screened.append(pending[position].row_id)
+                    screened.append((pending[position].row_id, assessment.request_id))
                     continue
                 # Retain stable upstream identity when the source adapter provides it.
                 try:
@@ -339,7 +338,7 @@ def ingest_source(
                 if competition_is_stale_expired(record, retention_days=retention_days):
                     result.skipped_expired += 1
                     if assessment is not None:
-                        screened.append(pending[position].row_id)
+                        screened.append((pending[position].row_id, assessment.request_id))
                     continue
                 stage = "verify"
                 record = verify_record(
@@ -352,7 +351,7 @@ def ingest_source(
                 if competition_is_stale_expired(record, retention_days=retention_days):
                     result.skipped_expired += 1
                     if assessment is not None:
-                        screened.append(pending[position].row_id)
+                        screened.append((pending[position].row_id, assessment.request_id))
                     continue
                 # Verification can add evidence (official URL, brief), so the evidence-derived
                 # scores are recomputed from the final record.
@@ -427,7 +426,7 @@ def ingest_source(
             records.append(record)
             assessments.append(assessment)
             if assessment is not None:
-                screened.append(pending[position].row_id)
+                screened.append((pending[position].row_id, assessment.request_id))
     finally:
         geocoder.flush()
 
@@ -435,13 +434,8 @@ def ingest_source(
         result.ingested_ids = upsert_screened_competitions(
             db_path,
             ((a.record, exclusions.get(a.request_id), a.publication()) for a in assessments),
-        )
-        record_screened(
-            db_path,
-            source_id=source.source_id,
-            criteria_hash=criteria_hash,
-            outcome="assessed",
-            row_ids=screened,
+            screened,
+            criteria_hash,
         )
     except Exception as exc:
         record_run("failed", last_error=error_class(exc))

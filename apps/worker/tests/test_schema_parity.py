@@ -13,8 +13,8 @@ from arch_competition_ops.storage.schema import SCHEMA_SQL
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "web" / "migrations"
 
-# No exceptions: every table and index the Web migrations create must also be in SCHEMA_SQL.
-WEB_ONLY_TABLES: set[str] = set()
+# Historical web migration 0008 is immutable; the worker imports its ledger into items.
+WEB_ONLY_TABLES = {"ai_notice_ledger"}
 WEB_ONLY_INDEXES: set[str] = set()
 
 
@@ -81,7 +81,7 @@ def test_the_worker_and_the_web_app_have_the_same_tables() -> None:
 
     assert web - worker == WEB_ONLY_TABLES
     assert worker - web == {
-        "notice_backlog",
+        "items",
         "collection_resume",
         "backlog_retention",
         "collection_coverage_gaps",

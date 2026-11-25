@@ -9,14 +9,15 @@ from pathlib import Path
 from arch_competition_ops import clock
 from arch_competition_ops.collectors.base import CollectedSourceDocument
 from arch_competition_ops.screening.fingerprints import notice_content_hash
-from arch_competition_ops.screening.source_evidence import notice_evidence
+from arch_competition_ops.screening.source_evidence import notice_evidence, notice_text
+from arch_competition_ops.screening.structured import competing_dates
 from arch_competition_ops.storage.connection import connect, write_transaction
 
 
 def _refresh_criteria(cx, source_id, criteria):
     if criteria is not None:
         cx.execute(
-            "UPDATE notice_backlog SET "
+            "UPDATE items SET "
             "attempts=0,status='queued',last_error=NULL,retry_at=NULL,transient_count=0,"
             "terminal_at=NULL,queued_at=?,criteria_hash=? "
             "WHERE source_id=? AND status IN ('failed','queued') AND (attempts>0 OR "
@@ -93,17 +94,20 @@ def listing_deadline(payload):
                 dates.append(date.fromisoformat(value[:10]).isoformat())
             except (ValueError, TypeError, KeyError):
                 return None
-    return max(dates, default=None)
+    day = max(dates, default=None)
+    if day and competing_dates(notice_text(payload, collected=True), day):
+        return None
+    return day
 
 
 def retire_unread(cx, source_id, age_days):
     expired = cx.execute(
-        "UPDATE notice_backlog SET status='expired_unread',terminal_at=? WHERE source_id=? "
+        "UPDATE items SET status='expired_unread',terminal_at=? WHERE source_id=? "
         "AND status='queued' AND expires_on<?",
         (clock.now_utc().isoformat(), source_id, clock.today().isoformat()),
     )
     cx.execute(
-        "UPDATE notice_backlog SET status='aged_out',terminal_at=? WHERE source_id=? AND "
+        "UPDATE items SET status='aged_out',terminal_at=? WHERE source_id=? AND "
         "status='queued' "
         "AND COALESCE(queued_at,first_seen)<?",
         (
@@ -138,7 +142,7 @@ def enqueue(
             version = notice_content_hash(document.payload, document.source_url)
             versions.add(version)
             inserted = cx.execute(
-                "INSERT OR IGNORE INTO notice_backlog "
+                "INSERT OR IGNORE INTO items "
                 "(source_id,source_url,payload,content_hash,first_seen,expires_on) "
                 "VALUES(?,?,?,?,?,?)",
                 (
@@ -153,13 +157,13 @@ def enqueue(
             new += inserted
             if not inserted:
                 cx.execute(
-                    "UPDATE notice_backlog SET payload=? WHERE source_id=? AND content_hash=? "
+                    "UPDATE items SET payload=? WHERE source_id=? AND content_hash=? "
                     "AND status='queued' AND payload=''",
                     (document.payload, source_id, version),
                 )
             if not inserted and criteria is not None:
                 cx.execute(
-                    "UPDATE notice_backlog "
+                    "UPDATE items "
                     "SET status='queued',attempts=0,last_error=NULL,retry_at=NULL,"
                     "terminal_at=NULL,transient_count=0,empty_reads=0,payload=?,queued_at=? "
                     "WHERE source_id=? AND content_hash=? AND status='done' "
@@ -167,7 +171,7 @@ def enqueue(
                     (document.payload, now.isoformat(), source_id, version, criteria),
                 )
                 already += cx.execute(
-                    "SELECT status='done' FROM notice_backlog WHERE source_id=? AND content_hash=?",
+                    "SELECT status='done' FROM items WHERE source_id=? AND content_hash=?",
                     (source_id, version),
                 ).fetchone()[0]
             lengths.append(len(notice_evidence(document.payload)))
@@ -207,7 +211,7 @@ def enqueue(
 
 def queue_stats(cx, source_id, *, new=0, lengths=(), unfinished=1):
     count, oldest = cx.execute(
-        "SELECT count(*),min(coalesce(queued_at,first_seen)) FROM notice_backlog "
+        "SELECT count(*),min(coalesce(queued_at,first_seen)) FROM items "
         "WHERE source_id=? AND status='queued'",
         (source_id,),
     ).fetchone()
@@ -217,7 +221,7 @@ def queue_stats(cx, source_id, *, new=0, lengths=(), unfinished=1):
         f"unfinished_pages_at_least={int(unfinished)} queued={count} oldest_days={age}"
     )
     waiting, retry = cx.execute(
-        "SELECT count(*),min(retry_at) FROM notice_backlog WHERE source_id=? "
+        "SELECT count(*),min(retry_at) FROM items WHERE source_id=? "
         "AND status='queued' AND last_error NOT LIKE 'no_readable_text/%' AND retry_at>?",
         (source_id, clock.now_utc().isoformat()),
     ).fetchone()
@@ -231,19 +235,19 @@ def queue_stats(cx, source_id, *, new=0, lengths=(), unfinished=1):
     if gaps[2]:
         stats += f" unavailable_windows={gaps[2]} earliest_from={gaps[0]} latest_through={gaps[1]}"
     for state, total in cx.execute(
-        "SELECT status,count(*) FROM notice_backlog WHERE source_id=? AND status IN "
+        "SELECT status,count(*) FROM items WHERE source_id=? AND status IN "
         "('expired_unread','aged_out') GROUP BY status",
         (source_id,),
     ):
         stats += f" {state}={total}"
     for state, error, total in cx.execute(
-        "SELECT status,last_error,count(*) FROM notice_backlog WHERE source_id=? "
+        "SELECT status,last_error,count(*) FROM items WHERE source_id=? "
         "AND last_error LIKE 'no_readable_text/%' GROUP BY status,last_error",
         (source_id,),
     ):
         stats += f" {error}[{source_id}/{state}]={total}"
     failures = cx.execute(
-        "SELECT last_error,count(*) FROM notice_backlog WHERE source_id=? AND status='failed' "
+        "SELECT last_error,count(*) FROM items WHERE source_id=? AND status='failed' "
         "GROUP BY last_error ORDER BY last_error",
         (source_id,),
     )
@@ -271,7 +275,7 @@ def queued(db: Path, source_id: str, limit: int, row_ids: list[int] | None = Non
                 "json_object('pendingDetailUrl',coalesce(json_extract("
                 "CASE WHEN json_valid(payload) "
                 "THEN payload END,'$.pendingDetailUrl'),source_url)) ELSE payload END "
-                "FROM notice_backlog "
+                "FROM items "
                 "WHERE source_id=? AND status='queued' "
                 "AND (retry_at IS NULL OR retry_at<=?) "
                 f"{selected}ORDER BY first_seen,rowid LIMIT ?",
@@ -284,7 +288,7 @@ def record_unreadable(db, row_id, url_class, limit):
     now = clock.now_utc()
     with write_transaction(db) as cx:
         row = cx.execute(
-            "UPDATE notice_backlog SET empty_reads=empty_reads+1,transient_count=0,last_error=?,"
+            "UPDATE items SET empty_reads=empty_reads+1,transient_count=0,last_error=?,"
             "status=CASE WHEN empty_reads+1>=? THEN 'no_readable_text' ELSE 'queued' END,"
             "terminal_at=CASE WHEN empty_reads+1>=? THEN ? END,"
             "retry_at=CASE WHEN empty_reads+1<? THEN ? END "
@@ -305,7 +309,7 @@ def record_unreadable(db, row_id, url_class, limit):
 def record_failure(db, row_id, error, *, criteria, limit):
     with write_transaction(db) as cx:
         row = cx.execute(
-            "UPDATE notice_backlog SET attempts=attempts+1,last_error=?,criteria_hash=?, "
+            "UPDATE items SET attempts=attempts+1,last_error=?,criteria_hash=?, "
             "retry_at=NULL,transient_count=0, "
             "status=CASE WHEN attempts+1>=? THEN 'failed' ELSE 'queued' END, "
             "terminal_at=CASE WHEN attempts+1>=? THEN ? END "
@@ -319,14 +323,14 @@ def defer(db, row_id, error, criteria):
     now = clock.now_utc()
     with write_transaction(db) as cx:
         row = cx.execute(
-            "UPDATE notice_backlog SET transient_count=min(6,transient_count+1),last_error=?,"
+            "UPDATE items SET transient_count=min(6,transient_count+1),last_error=?,"
             "criteria_hash=? WHERE rowid=? AND status='queued' RETURNING transient_count",
             (error, criteria, row_id),
         ).fetchone()
         if row is None:
             return None
         retry = (now + timedelta(hours=min(24, 2 ** (row[0] - 1)))).isoformat()
-        cx.execute("UPDATE notice_backlog SET retry_at=? WHERE rowid=?", (retry, row_id))
+        cx.execute("UPDATE items SET retry_at=? WHERE rowid=?", (retry, row_id))
         return retry
 
 
@@ -336,7 +340,7 @@ def terminal_notices(db, source_id):
     with connect(db) as cx:
         for row in cx.execute(
             "SELECT status,last_error,attempts,empty_reads,source_url,content_hash "
-            "FROM notice_backlog "
+            "FROM items "
             "WHERE source_id=? AND status IN "
             "('failed','aged_out','expired_unread','no_readable_text') "
             "ORDER BY first_seen,rowid",
@@ -348,7 +352,7 @@ def terminal_notices(db, source_id):
 def requeue_failed(db, source_id, url=None, version=None):
     with write_transaction(db) as cx:
         return cx.execute(
-            "UPDATE notice_backlog SET empty_reads=0,attempts=0,status='queued',last_error=NULL,"
+            "UPDATE items SET empty_reads=0,attempts=0,status='queued',last_error=NULL,"
             "retry_at=NULL,transient_count=0,terminal_at=NULL,queued_at=? "
             "WHERE source_id=? AND status IN ('failed','no_readable_text') "
             "AND (? IS NULL OR source_url=?) "

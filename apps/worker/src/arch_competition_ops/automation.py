@@ -262,7 +262,7 @@ def run_automation_batch(
             ids = cx.execute(
                 "WITH pending AS (SELECT source_id, rowid AS notice_id, first_seen, "
                 "row_number() OVER (PARTITION BY source_id ORDER BY first_seen,rowid) AS position "
-                "FROM notice_backlog WHERE status='queued' AND (retry_at IS NULL OR retry_at<=?) "
+                "FROM items WHERE status='queued' AND (retry_at IS NULL OR retry_at<=?) "
                 "AND source_id IN (SELECT value FROM json_each(?))) "
                 "SELECT source_id,notice_id FROM pending WHERE position<=? "
                 "ORDER BY source_id,first_seen,notice_id",

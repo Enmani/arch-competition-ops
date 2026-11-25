@@ -6,6 +6,7 @@ import json
 from typing import Any
 from urllib.parse import urlsplit
 
+from arch_competition_ops.config_loader import load_taxonomy
 from arch_competition_ops.http import HttpError, get_default_client
 from arch_competition_ops.screening.fingerprints import notice_content_hash
 from arch_competition_ops.screening.models import ScreeningAnswer, canonical_json
@@ -17,6 +18,7 @@ from arch_competition_ops.screening.source_evidence import (
     notice_text,
     notice_title,
 )
+from arch_competition_ops.screening.structured import mapped_facts
 from arch_competition_ops.settings import Settings
 
 
@@ -103,8 +105,10 @@ def prepare_input(
     version = notice_content_hash(source_payload or "", source_url, collected=collected)
     notice_heading = notice_title(source_payload or "")
     title = notice_heading or row.get("title") or ""
-    links = []
-    text = notice_text(source_payload or "", source_url, links=links, collected=collected)
+    links, leaves = [], []
+    text = notice_text(
+        source_payload or "", source_url, links=links, leaves=leaves, collected=collected
+    )
     candidates = [source_url, *links, *URL.findall(text)]
     if original_links is not None:
         for original in candidates:
@@ -128,7 +132,12 @@ def prepare_input(
         remaining -= len(fields[name])
     if not has_notice_text(fields["notice_text"], source_url) and not notice_heading:
         raise NoReadableText(source_url)
-    instructions, schema = answer_format(settings)
+    known = mapped_facts(leaves, fields["notice_text"], load_taxonomy(settings))
+    if fields["notice_title"]:
+        known.pop("title", None)
+    instructions, schema = answer_format(
+        settings, set(known) | ({"title"} if fields["notice_title"] else set())
+    )
     request = structured_request(
         settings.ai_provider,
         model_id or settings.ai_model,
@@ -145,6 +154,7 @@ def prepare_input(
     return (
         canonical_json(
             {
+                "mapped_facts": [fact.model_dump() for fact in known.values()],
                 "provider": provider_identity(settings),
                 "notice_version": version,
                 "notice_text_chars": len(fields["notice_text"]),

@@ -45,7 +45,7 @@ class _Judgment(_StrictModel):
 
 
 class ScreeningAnswer(_Judgment):
-    schema_version: ClassVar[int] = 6
+    schema_version: ClassVar[int] = 7
     title_quote: str = Field(description=FIELDS["title"].description)
     evidence: list[str]
     extracted_fields: list[TextFact | NormalizedFact]
@@ -78,7 +78,7 @@ class ScreeningDecision(_Judgment):
 
 
 def validate_evidence(
-    answer: ScreeningAnswer, evidence_fields: dict[str, str]
+    answer: ScreeningAnswer, evidence_fields: dict[str, str], mapped=()
 ) -> ScreeningDecision:
     """Resolve the wire answer into the public contract using only supplied source characters."""
 
@@ -98,12 +98,13 @@ def validate_evidence(
     if not evidence or (warnings and decision == "recommend"):
         decision = "needs_review"
 
-    facts = []
+    facts = [ExtractedField.model_validate(fact) for fact in mapped]
+    known = {fact.field for fact in facts}
     original_title = evidence_fields.get("notice_title", "")
     title = original_title or source_quote(
         answer.title_quote, evidence_fields.get("notice_text", "")
     )
-    if title:
+    if title and "title" not in known:
         facts.append(
             ExtractedField(
                 field="title",
@@ -115,6 +116,8 @@ def validate_evidence(
     elif answer.title_quote:
         warnings.append("title: unsupported source quote")
     for fact in answer.extracted_fields:
+        if fact.field in known:
+            continue
         if match := locate(fact.quote):
             facts.append(
                 ExtractedField(

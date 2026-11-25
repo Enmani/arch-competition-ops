@@ -4,11 +4,10 @@ import json
 import math
 
 import pytest
-from requests import Response
+from httpx import HTTPTransport, Response
 from test_ai_screening import NOTICE, ai_workspace, decision_payload  # noqa: F401
 
 from arch_competition_ops.screening import service
-from arch_competition_ops.screening.anthropic import AnthropicMessages
 from arch_competition_ops.screening.catalog import get_model
 from arch_competition_ops.screening.client import ScreeningError, ScreeningPaused
 from arch_competition_ops.settings import Settings
@@ -16,11 +15,7 @@ from arch_competition_ops.storage.connection import connect
 
 
 def reply(status=200, **body):
-    result = Response()
-    result.status_code = status
-    result.headers["retry-after"] = "7"
-    result._content = json.dumps(body).encode()
-    return result
+    return Response(status, json=body, headers={"retry-after": "7"})
 
 
 def completion(*, stop="end_turn", decision=None, blocks=("thinking", "text")):
@@ -52,7 +47,8 @@ def run_fixture(workspace, replies, monkeypatch):
     settings, source = workspace
     pending = iter(replies)
     waits = []
-    monkeypatch.setattr(AnthropicMessages, "send", lambda *a, **kw: next(pending))
+    monkeypatch.setattr("anthropic._base_client.time.sleep", waits.append)
+    monkeypatch.setattr(HTTPTransport, "handle_request", lambda *a, **kw: next(pending))
     try:
         outcome = service.assess_document(
             settings,
@@ -117,7 +113,7 @@ def test_default_settings_accounting_and_evidence(workspace, monkeypatch):
 @pytest.mark.parametrize("score", [-1, 101])
 def test_local_score_bounds_survive_wire_schema_change(workspace, monkeypatch, score):
     invalid = completion(decision=decision_payload(relevance_score=score))
-    error, row, _ = run_fixture(workspace, [invalid], monkeypatch)
+    error, row, _ = run_fixture(workspace, [invalid, invalid], monkeypatch)
     assert str(error) == "invalid_schema" and row["status"] == "failed"
 
 
@@ -171,7 +167,9 @@ def test_budget_refuses_ambiguous_retries_before_any_http(workspace, monkeypatch
 
     settings, source = workspace
     settings.ai_daily_budget_usd = 0.02  # enough for one Haiku request but not four attempts
-    monkeypatch.setattr(AnthropicMessages, "send", lambda *a, **kw: pytest.fail("unreserved call"))
+    monkeypatch.setattr(
+        HTTPTransport, "handle_request", lambda *a, **kw: pytest.fail("unreserved call")
+    )
     with pytest.raises(ScreeningBudgetExceeded, match="daily budget"):
         service.assess_document(settings, source=source, source_url=source.base_url, payload=NOTICE)
 
@@ -203,7 +201,7 @@ def test_failed_notice_stays_queued_while_next_notice_is_published(workspace, mo
         else completion(stop=stop)
     )
     replies = iter([first, completion()])
-    monkeypatch.setattr(AnthropicMessages, "send", lambda *a, **kw: next(replies))
+    monkeypatch.setattr(HTTPTransport, "handle_request", lambda *a, **kw: next(replies))
     result = ingest_source(settings, source_id=source.source_id)
     assert [f.source_url for f in result.failures] == [docs[0].source_url]
     assert len(result.ingested_ids) == 1
@@ -211,9 +209,7 @@ def test_failed_notice_stays_queued_while_next_notice_is_published(workspace, mo
         item.document for item in queued(settings.resolve_path(settings.db), source.source_id, 5)
     ] == [docs[0]]
     with connect(settings.resolve_path(settings.db)) as db:
-        error = db.execute(
-            "SELECT last_error FROM notice_backlog WHERE status='queued'"
-        ).fetchone()[0]
+        error = db.execute("SELECT last_error FROM items WHERE status='queued'").fetchone()[0]
         assert error == ("http_400" if stop == "invalid_request" else stop)
 
 

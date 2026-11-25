@@ -80,15 +80,14 @@ def test_quota_pauses_all_sources_and_preserves_oldest_notice(tmp_path, monkeypa
     if provider == "openai":
         monkeypatch.setattr(service, "create_client", lambda _: mock_client(fail))
     else:
+        from httpx import HTTPTransport
         from test_anthropic_screening import reply
 
-        from arch_competition_ops.screening.anthropic import AnthropicMessages
-
         def no_credit(self, request, **kwargs):
-            calls.append(request.body)
+            calls.append(request.content)
             return reply(402, error={"type": "billing_error", "message": "payment"})
 
-        monkeypatch.setattr(AnthropicMessages, "send", no_credit)
+        monkeypatch.setattr(HTTPTransport, "handle_request", no_credit)
     monkeypatch.setattr(
         "arch_competition_ops.ingest.collect_source_documents",
         lambda source, **kwargs: [
@@ -105,7 +104,7 @@ def test_quota_pauses_all_sources_and_preserves_oldest_notice(tmp_path, monkeypa
     assert len(calls) == 2 and calls[0] == calls[1]
     with connect(settings.resolve_path(settings.db)) as cx:
         rows = cx.execute(
-            "SELECT source_id,status,attempts,last_error FROM notice_backlog ORDER BY rowid"
+            "SELECT source_id,status,attempts,last_error FROM items ORDER BY rowid"
         ).fetchall()
     assert [tuple(r) for r in rows] == [
         (sources[0], "queued", 0, None),
@@ -171,7 +170,7 @@ def test_expired_and_aged_notices_do_not_spend_read_slots(tmp_path):
     ]
     backlog.enqueue(db, "city", docs, "v", unfinished=0, cap=2)
     with connect(db) as cx:
-        cx.execute("UPDATE notice_backlog SET first_seen='2001-01-01' WHERE status='queued'")
+        cx.execute("UPDATE items SET first_seen='2001-01-01' WHERE status='queued'")
         cx.commit()
     _, count, report, _ = backlog.enqueue(db, "city", [], "v", unfinished=0, cap=2)
     assert count == 0 and "expired_unread=1" in report and "aged_out=1" in report
@@ -186,13 +185,11 @@ def test_completed_payload_is_cleared_but_can_be_read_after_rule_change(tmp_path
     doc = CollectedSourceDocument("https://city.example/id", "Library design")
     backlog.enqueue(db, "city", [doc], "v1", unfinished=0, cap=1)
     with connect(db) as cx:
-        cx.execute(
-            "UPDATE notice_backlog SET status='done',criteria_hash='v1',first_seen='2001-01-01'"
-        )
+        cx.execute("UPDATE items SET status='done',criteria_hash='v1',first_seen='2001-01-01'")
         cx.commit()
     shrink_old_screening_runs(db, started_before=date(2001, 3, 1))
     with connect(db) as cx:
-        assert cx.execute("SELECT payload FROM notice_backlog").fetchone()[0] == ""
+        assert cx.execute("SELECT payload FROM items").fetchone()[0] == ""
     backlog.enqueue(db, "city", [doc], "v2", unfinished=0, cap=1)
     assert [item.document for item in queued(db, "city", 1)] == [doc]
 

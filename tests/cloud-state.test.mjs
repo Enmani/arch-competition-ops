@@ -83,13 +83,13 @@ test("push --init then pull restores the database and the geocode cache", async 
 
   const pushed = await run(ctx, ["push", "--init"]);
   assert.equal(pushed.code, 0, pushed.err);
-  assert.match(pushed.out, /Pushed generation 20261115T020000Z .*ai_notice_ledger=3/);
+  assert.match(pushed.out, /Pushed generation 20261115T020000Z .*items=3/);
 
   const pointer = JSON.parse(readFileSync(ctx.r2("latest.json"), "utf8"));
   assert.equal(pointer.generation, "20261115T020000Z");
   assert.equal(pointer.db.key, "state/20261115T020000Z/competitions.sqlite.gz");
   assert.match(pointer.db.sha256, /^[0-9a-f]{64}$/);
-  assert.equal(pointer.counts.ai_notice_ledger, 3);
+  assert.equal(pointer.counts.items, 3);
   assert.ok(existsSync(ctx.r2("state", "20261115T020000Z", "geocoding-cache.json.gz")));
 
   // A fresh machine: no local state at all.
@@ -256,7 +256,7 @@ test("stats prints counts only", async (t) => {
   const result = await run(ctx, ["stats"]);
   assert.equal(result.code, 0);
   assert.match(result.out, /^competitions=0$/m);
-  assert.match(result.out, /^ai_notice_ledger=4$/m);
+  assert.match(result.out, /^items=4$/m);
   assert.match(result.out, /^ai_cost_usd_today=0\.0000$/m);
 });
 
@@ -289,11 +289,11 @@ test("push refuses to replace a backup with missing backlog rows", async (t) => 
   const ctx = setup(t);
   seedLocal(ctx.dbPath, 1);
   const db = new Database(ctx.dbPath);
-  db.exec("CREATE TABLE notice_backlog(id INT); INSERT INTO notice_backlog VALUES(1)");
+  db.exec("CREATE TABLE items(id INT); INSERT INTO items VALUES(1)");
   assert.equal((await run(ctx, ["push", "--init"])).code, 0);
-  db.exec("DELETE FROM notice_backlog");
+  db.exec("DELETE FROM items");
   db.close();
   const result = await run(ctx, ["push"], { now: new Date("2026-11-16T02:00:00Z") });
   assert.equal(result.code, 1);
-  assert.match(result.err, /notice_backlog/);
+  assert.match(result.err, /items/);
 });

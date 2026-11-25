@@ -31,8 +31,17 @@ def load_screening_instructions(settings: Settings) -> str:
     return text
 
 
-def answer_format(settings: Settings) -> tuple[str, dict]:
-    contract = render_contract(load_taxonomy(settings))
+def answer_format(settings: Settings, known=frozenset()) -> tuple[str, dict]:
+    contract = render_contract(load_taxonomy(settings), known)
     schema = ScreeningAnswer.model_json_schema()
-    schema["properties"]["extracted_fields"]["description"] = contract
+    for name in ("TextFact", "NormalizedFact"):
+        choices = schema["$defs"][name]["properties"]["field"]["enum"]
+        choices[:] = [choice for choice in choices if choice not in known]
+    if "title" in known:
+        schema["properties"]["title_quote"].update(
+            enum=[""], description="Title supplied. Return an empty string."
+        )
+    schema["properties"]["extracted_fields"]["description"] = (
+        "Supply missing facts using the field formats in the instructions."
+    )
     return f"{load_screening_instructions(settings)}\n\n{contract}", schema

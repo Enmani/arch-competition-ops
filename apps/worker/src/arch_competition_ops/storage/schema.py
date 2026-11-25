@@ -169,33 +169,54 @@ def _apply_schema(db_path: Path) -> None:
         try:
             if _table_exists(connection, "competitions"):
                 _add_missing_competition_columns(connection)
+            if _table_exists(connection, "notice_backlog"):
+                connection.execute("ALTER TABLE notice_backlog RENAME TO items")
             for statement in _statements():
                 _execute_schema_statement(connection, statement)
             for table, column, definition in (
                 ("collection_resume", "date_to", "TEXT"),
                 ("collection_resume", "listing_hash", "TEXT"),
                 ("collection_resume", "cursor", "TEXT NOT NULL DEFAULT ''"),
-                ("notice_backlog", "expires_on", "TEXT"),
-                ("notice_backlog", "queued_at", "TEXT"),
-                ("notice_backlog", "retry_at", "TEXT"),
-                ("notice_backlog", "transient_count", "INTEGER NOT NULL DEFAULT 0"),
-                ("notice_backlog", "empty_reads", "INTEGER NOT NULL DEFAULT 0"),
-                ("notice_backlog", "terminal_at", "TEXT"),
+                ("items", "expires_on", "TEXT"),
+                ("items", "queued_at", "TEXT"),
+                ("items", "retry_at", "TEXT"),
+                ("items", "transient_count", "INTEGER NOT NULL DEFAULT 0"),
+                ("items", "empty_reads", "INTEGER NOT NULL DEFAULT 0"),
+                ("items", "terminal_at", "TEXT"),
+                ("items", "request_id", "TEXT"),
             ):
                 if column not in {
                     row[1] for row in connection.execute(f"PRAGMA table_info({table})")
                 }:
                     connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
-                    if table == "notice_backlog" and column == "expires_on":
+                    if table == "items" and column == "expires_on":
                         from arch_competition_ops.storage.backlog import listing_deadline
 
                         rows = connection.execute(
-                            "SELECT rowid,payload FROM notice_backlog WHERE status='queued'"
+                            "SELECT rowid,payload FROM items WHERE status='queued'"
                         )
                         connection.executemany(
-                            "UPDATE notice_backlog SET expires_on=? WHERE rowid=?",
+                            "UPDATE items SET expires_on=? WHERE rowid=?",
                             ((listing_deadline(row[1]), row[0]) for row in rows),
                         )
+            if _table_exists(connection, "ai_notice_ledger"):
+                connection.execute(
+                    "UPDATE items SET terminal_at=(SELECT max(recorded_at) FROM ai_notice_ledger "
+                    "WHERE source_id=items.source_id AND content_hash=items.content_hash AND "
+                    "criteria_hash=items.criteria_hash) WHERE status='done' AND terminal_at IS NULL"
+                )
+                connection.execute(
+                    "INSERT OR IGNORE INTO items(source_id,source_url,payload,content_hash,status,"
+                    "first_seen,criteria_hash,terminal_at) SELECT source_id,source_url,'',"
+                    "content_hash,'done',recorded_at,criteria_hash,recorded_at FROM "
+                    "ai_notice_ledger ORDER BY recorded_at DESC"
+                )
+                connection.execute(
+                    "INSERT INTO backlog_retention VALUES (1, max(0,"
+                    "(SELECT count(*) FROM ai_notice_ledger)-(SELECT count(*) FROM items))) "
+                    "ON CONFLICT(id) DO UPDATE SET removed=removed+excluded.removed"
+                )
+                connection.execute("DROP TABLE ai_notice_ledger")
             _ensure_workspace_watchlist_entry_uniqueness(connection)
         except BaseException:
             connection.execute("ROLLBACK")

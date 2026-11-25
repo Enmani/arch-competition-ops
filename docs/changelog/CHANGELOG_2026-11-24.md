@@ -44,6 +44,14 @@ Including title, URL, links and field headings, these ten user messages totaled 
 
 Separately, 299 archived inputs were checked through the request builder without calling a provider. Of 191 reference deadlines that appeared verbatim in the saved text, 34 reached the v5 body and all 191 reached v6. The 23,652-character Frankfurt record contained 17,339 characters of detail HTML plus appended detail. Its rendered body grew from 93 to 21,657 characters. The 501-character CanadaBuys record grew from 39 to 285.
 
+### Separate experiment based on 0321cbd
+
+The lean branch replaces the HTML parser with lxml and sends Anthropic requests through its official SDK. On reconstructed Frankfurt, ggzy and World Bank HTML samples, Trafilatura 2.4.0 extracted the German notice but returned no text for the short Chinese and Portuguese notices. lxml retained all three. The project does not depend on Trafilatura or Instructor.
+
+Both branches built requests locally from the same 299 archived inputs. Both gated 26. Of 273 readable notices, 205 supplied a deterministic field. Among 89 kept examples with reference fields, all 89 still needed extraction beyond the mapped fields. Across 1,347 distinct reference fields per notice, the map covered 174 field names. Only five mapped deadlines were comparable in this subset, and all five agreed. An older ggzy deadline in a corrected notice motivated leaving competing dates to the reader.
+
+For the 273 requests, total UTF-8 request bytes fell from 8,016,555 to 6,481,583. Offline Llama 3 token counts on the serialized requests fell from 2,048,930 to 1,726,123. The local comparison measures inputs. Reply quality, actual Haiku tokens and price require the owner's 50-notice replay. The experimental database upgrades its private queue in place. Keep the baseline database if returning to the older branch.
+
 ## Modified Files
 
 The worker screening, collection and storage modules, daily ingestion workflow, owner requirement, architecture, data contract, setup instructions and Cloudflare runbook describe this change.

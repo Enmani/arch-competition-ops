@@ -1,12 +1,15 @@
 """The only transport boundary for a paid notice assessment."""
 
 from threading import Lock
-from urllib.parse import urlsplit
 
-from openai import APIConnectionError, APIError, APIStatusError, OpenAI
+from openai import APIConnectionError, APIError, APIStatusError
 
-from arch_competition_ops.screening.anthropic import AnthropicMessages, strip_integer_bounds
-from arch_competition_ops.screening.catalog import ScreeningModel, get_model
+from arch_competition_ops.screening.anthropic import (
+    make_client,
+    read_messages,
+    strip_integer_bounds,
+)
+from arch_competition_ops.screening.catalog import get_model
 from arch_competition_ops.screening.client import (
     ProviderResult,
     create_client,
@@ -19,55 +22,18 @@ _sdk_decode_lock = Lock()
 
 
 def provider_identity(settings: Settings) -> str:
-    # Persist the protocol identity so selecting the existing service reuses prior paid reads.
-    if settings.ai_provider == "openai":
-        return "responses"
-    if settings.ai_provider == "anthropic":
-        return "anthropic"
-    url = settings.ai_chat_base_url.rstrip("/")
-    parts = urlsplit(url)
-    if (
-        parts.scheme not in {"http", "https"}
-        or not parts.hostname
-        or parts.username
-        or parts.password
-        or parts.query
-        or parts.fragment
-    ):
-        raise ValueError("Configure AI_CHAT_BASE_URL with a credential-free service endpoint")
-    return "chat_completions:" + url
+    return "responses" if settings.ai_provider == "openai" else settings.ai_provider
 
 
 def screening_model(settings, model_id):
-    if settings.ai_provider != "openai-compatible":
-        model = get_model(model_id)
-        if model.provider != settings.ai_provider:
-            raise ValueError(f"{model_id} is not configured for provider {settings.ai_provider}")
-        return model
-    input_rate, output_rate = (
-        settings.ai_chat_input_usd_per_million,
-        settings.ai_chat_output_usd_per_million,
-    )
-    if input_rate is None or output_rate is None:
-        raise ValueError("Set the chat provider's input and output price per million tokens")
-    return ScreeningModel(model_id, input_rate, output_rate, "Chat Completions")
+    model = get_model(model_id)
+    if model.provider != settings.ai_provider:
+        raise ValueError(f"{model_id} is not configured for provider {settings.ai_provider}")
+    return model
 
 
 def create_screening_client(settings):
-    if settings.ai_provider == "anthropic":
-        return AnthropicMessages(settings)
-    if settings.ai_provider == "openai":
-        return create_client(settings)
-    provider_identity(settings)
-    key = settings.ai_chat_api_key.get_secret_value().strip()
-    if not key:
-        raise ValueError("Set AI_CHAT_API_KEY for the configured chat service")
-    return OpenAI(
-        api_key=key,
-        base_url=settings.ai_chat_base_url,
-        timeout=settings.ai_timeout_seconds,
-        max_retries=0,
-    )
+    return make_client(settings) if settings.ai_provider == "anthropic" else create_client(settings)
 
 
 def read_notice(
@@ -75,17 +41,15 @@ def read_notice(
 ) -> ProviderResult:
     """Send one notice and validate the reply against the shared decision schema."""
     if provider == "anthropic":
-        return client.read_notice(request, sleep=sleep, output_type=output_type)
+        return read_messages(client, request, output_type)
     return read_with_retries(
         lambda: _read_openai(client, provider, request, output_type), sleep=sleep, provider=provider
     )
 
 
 def _read_openai(client, provider, request, output_type):
-    chat = provider == "openai-compatible"
-    api = client.chat.completions if chat else client.responses
     try:
-        raw_reply = api.with_raw_response.create(**request)
+        raw_reply = client.responses.with_raw_response.create(**request)
         # The SDK lazily builds Pydantic response models. Simultaneous first decodes can
         # see a half-built schema. Only local decoding is serialized; HTTP stays concurrent.
         with _sdk_decode_lock:
@@ -104,15 +68,10 @@ def _read_openai(client, provider, request, output_type):
         return ProviderResult(error_class="api_error")
     result = ProviderResult(response_id=reply.id)
     if reply.usage:
-        result.input_tokens = reply.usage.prompt_tokens if chat else reply.usage.input_tokens
-        result.output_tokens = reply.usage.completion_tokens if chat else reply.usage.output_tokens
-    if chat:
-        choice = reply.choices[0] if reply.choices else None
-        complete = choice and choice.finish_reason == "stop"
-        raw = choice.message.content if complete else None
-    else:
-        complete = reply.status == "completed"
-        raw = reply.output_text if complete else None
+        result.input_tokens = reply.usage.input_tokens
+        result.output_tokens = reply.usage.output_tokens
+    complete = reply.status == "completed"
+    raw = reply.output_text if complete else None
     if not complete:
         result.error_class = "incomplete_response"
     else:
@@ -121,7 +80,18 @@ def _read_openai(client, provider, request, output_type):
 
 
 def structured_request(provider, model, instructions, material, schema, name, max_tokens, effort):
-    request = {
+    if provider == "anthropic":
+        return {
+            "model": model,
+            "max_tokens": max_tokens,
+            "system": instructions,
+            "messages": [{"role": "user", "content": material}],
+            "output_config": {
+                "effort": effort,
+                "format": {"type": "json_schema", "schema": strip_integer_bounds(schema)},
+            },
+        }
+    return {
         "model": model,
         "instructions": instructions,
         "input": material,
@@ -138,30 +108,3 @@ def structured_request(provider, model, instructions, material, schema, name, ma
             }
         },
     }
-    if provider == "anthropic":
-        request = {
-            "model": request["model"],
-            "max_tokens": max_tokens,
-            "system": request["instructions"],
-            "messages": [{"role": "user", "content": request["input"]}],
-            "output_config": {
-                "effort": effort,
-                "format": {"type": "json_schema", "schema": strip_integer_bounds(schema)},
-            },
-        }
-    elif provider == "openai-compatible":
-        fmt = request["text"]["format"]
-        request = {
-            "model": request["model"],
-            "messages": [
-                {"role": "system", "content": request["instructions"]},
-                {"role": "user", "content": request["input"]},
-            ],
-            "reasoning_effort": effort,
-            "max_tokens": max_tokens,
-            "response_format": {
-                "type": "json_schema",
-                "json_schema": {k: v for k, v in fmt.items() if k != "type"},
-            },
-        }
-    return request

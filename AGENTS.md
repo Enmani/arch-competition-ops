@@ -57,12 +57,12 @@ This repository is a competition-intelligence monorepo. Agents should favor evid
 10. All new product UI copy must follow the repository i18n contract and ship in both `zh` and `en`.
 11. Do not let `docs/changelog/**` get ahead of canonical docs; if a round changes roadmap, goal, structure, plan, or governance truth, update the owning doc in the same round and use changelog only as the dated trace.
 12. Keep the web app on port `3400` unless the user explicitly changes the repo standard.
-13. The editable screening skill owns model judgment. Human search preferences stay in web filters. Authentication, quotas, billing and permissions are enforced in code.
+13. The editable screening skill owns model judgment. Map unambiguous structured source facts before asking the model for remaining fields. Conflicting dates require reading the notice. Human search preferences stay in web filters. Authentication, quotas, billing and permissions are enforced in code.
 14. Group pipeline failures by one failure class and fix the class, not each source with its own patch.
 15. Mark official fields and AI screening conclusions as separate in every output (web, API, MCP). Wording on these surfaces, including MCP tool descriptions, stays neutral and plain with no filler; `official_url`, `source_url` and `evidence_note` are never dropped for brevity.
 16. The MCP entry exposes read-only tools only, and every tool is annotated read-only. Writes (saved searches, watchlists, review) stay in the web app behind login.
 17. When a new standard replaces an old one, rewrite the owning text in place instead of stacking patches.
-18. Replaying unchanged notices must use no paid reads and write no opportunity or publication rows in D1. Keep operational timestamps and queue state private to the worker.
+18. Replaying unchanged notices must use no paid reads and write no opportunity or publication rows in D1. The private worker items table owns raw notice versions, their queue state and the link to each finished judgment. Keep operational timestamps and attempts out of published data.
 
 ## Routing
 
