@@ -71,11 +71,17 @@ def read_messages(client, request, output_type):
         usage = message.usage
         if usage and usage.input_tokens is not None and usage.output_tokens is not None:
             result.cache_read_tokens = usage.cache_read_input_tokens or 0
-            result.input_tokens = (
-                usage.input_tokens
-                + result.cache_read_tokens
-                + (usage.cache_creation_input_tokens or 0)
-            )
+            creation_total = usage.cache_creation_input_tokens or 0
+            creation_detail = getattr(usage, "cache_creation", None)
+            ephemeral_1h = getattr(creation_detail, "ephemeral_1h_input_tokens", None) or 0
+            ephemeral_5m = getattr(creation_detail, "ephemeral_5m_input_tokens", None)
+            if ephemeral_5m is not None:
+                result.cache_creation_tokens = ephemeral_5m
+                result.cache_creation_1h_tokens = ephemeral_1h
+            else:
+                result.cache_creation_1h_tokens = ephemeral_1h
+                result.cache_creation_tokens = max(0, creation_total - ephemeral_1h)
+            result.input_tokens = usage.input_tokens + result.cache_read_tokens + creation_total
             result.output_tokens = usage.output_tokens
         block = next((b for b in (message.content or []) if b.type == "text"), None)
         if message.stop_reason in {"max_tokens", "refusal"}:

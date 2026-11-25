@@ -15,6 +15,7 @@ Failure model
 from __future__ import annotations
 
 import logging
+import time
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import timedelta
@@ -44,6 +45,7 @@ from arch_competition_ops.screening.extraction import NoticeValidationError
 from arch_competition_ops.screening.fingerprints import (
     screening_criteria_hash,
 )
+from arch_competition_ops.screening.models import canonical_json
 from arch_competition_ops.screening.readability import NoReadableText
 from arch_competition_ops.screening.service import DocumentAssessment, assess_documents
 from arch_competition_ops.screening.source_evidence import exclusion_identity
@@ -55,7 +57,7 @@ from arch_competition_ops.storage import (
     find_duplicate_records,
     record_source_run,
 )
-from arch_competition_ops.storage.connection import connect
+from arch_competition_ops.storage.connection import connect, write_transaction
 from arch_competition_ops.storage.screening import (
     ScreeningBudgetExceeded,
     SourceDailyLimitReached,
@@ -200,7 +202,9 @@ def ingest_source(
         _refresh_queue(db_path, result)
 
     criteria_hash = screening_criteria_hash(settings) if settings.ai_enabled else None
+    timings = {"collect_s": 0.0, "ai_s": 0.0, "post_s": 0.0, "db_s": 0.0, "meta_s": 0.0}
     if queued_row_ids is None:
+        t_collect = time.monotonic()
         collection_limit = settings.ai_candidate_cap
         start, end, cursor = backlog.collection_window(
             db_path,
@@ -260,7 +264,9 @@ def ingest_source(
             repeated=pages.repeated,
             end=end,
             age_days=settings.unread_max_age_days,
+            source=source,
         )
+        timings["collect_s"] = round(time.monotonic() - t_collect, 2)
         if pages.missing_notice_url:
             stats += f" missing_notice_url={pages.missing_notice_url}"
         if pages.unfinished or len(discovered) >= collection_limit:
@@ -272,14 +278,15 @@ def ingest_source(
             stats += f" discovery_window_through={end} backfill_pending=1"
         result.notes.append(stats)
         if collect_only or not settings.ai_enabled:
+            result.notes.append(f"stage_timings collect_s={timings['collect_s']:.2f}")
             result.deferred = count
             result.status = "success" if discovered or count else "empty"
             record_run(result.status, last_error=None)
             return result
     if queued_row_ids is not None:
-        with connect(db_path) as cx:
+        with write_transaction(db_path) as cx:
+            backlog.retire_closed(cx, source_id, source=source, criteria=criteria_hash)
             backlog.retire_unread(cx, source_id, settings.unread_max_age_days)
-            cx.commit()
     pending = backlog.queued(db_path, source_id, limit, queued_row_ids)
     documents = [item.document for item in pending]
     if queued_row_ids is not None:
@@ -292,13 +299,14 @@ def ingest_source(
     exclusions = {}
     # Documents whose paid assessment finished, including those then dropped as expired; they
     # enter the ledger only once the records are durably written.
-    screened: list[tuple[int, str]] = []
+    screened: list[tuple[int, str, str | None]] = []
     last_error: str | None = None
     # Consecutive provider 400s: three in a row point at the account or request shape, not at the
     # notices, so they are deferred (not counted against a notice) and the batch pauses.
     bad_request_streak = 0
     # The paid assessments run first, concurrently and in input order; everything after them
     # (parse, verify, geocode, store) stays sequential. Geocoding is paced at one request a second.
+    t_ai = time.monotonic()
     outcomes = (
         assess_documents(
             settings,
@@ -308,6 +316,8 @@ def ingest_source(
         if settings.ai_enabled
         else []
     )
+    timings["ai_s"] = round(time.monotonic() - t_ai, 2)
+    t_post = time.monotonic()
     try:
         for position, document in enumerate(documents):
             stage = "parse"
@@ -325,7 +335,8 @@ def ingest_source(
                     )
                     result.filtered_out += 1
                     assessments.append(assessment)
-                    screened.append((pending[position].row_id, assessment.request_id))
+                    meta_json = canonical_json(assessment.meta) if assessment.meta else None
+                    screened.append((pending[position].row_id, assessment.request_id, meta_json))
                     continue
                 # Retain stable upstream identity when the source adapter provides it.
                 try:
@@ -342,7 +353,10 @@ def ingest_source(
                 if competition_is_stale_expired(record, retention_days=retention_days):
                     result.skipped_expired += 1
                     if assessment is not None:
-                        screened.append((pending[position].row_id, assessment.request_id))
+                        meta_json = canonical_json(assessment.meta) if assessment.meta else None
+                        screened.append(
+                            (pending[position].row_id, assessment.request_id, meta_json)
+                        )
                     continue
                 stage = "verify"
                 record = verify_record(
@@ -355,7 +369,10 @@ def ingest_source(
                 if competition_is_stale_expired(record, retention_days=retention_days):
                     result.skipped_expired += 1
                     if assessment is not None:
-                        screened.append((pending[position].row_id, assessment.request_id))
+                        meta_json = canonical_json(assessment.meta) if assessment.meta else None
+                        screened.append(
+                            (pending[position].row_id, assessment.request_id, meta_json)
+                        )
                     continue
                 # Verification can add evidence (official URL, brief), so the evidence-derived
                 # scores are recomputed from the final record.
@@ -436,10 +453,13 @@ def ingest_source(
             records.append(record)
             assessments.append(assessment)
             if assessment is not None:
-                screened.append((pending[position].row_id, assessment.request_id))
+                meta_json = canonical_json(assessment.meta) if assessment.meta else None
+                screened.append((pending[position].row_id, assessment.request_id, meta_json))
     finally:
         geocoder.flush()
+    timings["post_s"] = round(time.monotonic() - t_post, 2)
 
+    t_db = time.monotonic()
     try:
         result.ingested_ids = upsert_screened_competitions(
             db_path,
@@ -450,6 +470,7 @@ def ingest_source(
     except Exception as exc:
         record_run("failed", last_error=error_class(exc))
         raise IngestError(source.source_id, "database write", exc) from exc
+    timings["db_s"] = round(time.monotonic() - t_db, 2)
 
     result.status = _run_status(
         document_count=result.document_count,
@@ -463,13 +484,30 @@ def ingest_source(
     )
 
     if assessments:
-        result.notes.append(
+        in_tok = sum((a.meta.get("tokens") or {}).get("input") or 0 for a in assessments)
+        out_tok = sum((a.meta.get("tokens") or {}).get("output") or 0 for a in assessments)
+        cache_read = sum((a.meta.get("tokens") or {}).get("cache_read") or 0 for a in assessments)
+        cache_write = sum(
+            ((a.meta.get("tokens") or {}).get("cache_write_5m") or 0)
+            + ((a.meta.get("tokens") or {}).get("cache_write_1h") or 0)
+            for a in assessments
+        )
+        review_counts = Counter(
+            reason for a in assessments for reason in (a.meta.get("review_reasons") or ())
+        )
+        summary = (
             f"AI {settings.ai_model}/{settings.ai_reasoning_effort}: "
             f"assessed={len(assessments)}, "
             f"cached={sum(bool(a.cached) for a in assessments)}, "
+            f"in={in_tok}, cache_read={cache_read}, cache_write={cache_write}, out={out_tok}, "
             f"estimated_cost_usd={sum(a.cost_usd for a in assessments):.6f}"
         )
+        if review_counts:
+            breakdown = ",".join(f"{k}={v}" for k, v in sorted(review_counts.items()))
+            summary += f", review_reasons={breakdown}"
+        result.notes.append(summary)
     if result.ingested_ids:
+        t_meta = time.monotonic()
         try:
             titles = polish_titles(
                 settings,
@@ -486,6 +524,11 @@ def ingest_source(
         )
         if result.preview.status != "ok":
             result.notes.append(f"card previews {result.preview.status}: {result.preview.detail}")
+        timings["meta_s"] = round(time.monotonic() - t_meta, 2)
+    result.notes.append(
+        "stage_timings "
+        + " ".join(f"{name}={value:.2f}" for name, value in timings.items() if value > 0)
+    )
     return result
 
 

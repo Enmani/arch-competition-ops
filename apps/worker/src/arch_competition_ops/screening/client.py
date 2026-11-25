@@ -68,6 +68,8 @@ class ProviderResult:
     input_tokens: int | None = None
     output_tokens: int | None = None
     cache_read_tokens: int = 0
+    cache_creation_tokens: int = 0
+    cache_creation_1h_tokens: int = 0
     validation_error: str = ""
     retry_after: str = ""
     uncertain_retries: int = 0
@@ -79,7 +81,13 @@ class ProviderResult:
         if self.rejected:
             used = 0
         elif self.input_tokens is not None and self.output_tokens is not None:
-            used = model.cost(self.input_tokens, self.output_tokens, self.cache_read_tokens)
+            used = model.cost(
+                self.input_tokens,
+                self.output_tokens,
+                self.cache_read_tokens,
+                self.cache_creation_tokens,
+                self.cache_creation_1h_tokens,
+            )
         return used + self.uncertain_retries * per_attempt
 
     def parse_decision(self, text: str, output_type: type[BaseModel]) -> None:

@@ -147,7 +147,10 @@ def render_contract(taxonomy: Taxonomy, known=frozenset()) -> str:
         "The source title is already available. Leave title_quote empty."
         if "title" in known
         else FIELDS["title"].description,
-        "Extract all supported facts for both recommend and needs_review notices.",
+        "Extract all supported facts for both recommend and needs_review notices. "
+        "For exclude notices, leave title_quote empty and return empty arrays for "
+        "extracted_fields and notice_details (supply only brief reasons and decisive "
+        "evidence quotes).",
         (
             "Consider every field below. Include each supported fact once. For text, give its "
             "field and exact quote only. For all other kinds, give field, value and exact quote. "

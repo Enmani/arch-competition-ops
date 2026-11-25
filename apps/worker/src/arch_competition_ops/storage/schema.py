@@ -184,6 +184,7 @@ def _apply_schema(db_path: Path) -> None:
                 ("items", "empty_reads", "INTEGER NOT NULL DEFAULT 0"),
                 ("items", "terminal_at", "TEXT"),
                 ("items", "request_id", "TEXT"),
+                ("items", "screening_meta", "TEXT"),
             ):
                 if column not in {
                     row[1] for row in connection.execute(f"PRAGMA table_info({table})")

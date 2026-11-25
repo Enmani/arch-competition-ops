@@ -129,12 +129,22 @@ def _lines(value, path, url, links, leaves):
 
 def notice_text(payload: str, url="", *, links=None, leaves=None, collected=False) -> str:
     lines = []
+    seen_long_values: set[str] = set()
     for part in _parts(payload, _TEXT_DECODER, collected=collected):
         value, tail = _decode(part, _TEXT_DECODER)
         if not collected and isinstance(part, str):
             value = _archive_source(value)
         for item in (value, tail):
-            lines.extend(_lines(item, "", url, links, leaves))
+            for line in _lines(item, "", url, links, leaves):
+                path, sep, content = line.partition(": ")
+                # Only deduplicate repeated long prose blocks; keep short scalar lot fields intact.
+                target = content if sep else line
+                if (not sep or path not in FIELD_BY_PATH) and len(target) >= 80:
+                    normalized = " ".join(target.split())
+                    if normalized in seen_long_values:
+                        continue
+                    seen_long_values.add(normalized)
+                lines.append(line)
     return "\n".join(lines)
 
 

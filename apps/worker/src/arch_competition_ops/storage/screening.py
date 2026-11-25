@@ -213,7 +213,7 @@ def shrink_old_screening_runs(db_path: Path, *, started_before: date) -> int:
         stamp = "COALESCE(terminal_at,first_seen)"
         connection.execute(
             f"UPDATE items SET payload='' WHERE status IN ('done','failed',"
-            "'aged_out','expired_unread','no_readable_text') AND payload!='' "
+            "'aged_out','expired_unread','no_readable_text','closed_lifecycle') AND payload!='' "
             f"AND {stamp} < ?",
             (started_before.isoformat(),),
         )
@@ -266,10 +266,11 @@ def _publish_in_connection(
     result_json: str,
     source_updated_at: str,
 ) -> None:
-    connection.execute(
-        "UPDATE ai_screening_runs SET competition_id = ?, result_json = ? WHERE id = ?",
-        (competition_id, result_json, request_id),
-    )
+    if request_id:
+        connection.execute(
+            "UPDATE ai_screening_runs SET competition_id = ?, result_json = ? WHERE id = ?",
+            (competition_id, result_json, request_id),
+        )
     connection.execute(
         "INSERT INTO ai_screening_results "
         "(competition_id, source_updated_at, model, decision, relevance_score, "
@@ -320,6 +321,33 @@ def _previously_published(connection, identity):
     return None
 
 
+def exclude_published_by_lifecycle(
+    connection: sqlite3.Connection,
+    identity: tuple[str, str | None, str | None],
+    *,
+    code: str,
+    quote: str,
+) -> bool:
+    """If a closed-lifecycle notice matches an already-published opportunity, mark it excluded."""
+    stored = _previously_published(connection, identity)
+    if stored is None:
+        return False
+    from arch_competition_ops.screening.lifecycle import build_closed_lifecycle_decision
+
+    decision = build_closed_lifecycle_decision(code, quote)
+    _publish_in_connection(
+        connection,
+        competition_id=stored["id"],
+        request_id="",
+        model="structured_lifecycle",
+        decision=decision.decision,
+        relevance_score=decision.relevance_score,
+        result_json=decision.model_dump_json(),
+        source_updated_at=stored["updated_at"],
+    )
+    return True
+
+
 def upsert_screened_competitions(db_path: Path, assessments, receipts, criteria) -> list[str]:
     """Publish decisions in notice order. An exclusion can update an existing record only."""
     ensure_schema(db_path)
@@ -344,11 +372,21 @@ def upsert_screened_competitions(db_path: Path, assessments, receipts, criteria)
                 source_updated_at=stored["updated_at"],
                 **publication,
             )
+        rows = [
+            (
+                now_iso,
+                criteria,
+                receipt[1],
+                receipt[2] if len(receipt) > 2 else None,
+                receipt[0],
+            )
+            for receipt in receipts
+        ]
         connection.executemany(
             "UPDATE items SET status='done',attempts=attempts+1,last_error=NULL,retry_at=NULL,"
-            "transient_count=0,terminal_at=?,criteria_hash=?,request_id=? "
+            "transient_count=0,terminal_at=?,criteria_hash=?,request_id=?,screening_meta=? "
             "WHERE rowid=? AND status='queued'",
-            [(now_iso, criteria, request, row) for row, request in receipts],
+            rows,
         )
     return ids
 

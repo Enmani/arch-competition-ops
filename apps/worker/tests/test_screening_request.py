@@ -56,7 +56,13 @@ def test_only_one_original_notice_reaches_the_model(tmp_path, provider, monkeypa
         expected = {
             "model": "claude-haiku-5-5",
             "max_tokens": 16000,
-            "system": expected["instructions"],
+            "system": [
+                {
+                    "type": "text",
+                    "text": expected["instructions"],
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
             "messages": [{"role": "user", "content": expected["input"]}],
             "output_config": {"effort": "low", "format": {"type": "json_schema", "schema": schema}},
         }

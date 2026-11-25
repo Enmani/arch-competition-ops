@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import json
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from datetime import timedelta
-from itertools import groupby
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -17,7 +15,9 @@ from arch_competition_ops.locking import exclusive_lock
 from arch_competition_ops.models import SourceDefinition
 from arch_competition_ops.run_errors import error_class
 from arch_competition_ops.settings import Settings
-from arch_competition_ops.storage.connection import connect
+from arch_competition_ops.storage import backlog
+from arch_competition_ops.storage.connection import write_transaction
+from arch_competition_ops.storage.schema import ensure_schema
 
 DEFAULT_AUTOMATION_CONFIG_PATH = Path("config") / "automation.yml"
 logger = logging.getLogger(__name__)
@@ -256,24 +256,37 @@ def run_automation_batch(
         if not settings.ai_enabled or collect_only:
             return
         db_path = settings.resolve_path(settings.db)
+        ensure_schema(db_path)
         by_id = {run.source_id: run for run in result.succeeded}
+        source_by_id = {source.source_id: source for source in sources}
+        # Retire already-closed official notices and expired rows across the batch before slot
+        # allocation so open notices get the full floor + shared remainder capacity.
+        with write_transaction(db_path) as cx:
+            for source_id in result.source_ids:
+                retired_closed = backlog.retire_closed(
+                    cx, source_id, source=source_by_id.get(source_id)
+                )
+                retired_expired = backlog.retire_unread(cx, source_id, settings.unread_max_age_days)
+                if retired_closed or retired_expired:
+                    run = by_id.get(source_id)
+                    if run is not None:
+                        run.deferred = max(0, run.deferred - retired_closed - retired_expired)
+                        if retired_closed:
+                            run.notes.append(f"retired_closed_before_read={retired_closed}")
         # A failed discovery still has readable notices from previous runs.
-        with connect(db_path) as cx:
-            ids = cx.execute(
-                "WITH pending AS (SELECT source_id, rowid AS notice_id, first_seen, "
-                "row_number() OVER (PARTITION BY source_id ORDER BY first_seen,rowid) AS position "
-                "FROM items WHERE status='queued' AND (retry_at IS NULL OR retry_at<=?) "
-                "AND source_id IN (SELECT value FROM json_each(?))) "
-                "SELECT source_id,notice_id FROM pending WHERE position<=? "
-                "ORDER BY source_id,first_seen,notice_id",
-                (clock.now_utc().isoformat(), json.dumps(result.source_ids), effective_limit),
-            ).fetchall()
-        for source_id, group in groupby(ids, key=lambda item: item[0]):
-            row_ids = [row_id for _, row_id in group]
+        allocations = backlog.select_batch_queue(
+            db_path, result.source_ids, per_source_floor=effective_limit
+        )
+        for source_id, row_ids in allocations:
             run = by_id.get(source_id)
+            source_settings = settings.model_copy()
+            source_settings._source_daily_limit = len(row_ids)
             try:
                 read = ingest_source(
-                    settings, source_id=source_id, queued_row_ids=row_ids, limit=len(row_ids)
+                    source_settings,
+                    source_id=source_id,
+                    queued_row_ids=row_ids,
+                    limit=len(row_ids),
                 )
             except IngestError as exc:
                 result.failed.append(AutomationSourceFailure(source_id, str(exc)))

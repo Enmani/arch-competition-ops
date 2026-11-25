@@ -84,7 +84,13 @@ def structured_request(provider, model, instructions, material, schema, name, ma
         return {
             "model": model,
             "max_tokens": max_tokens,
-            "system": instructions,
+            "system": [
+                {
+                    "type": "text",
+                    "text": instructions,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
             "messages": [{"role": "user", "content": material}],
             "output_config": {
                 "effort": effort,

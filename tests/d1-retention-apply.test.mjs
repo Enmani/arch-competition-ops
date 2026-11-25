@@ -296,6 +296,7 @@ test("--apply runs every file in order, ends by publishing after retention, and 
   assert.equal(calls[0], "0000-syncing.sql");
   assert.match(calls[1], /^0001-competitions\.sql$/);
   assert.match(result.out, /D1 sync complete: \d+ file\(s\) applied\./);
+  assert.match(result.out, /d1_row_metrics rows_read=\d+ rows_written=\d+ changes=\d+ duration_ms=\d+/);
   assert.match(result.out, /d1_snapshot_rows competitions=2/);
 
   const remote = openRemote(ctx);

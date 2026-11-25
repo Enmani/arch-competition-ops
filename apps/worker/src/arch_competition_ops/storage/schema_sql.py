@@ -127,6 +127,7 @@ CREATE TABLE IF NOT EXISTS items (
     empty_reads INTEGER NOT NULL DEFAULT 0,
     terminal_at TEXT,
     request_id TEXT,
+    screening_meta TEXT,
     PRIMARY KEY(source_id, content_hash)
 );
 CREATE INDEX IF NOT EXISTS idx_backlog_queue ON items(status, first_seen);

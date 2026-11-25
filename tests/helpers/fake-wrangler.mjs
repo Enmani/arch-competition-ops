@@ -67,7 +67,20 @@ if (args[0] === "d1" && args[1] === "execute") {
       if (process.env.FAKE_FAIL_FILE && path.basename(file).includes(process.env.FAKE_FAIL_FILE)) {
         fail("D1_ERROR: simulated SQL failure");
       }
+      const beforeChanges = database.prepare("SELECT total_changes() AS n").get().n;
       database.transaction(() => database.exec(readFileSync(file, "utf8")))();
+      const changes = database.prepare("SELECT total_changes() AS n").get().n - beforeChanges;
+      if (args.includes("--json")) {
+        console.log(
+          JSON.stringify([
+            {
+              results: [],
+              success: true,
+              meta: { rows_read: changes, rows_written: changes, changes },
+            },
+          ]),
+        );
+      }
     } else {
       const rows = database.prepare(flag("--command")).all();
       console.log(JSON.stringify([{ results: rows, success: true }]));

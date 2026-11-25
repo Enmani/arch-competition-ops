@@ -101,7 +101,9 @@ def test_default_settings_accounting_and_evidence(workspace, monkeypatch):
     assert result.decision.decision == "needs_review" and not result.decision.evidence
     assert result.record.estimated_contract_value_eur == 350000
     assert (row["input_tokens"], row["output_tokens"]) == (12700, 3500)
-    assert row["cost_usd"] == pytest.approx((12200 * 0.1 + 500 * 0.01 + 3500 * 0.5) / 1e6)
+    assert row["cost_usd"] == pytest.approx(
+        (12000 * 0.1 + 500 * 0.01 + 200 * 0.125 + 3500 * 0.5) / 1e6
+    )
     assert not waits
     assert "fixture-only" not in row["input_json"]
     model = get_model(settings.ai_model)
@@ -181,7 +183,7 @@ def test_recovered_server_error_keeps_ambiguous_cost(workspace, monkeypatch):
     assert waits == [7, 7]
     model = get_model(workspace[0].ai_model)
     reserve = model.reservation(len(row["input_json"].encode()), 16000)
-    assert result.cost_usd == pytest.approx(reserve + model.cost(12700, 3500, 500))
+    assert result.cost_usd == pytest.approx(reserve + model.cost(12700, 3500, 500, 200))
 
 
 def test_budget_refuses_ambiguous_retries_before_any_http(workspace, monkeypatch):

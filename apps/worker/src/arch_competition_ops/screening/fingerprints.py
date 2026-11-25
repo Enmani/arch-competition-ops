@@ -3,9 +3,11 @@
 import hashlib
 import json
 
+from arch_competition_ops.config_loader import load_taxonomy
+from arch_competition_ops.screening.field_contract import FIELDS
 from arch_competition_ops.screening.models import ScreeningAnswer, canonical_json
 from arch_competition_ops.screening.notice_urls import URL, public_url
-from arch_competition_ops.screening.preferences import answer_format
+from arch_competition_ops.screening.preferences import load_screening_instructions
 from arch_competition_ops.screening.providers import provider_identity
 from arch_competition_ops.screening.readability import visible_text
 from arch_competition_ops.screening.source_evidence import notice_evidence, notice_title
@@ -49,13 +51,18 @@ def notice_content_hash(payload: str, url: str, *, collected=True) -> str:
 
 
 def screening_criteria_hash(settings: Settings) -> str:
-    instructions, schema = answer_format(settings)
+    taxonomy = load_taxonomy(settings)
+    labels = {
+        spec.taxonomy: list(getattr(taxonomy, spec.taxonomy))
+        for spec in FIELDS.values()
+        if spec.taxonomy
+    }
     return digest(
         canonical_json(
             [
-                instructions,
+                load_screening_instructions(settings),
+                labels,
                 ScreeningAnswer.schema_version,
-                schema,
                 provider_identity(settings),
                 settings.ai_model,
                 settings.ai_reasoning_effort,

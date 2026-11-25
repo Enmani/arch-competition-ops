@@ -89,6 +89,7 @@ def _request_one(client, settings, db_path, model, row, prepared, sleep):
     initial_hash = request_hash(input_json)
     total = 0.0
     tokens = [0, 0]
+    cache_tokens = [0, 0, 0]  # read, write_5m, write_1h
     for attempt in range(2):
         per_attempt = model.reservation(len(input_json.encode()), settings.ai_max_output_tokens)
         try:
@@ -115,11 +116,21 @@ def _request_one(client, settings, db_path, model, row, prepared, sleep):
             None if a is None or b is None else a + b
             for a, b in zip(tokens, (reply.input_tokens, reply.output_tokens), strict=True)
         ]
+        cache_tokens[0] += reply.cache_read_tokens
+        cache_tokens[1] += reply.cache_creation_tokens
+        cache_tokens[2] += reply.cache_creation_1h_tokens
         code = reply.error_class
         outage = (code or "").startswith("http_5") or code in {"transport_error", "api_error"}
         decision = None
+        diagnostics: dict[str, Any] = {}
         if not code:
-            decision = validate_evidence(reply.decision, evidence_fields, snapshot["mapped_facts"])
+            decision = validate_evidence(
+                reply.decision,
+                evidence_fields,
+                snapshot["mapped_facts"],
+                diagnostics=diagnostics,
+                limitations=limitations,
+            )
             decision.missing_information.extend(limitations)
         finish_screening(
             db_path,
@@ -135,14 +146,23 @@ def _request_one(client, settings, db_path, model, row, prepared, sleep):
             response_id=reply.response_id,
         )
         if decision:
+            diagnostics["tokens"] = {
+                "input": tokens[0],
+                "output": tokens[1],
+                "cache_read": cache_tokens[0],
+                "cache_write_5m": cache_tokens[1],
+                "cache_write_1h": cache_tokens[2],
+            }
             return DocumentAssessment(
-                None, decision, request_id, model.id, False, total, tuple(tokens)
+                None, decision, request_id, model.id, False, total, tuple(tokens), meta=diagnostics
             )
         if attempt == 0 and reply.validation_error:
-            key = "system" if settings.ai_provider == "anthropic" else "instructions"
-            request[key] += (
-                "\nCorrect the previous answer's schema errors: " + reply.validation_error
-            )
+            note = "Correct the previous answer's schema errors: " + reply.validation_error
+            if settings.ai_provider == "anthropic" and isinstance(request.get("system"), list):
+                request["system"] = [*request["system"], {"type": "text", "text": note}]
+            else:
+                key = "system" if settings.ai_provider == "anthropic" else "instructions"
+                request[key] += "\n" + note
             input_json = canonical_json({**snapshot, "retry_of": initial_hash})
             continue
         error = (ScreeningPaused if reply.pause or outage else ScreeningError)(code, cost_usd=total)
@@ -162,6 +182,7 @@ class DocumentAssessment:
     usage: tuple[int | None, int | None] = (0, 0)
 
     failure: str | None = None
+    meta: dict[str, Any] = field(default_factory=dict)
 
     def publication(self):
         return dict(
