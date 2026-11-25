@@ -17,7 +17,9 @@ DetailCategory = Literal["timeline", "commercial", "eligibility", "scope", "subm
 
 
 class TextFact(_StrictModel):
-    field: Literal[*[name for name, spec in FIELDS.items() if spec.kind == "text"]]
+    field: Literal[
+        *[name for name, spec in FIELDS.items() if spec.kind == "text" and name != "title"]
+    ]
     quote: str
 
 
@@ -43,7 +45,8 @@ class _Judgment(_StrictModel):
 
 
 class ScreeningAnswer(_Judgment):
-    schema_version: ClassVar[int] = 4
+    schema_version: ClassVar[int] = 5
+    title_quote: str = Field(description=FIELDS["title"].description)
     evidence: list[str]
     extracted_fields: list[TextFact | NormalizedFact]
     notice_details: list[QuotedDetail]
@@ -96,6 +99,21 @@ def validate_evidence(
         decision = "needs_review"
 
     facts = []
+    original_title = evidence_fields.get("notice_title", "")
+    title = original_title or source_quote(
+        answer.title_quote, evidence_fields.get("notice_text", "")
+    )
+    if title:
+        facts.append(
+            ExtractedField(
+                field="title",
+                value=title,
+                quote=title,
+                evidence_field="notice_title" if original_title else "notice_text",
+            )
+        )
+    elif answer.title_quote:
+        warnings.append("title: unsupported source quote")
     for fact in answer.extracted_fields:
         if match := locate(fact.quote):
             facts.append(

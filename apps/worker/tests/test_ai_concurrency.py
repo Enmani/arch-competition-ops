@@ -44,7 +44,7 @@ def listing(count: int) -> list[CollectedSourceDocument]:
 
 
 def reference_in(request: httpx.Request) -> int:
-    text = json.loads(json.loads(request.content)["input"])["evidence_fields"]["notice_text"]
+    text = json.loads(request.content)["input"].partition("notice_text:\n")[2]
     return int(text.split("Reference number ")[1].split(".")[0])
 
 

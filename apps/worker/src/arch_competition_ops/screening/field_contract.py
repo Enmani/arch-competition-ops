@@ -40,8 +40,9 @@ FIELDS = {
     "title": Fact(
         "text",
         (
-            "Required whenever a title is stated. Copy and quote the full notice_title when "
-            "available. Otherwise find and quote the original project title in notice_text."
+            "In title_quote, quote the original project title exactly as stated. Use "
+            "notice_title when supplied, otherwise look in notice_text. Return an empty "
+            "string only if the notice states no title."
         ),
     ),
     "organizer": Fact("text", "Named body organizing the competition or commissioning the work."),
@@ -122,7 +123,8 @@ FactName = Literal[*FIELDS]
 
 def render_contract(taxonomy: Taxonomy) -> str:
     lines = [
-        "Extracted facts",
+        FIELDS["title"].description,
+        "Extract all supported facts for both recommend and needs_review notices.",
         (
             "Consider every field below. Include each supported fact once. For text, give its "
             "field and exact quote only. For all other kinds, give field, value and exact quote. "
@@ -132,6 +134,8 @@ def render_contract(taxonomy: Taxonomy) -> str:
         *(f"{kind}: {rule}" for kind, rule in KIND_FORMAT.items()),
     ]
     for name, fact in FIELDS.items():
+        if name == "title":
+            continue
         line = f"{name} ({fact.kind}): {fact.description}"
         if fact.taxonomy:
             labels = getattr(taxonomy, fact.taxonomy)

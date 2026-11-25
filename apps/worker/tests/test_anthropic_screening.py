@@ -72,12 +72,7 @@ def run_fixture(workspace, replies, monkeypatch):
 def test_model_returns_quotes_and_worker_stores_their_sources(workspace, monkeypatch):
     decision = decision_payload(decision="exclude")
     decision["evidence"] = ["Open to registered architects.", "invented"]
-    decision["extracted_fields"] = [
-        {
-            "field": "title",
-            "quote": "Civic School Design Competition",
-        }
-    ]
+    decision["extracted_fields"] = []
     decision["notice_details"] = [{"category": "eligibility", "quote": "registered architects"}]
     result, row, _ = run_fixture(workspace, [completion(decision=decision)], monkeypatch)
     saved = json.loads(row["result_json"])
@@ -94,7 +89,7 @@ def test_model_returns_quotes_and_worker_stores_their_sources(workspace, monkeyp
             "evidence_field": "notice_text",
         }
     ]
-    assert result.record.title == "Civic School Design Competition"
+    assert result.record is None
 
 
 def test_default_settings_accounting_and_evidence(workspace, monkeypatch):

@@ -288,7 +288,10 @@ def run_automation_batch(
             run.ingested_count += len(read.ingested_ids)
             run.failure_count += read.parse_failure_count
             run.notes.extend(read.notes)
-            run.deferred -= min(run.deferred, len(read.ingested_ids) + read.skipped_expired)
+            run.filtered_out += read.filtered_out
+            run.deferred -= min(
+                run.deferred, len(read.ingested_ids) + read.skipped_expired + read.filtered_out
+            )
             if read.batch_paused:
                 result.paid_reading_paused = True
                 break

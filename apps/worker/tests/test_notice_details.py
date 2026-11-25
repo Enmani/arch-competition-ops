@@ -73,6 +73,7 @@ def test_concurrent_source_reservations_share_one_budget(tmp_path):
 def test_participation_excerpts_preserve_source_clauses_and_reject_invention():
     source = "报名：11月3日。保证金人民币2万元。联合体可以参加。"
     decision = ScreeningAnswer(
+        title_quote="",
         decision="recommend",
         relevance_score=80,
         summary_zh="项目",

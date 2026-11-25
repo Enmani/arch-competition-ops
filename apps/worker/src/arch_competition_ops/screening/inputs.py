@@ -3,19 +3,21 @@
 from __future__ import annotations
 
 import json
-import re
 from typing import Any
 from urllib.parse import urlsplit
 
 from arch_competition_ops.http import HttpError, get_default_client
-from arch_competition_ops.normalizers.text import strip_html
 from arch_competition_ops.screening.fingerprints import notice_content_hash
 from arch_competition_ops.screening.models import ScreeningAnswer, canonical_json
 from arch_competition_ops.screening.notice_urls import URL, PageLinks, public_url
 from arch_competition_ops.screening.preferences import answer_format
 from arch_competition_ops.screening.providers import provider_identity, structured_request
 from arch_competition_ops.screening.readability import NoReadableText, has_notice_text
-from arch_competition_ops.screening.source_evidence import notice_evidence, notice_title
+from arch_competition_ops.screening.source_evidence import (
+    notice_evidence,
+    notice_text,
+    notice_title,
+)
 from arch_competition_ops.settings import Settings
 
 
@@ -99,11 +101,10 @@ def prepare_input(
     version = notice_content_hash(source_payload or "", source_url)
     notice_heading = notice_title(source_payload or "")
     title = notice_heading or row.get("title") or ""
+    text = notice_text(source_payload or "")
     source_payload = notice_evidence(source_payload or "")
     if not has_notice_text(source_payload, source_url) and not notice_heading:
         raise NoReadableText(source_url)
-    text = re.sub(r"<(script|style)\b[^>]*>.*?</\1>", " ", source_payload or "", flags=re.I | re.S)
-    text = strip_html(text) or ""
     links = PageLinks(source_url)
     links.feed(source_payload or "")
     links.links.extend(URL.findall(text))
@@ -123,7 +124,7 @@ def prepare_input(
             "\n".join(dict.fromkeys(filter(None, map(public_url, candidates)))),
         ),
     ):
-        clean = URL.sub(lambda match: public_url(match[0]), value.replace(r"\/", "/"))
+        clean = URL.sub(lambda match: public_url(match[0]), value)
         fields[name] = clean[:remaining]
         if len(clean) > remaining:
             limitations.append("Input was truncated to the configured character limit")
@@ -133,7 +134,10 @@ def prepare_input(
         settings.ai_provider,
         model_id or settings.ai_model,
         instructions,
-        canonical_json({"evidence_fields": fields}),
+        "\n\n".join(
+            f"{name}:\n{fields[name]}"
+            for name in ("notice_title", "notice_url", "notice_links", "notice_text")
+        ),
         schema,
         "competition_screening",
         settings.ai_max_output_tokens,
@@ -144,6 +148,7 @@ def prepare_input(
             {
                 "provider": provider_identity(settings),
                 "notice_version": version,
+                "notice_text_chars": len(fields["notice_text"]),
                 "schema_version": ScreeningAnswer.schema_version,
                 "request": request,
             }

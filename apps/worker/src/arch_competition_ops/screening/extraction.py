@@ -41,7 +41,9 @@ def extract_record(
     source: SourceDefinition,
     source_url: str,
     settings: Settings,
-) -> tuple[CompetitionRecord, list[str]]:
+) -> tuple[CompetitionRecord | None, list[str]]:
+    if decision.decision == "exclude":
+        return None, []
     source_url, source_redacted = stored_link(source_url)
     updates: dict = {}
     warnings: list[str] = []

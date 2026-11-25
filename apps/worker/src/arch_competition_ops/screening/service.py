@@ -132,12 +132,21 @@ def _request_one(
 
 @dataclass
 class DocumentAssessment:
-    record: CompetitionRecord
+    record: CompetitionRecord | None
     decision: ScreeningDecision
     request_id: str
     model: str
     cached: bool
     cost_usd: float
+
+    def publication(self):
+        return dict(
+            request_id=self.request_id,
+            model=self.model,
+            decision=self.decision.decision,
+            relevance_score=self.decision.relevance_score,
+            result_json=self.decision.model_dump_json(),
+        )
 
 
 def source_lock_path(db_path: Path, source_id: str | None) -> Path:
@@ -215,7 +224,8 @@ def assess_document(
             source_url=source_url,
             settings=settings,
         )
-        record.source_url_is_notice = source.collector == "generic_notice_pages"
+        if record is not None:
+            record.source_url_is_notice = source.collector == "generic_notice_pages"
         return DocumentAssessment(
             record, decision, request_id, model.id, bool(cached and not force), cost
         )

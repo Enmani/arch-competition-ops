@@ -10,7 +10,6 @@ from typing import Any
 from uuid import uuid4
 
 from arch_competition_ops import clock
-from arch_competition_ops.models import CompetitionRecord
 from arch_competition_ops.storage.competitions import upsert_in_connection
 from arch_competition_ops.storage.connection import connect, write_transaction
 from arch_competition_ops.storage.schema import ensure_schema
@@ -306,29 +305,51 @@ def publish_screening(db_path: Path, **publication: Any) -> None:
         _publish_in_connection(connection, **publication)
 
 
-def upsert_screened_competitions(
-    db_path: Path,
-    records: list[CompetitionRecord],
-    publications: list[dict[str, Any]],
-) -> list[str]:
-    """Publish source facts and their exact revision's assessment in one transaction."""
+def _previously_published(connection, identity):
+    source_id, notice_id, url = identity
+    if notice_id:
+        matches = connection.execute(
+            "SELECT id,updated_at FROM competitions "
+            "WHERE source_id=? AND official_notice_id=? LIMIT 2",
+            (source_id, notice_id),
+        ).fetchall()
+        if matches:
+            return matches[0] if len(matches) == 1 else None
+    if url:
+        matches = connection.execute(
+            "SELECT id,updated_at,official_notice_id FROM competitions "
+            "WHERE source_id=? AND source_url=? LIMIT 2",
+            (source_id, url),
+        ).fetchall()
+        if len(matches) == 1 and (not notice_id or not matches[0]["official_notice_id"]):
+            return matches[0]
+    return None
+
+
+def upsert_screened_competitions(db_path: Path, assessments) -> list[str]:
+    """Publish decisions in notice order. An exclusion can update an existing record only."""
     ensure_schema(db_path)
     ids: list[str] = []
     with write_transaction(db_path) as connection:
         now_iso = clock.now_utc().isoformat()
-        for record, publication in zip(records, publications, strict=True):
-            competition_id = upsert_in_connection(connection, record, now_iso=now_iso)
-            stored = connection.execute(
-                "SELECT updated_at FROM competitions WHERE id = ?",
-                (competition_id,),
-            ).fetchone()
+        for record, identity, publication in assessments:
+            if record is None:
+                stored = _previously_published(connection, identity)
+                if stored is None:
+                    continue
+                competition_id = stored["id"]
+            else:
+                competition_id = upsert_in_connection(connection, record, now_iso=now_iso)
+                ids.append(competition_id)
+                stored = connection.execute(
+                    "SELECT updated_at FROM competitions WHERE id = ?", (competition_id,)
+                ).fetchone()
             _publish_in_connection(
                 connection,
                 competition_id=competition_id,
                 source_updated_at=stored["updated_at"],
                 **publication,
             )
-            ids.append(competition_id)
     return ids
 
 
@@ -349,6 +370,10 @@ def latest_screening_notice_text(db_path: Path, competition_id: str) -> str:
         request = json.loads(row["input_json"])
         wire = request.get("request", request)
         content = wire["input"] if "input" in wire else wire["messages"][-1]["content"]
+        # The final section is verbatim. Its length also works if the source contains our labels.
+        if "notice_text_chars" in request:
+            length = request["notice_text_chars"]
+            return content[-length:] if length else ""
         notice = json.loads(content)["evidence_fields"]["notice_text"]
     except (ValueError, KeyError, TypeError):
         return ""

@@ -46,6 +46,7 @@ from arch_competition_ops.screening.fingerprints import (
 )
 from arch_competition_ops.screening.readability import NoReadableText
 from arch_competition_ops.screening.service import DocumentAssessment, assess_documents
+from arch_competition_ops.screening.source_evidence import exclusion_identity
 from arch_competition_ops.settings import Settings
 from arch_competition_ops.storage import (
     backlog,
@@ -288,7 +289,8 @@ def ingest_source(
         result.deferred = max(0, count - len(documents))
 
     records: list[CompetitionRecord] = []
-    assessments: list[DocumentAssessment | None] = []
+    assessments: list[DocumentAssessment] = []
+    exclusions = {}
     # Documents whose paid assessment finished, including those then dropped as expired; they
     # enter the ledger only once the records are durably written.
     screened: list[int] = []
@@ -314,6 +316,14 @@ def ingest_source(
                     raise outcome.error
                 assessment = outcome.assessment
                 record = assessment.record
+                if record is None:
+                    exclusions[assessment.request_id] = exclusion_identity(
+                        source, document.payload, document.source_url
+                    )
+                    result.filtered_out += 1
+                    assessments.append(assessment)
+                    screened.append(pending[position].row_id)
+                    continue
                 # Retain stable upstream identity when the source adapter provides it.
                 try:
                     parsed = parse_source_payload(
@@ -413,6 +423,7 @@ def ingest_source(
                     result.deferred += 1
                 last_error = code
                 continue
+            assessment.record = record
             records.append(record)
             assessments.append(assessment)
             if assessment is not None:
@@ -421,18 +432,10 @@ def ingest_source(
         geocoder.flush()
 
     try:
-        publications = [
-            {
-                "request_id": a.request_id,
-                "model": a.model,
-                "decision": a.decision.decision,
-                "relevance_score": a.decision.relevance_score,
-                "result_json": a.decision.model_dump_json(),
-            }
-            for a in assessments
-            if a is not None
-        ]
-        result.ingested_ids = upsert_screened_competitions(db_path, records, publications)
+        result.ingested_ids = upsert_screened_competitions(
+            db_path,
+            ((a.record, exclusions.get(a.request_id), a.publication()) for a in assessments),
+        )
         record_screened(
             db_path,
             source_id=source.source_id,
@@ -455,14 +458,14 @@ def ingest_source(
         duplicates=_summarize_duplicate_pressure(db_path, [dedup_key_for(r) for r in records]),
     )
 
+    if assessments:
+        result.notes.append(
+            f"AI {settings.ai_model}/{settings.ai_reasoning_effort}: "
+            f"assessed={len(assessments)}, "
+            f"cached={sum(bool(a.cached) for a in assessments)}, "
+            f"estimated_cost_usd={sum(a.cost_usd for a in assessments):.6f}"
+        )
     if result.ingested_ids:
-        if settings.ai_enabled:
-            result.notes.append(
-                f"AI {settings.ai_model}/{settings.ai_reasoning_effort}: "
-                f"assessed={len(assessments)}, "
-                f"cached={sum(bool(a and a.cached) for a in assessments)}, "
-                f"estimated_cost_usd={sum(a.cost_usd for a in assessments if a):.6f}"
-            )
         try:
             titles = polish_titles(
                 settings,

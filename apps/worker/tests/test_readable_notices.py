@@ -82,7 +82,9 @@ def test_unreadable_notices_refetched_without_paid_calls(ai_workspace, monkeypat
 def test_translated_title_has_no_second_value():
     original = "Contratação de especialistas em salvaguardas sociais"
     fact = {"field": "title", "quote": original}
-    answer = ScreeningAnswer.model_validate(decision_payload(extracted_fields=[fact]))
+    answer = ScreeningAnswer.model_validate(
+        decision_payload(title_quote=original, extracted_fields=[])
+    )
     stored = validate_evidence(answer, {"notice_text": original})
     assert stored.extracted_fields[0].value == original
     from pydantic import ValidationError
@@ -109,11 +111,7 @@ def test_refetched_notice_can_be_read_and_saved(ai_workspace, monkeypatch):  # n
 
     def respond(request):
         calls.append(request)
-        return response(
-            decision_payload(
-                evidence=[title], extracted_fields=[{"field": "title", "quote": title}]
-            )
-        )
+        return response(decision_payload(evidence=[title], title_quote=title, extracted_fields=[]))
 
     monkeypatch.setattr(
         "arch_competition_ops.screening.service.create_client", lambda _: mock_client(respond)

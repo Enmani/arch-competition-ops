@@ -41,11 +41,8 @@ def decision_payload(**overrides):
         "missing_information": ["registration_fee"],
         "evidence": ["Open to registered architects."],
         "notice_details": [],
+        "title_quote": "Civic School Design Competition",
         "extracted_fields": [
-            {
-                "field": "title",
-                "quote": "Civic School Design Competition",
-            },
             {
                 "field": "location_label",
                 "quote": "Via Roma 10, Milano",
@@ -250,7 +247,7 @@ def test_unchanged_notice_is_not_paid_again_on_a_later_day(ai_workspace):
     sent = []
 
     def handler(request):
-        sent.append(json.loads(json.loads(request.content)["input"]))
+        sent.append(json.loads(request.content)["input"])
         return response(decision_payload())
 
     try:
@@ -360,7 +357,6 @@ def test_unsupported_amount_currency_url_and_date_stay_unknown(ai_workspace, fie
     settings, source = ai_workspace
     output = decision_payload(decision="recommend", evidence=["Civic School Design Competition"])
     output["extracted_fields"] = [
-        output["extracted_fields"][0],
         {
             "field": field,
             "value": value,

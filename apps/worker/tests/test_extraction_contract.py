@@ -30,7 +30,7 @@ def test_saved_answer_accepts_claims_without_row_title(ai_workspace, replay):  #
     record, rejected = extract_record(
         decision, fields, source=source, source_url=row["source_url"], settings=settings
     )
-    assert len(decision.extracted_fields) == len(replay["answer"]["extracted_fields"]) == 19
+    assert len(decision.extracted_fields) == 1 + len(replay["answer"]["extracted_fields"]) == 19
     assert not rejected
     assert record.title == replay["notice"].splitlines()[0]
     assert record.deadline_at == date(2026, 12, 15)
@@ -55,7 +55,6 @@ def test_timestamp_requires_the_quoted_local_date(ai_workspace, replay, value, d
     quote = "Submission closes on 9 November 2026 at 09:30."
     answer = replay["answer"]
     answer["extracted_fields"] = [
-        answer["extracted_fields"][0],
         {"field": "deadline_at", "value": value, "quote": quote},
     ]
     fields = {"notice_text": replay["notice"] + quote}

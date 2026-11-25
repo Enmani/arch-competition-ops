@@ -27,10 +27,24 @@ def test_raw_notice_ingestion_publishes_exclusion_without_changing_human_status(
     )
     monkeypatch.setattr(
         "arch_competition_ops.ingest.collect_source_documents",
-        lambda *_a, **_kw: [CollectedSourceDocument(source.base_url, NOTICE)],
+        lambda *_a, **_kw: [CollectedSourceDocument(source.base_url + "notice/1", NOTICE)],
     )
     monkeypatch.setattr("arch_competition_ops.ingest.enrich_record_geocode", lambda r, **_kw: r)
-    with mock_client(lambda _r: response(decision_payload(decision="exclude"))) as client:
+    with mock_client(lambda _r: response(decision_payload(decision="recommend"))) as client:
+        monkeypatch.setattr(service, "create_client", lambda _settings: client)
+        first = ingest_source(settings, source_id="city")
+        assert len(first.ingested_ids) == 1
+        from arch_competition_ops.storage.screening import latest_screening_notice_text
+
+        assert "Civic School Design Competition" in latest_screening_notice_text(
+            settings.resolve_path(settings.db), first.ingested_ids[0]
+        )
+    settings.ai_reasoning_effort = "medium"
+    with mock_client(
+        lambda _r: response(
+            decision_payload(decision="exclude", title_quote="", extracted_fields=[])
+        )
+    ) as client:
         monkeypatch.setattr(service, "create_client", lambda _settings: client)
         result = ingest_source(settings, source_id="city")
     assert not result.failures
@@ -76,12 +90,8 @@ def test_ingest_screens_each_listed_notice_once_until_its_content_changes(
                 decision_payload(
                     decision="exclude",
                     evidence=["Stationery supply"],
-                    extracted_fields=[
-                        {
-                            "field": "title",
-                            "quote": "Stationery supply",
-                        }
-                    ],
+                    extracted_fields=[],
+                    title_quote="",
                 )
             )
         return response(decision_payload())
@@ -138,7 +148,7 @@ def test_ingest_screens_each_listed_notice_once_until_its_content_changes(
     third = ingest_source(settings, source_id="city")
 
     assert calls_after_first == 2  # one decision per notice
-    assert len(first.ingested_ids) == 2
+    assert len(first.ingested_ids) == 1 and first.filtered_out == 1 and not first.failures
     # Neither the kept notice nor the excluded notice needs a second assessment.
     assert calls_after_second == calls_after_first
     assert second.already_screened >= 2
