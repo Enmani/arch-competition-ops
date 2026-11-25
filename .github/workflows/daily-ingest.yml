@@ -67,7 +67,7 @@ jobs:
       ARCH_COMPETITION_OPS_AI_DAILY_BUDGET_USD: "5"
       ARCH_COMPETITION_OPS_AI_MONTHLY_BUDGET_USD: "100"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
