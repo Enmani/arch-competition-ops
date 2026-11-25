@@ -65,7 +65,7 @@ Storage, authentication and the API contract are specified in `docs/structures/2
 - `http/` the single HTTP client: retries for GET, per-host rate limit, size cap, charset detection, SSRF guards, optional raw-response archive under `artifacts/html`.
 - `storage/` SQLite connection, schema mirror, field-level merge upsert (`merge.py`), run history, review queue.
 - `postprocess/` source-specific maintenance tasks registered by `source_id` (ANAC, GETS), so core modules stay source-agnostic.
-- The screening module reads one notice, decides whether it offers creative design work and extracts quoted facts. The same requirement and response schema apply to Anthropic Messages, OpenAI Responses and compatible Chat Completions. Collectors handle source requests and pagination.
+- The screening module reads one notice, decides whether it offers creative design work and extracts quoted facts. The same requirement and response schema apply to Anthropic Messages, OpenAI Responses and compatible Chat Completions. Collectors handle source requests and pagination. Before any paid request, the worker checks for original text in the listing or detail. It ignores empty JSON leaves, identifiers, URLs and page navigation. A missing body is reported separately from an unsupported model claim.
 - `locking.py` OS-level lock that serializes scheduled batches; `clock.py` the single clock, overridable with `ARCH_COMPETITION_TODAY`.
 - `ingest.py`, `automation.py`, `maintenance.py`, `diagnostics.py`, `cli.py` the pipeline, batches, clean-up, health checks and command line.
 

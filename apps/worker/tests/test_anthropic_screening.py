@@ -75,7 +75,6 @@ def test_model_returns_quotes_and_worker_stores_their_sources(workspace, monkeyp
     decision["extracted_fields"] = [
         {
             "field": "title",
-            "value": "Civic School Design Competition",
             "quote": "Civic School Design Competition",
         }
     ]

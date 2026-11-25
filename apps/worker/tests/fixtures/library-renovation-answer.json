@@ -19,13 +19,11 @@
     "extracted_fields": [
       {
         "field": "title",
-        "value": "Architectural design for the renovation of North Library",
         "quote": "Architectural design for the renovation of North Library"
       },
       {
         "field": "organizer",
-        "value": "City of Lyon",
-        "quote": "Organizer: City of Lyon."
+        "quote": "City of Lyon"
       },
       {
         "field": "official_url",
@@ -34,13 +32,11 @@
       },
       {
         "field": "location_label",
-        "value": "Lyon, France",
-        "quote": "Open procedure for architectural design services to renovate the public library in Lyon, France."
+        "quote": "Lyon, France"
       },
       {
         "field": "location_city",
-        "value": "Lyon",
-        "quote": "Open procedure for architectural design services to renovate the public library in Lyon, France."
+        "quote": "Lyon"
       },
       {
         "field": "deadline_at",
@@ -54,7 +50,6 @@
       },
       {
         "field": "eligibility_summary",
-        "value": "Registered architects may apply; a licensed architect is required.",
         "quote": "Registered architects may apply; a licensed architect is required."
       },
       {

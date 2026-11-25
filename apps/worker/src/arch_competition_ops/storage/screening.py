@@ -220,7 +220,7 @@ def shrink_old_screening_runs(db_path: Path, *, started_before: date) -> int:
         )
         connection.execute(
             f"UPDATE notice_backlog SET payload='' WHERE status IN ('done','failed',"
-            "'aged_out','expired_unread') AND payload!='' "
+            "'aged_out','expired_unread','no_readable_text') AND payload!='' "
             f"AND {stamp} < ?",
             (started_before.isoformat(),),
         )

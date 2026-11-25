@@ -179,6 +179,7 @@ def _apply_schema(db_path: Path) -> None:
                 ("notice_backlog", "queued_at", "TEXT"),
                 ("notice_backlog", "retry_at", "TEXT"),
                 ("notice_backlog", "transient_count", "INTEGER NOT NULL DEFAULT 0"),
+                ("notice_backlog", "empty_reads", "INTEGER NOT NULL DEFAULT 0"),
                 ("notice_backlog", "terminal_at", "TEXT"),
             ):
                 if column not in {

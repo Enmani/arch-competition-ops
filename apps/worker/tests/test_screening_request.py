@@ -120,7 +120,9 @@ def test_signed_links_in_escaped_json_are_sanitized(tmp_path):
         taxonomy_config=REPO_ROOT / "config/taxonomy.yml",
         _env_file=None,
     )
-    payload = json.dumps({"rawNotice": r'{"url":"https:\/\/city.example\/a?id=4&token=private"}'})
+    payload = json.dumps(
+        {"rawNotice": r'{"title":"Library","url":"https:\/\/city.example\/a?id=4&token=private"}'}
+    )
     snapshot, _, _ = prepare_input(
         {
             "source_url": "https://city.example/b?uri=https%3A%2F%2Fcity.example%2Fa%3Ftoken%3Dprivate"

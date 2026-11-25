@@ -38,7 +38,7 @@ def test_program_assigns_each_quote_in_fixed_source_order(quote, expected):
         reasons_zh=[],
         missing_information=[],
         evidence=[quote],
-        extracted_fields=[{"field": "title", "value": quote, "quote": quote}],
+        extracted_fields=[{"field": "title", "quote": quote}],
         notice_details=[{"category": "scope", "quote": quote}],
     )
     stored = validate_evidence(answer, fields)

@@ -202,3 +202,16 @@ def test_ai_mode_keeps_design_and_build_works_notices_by_title() -> None:
     documents = collect_boamp_documents(_source(), limit=2000, fetch_json=fetch)
 
     assert _ids(documents) == ["dnb", "works"]
+
+
+def test_missing_or_root_url_uses_the_public_notice_identifier():
+    items = [_notice("26-11"), _notice("26-12"), _notice("26-13")]
+    del items[0]["url_avis"]
+    items[1]["url_avis"] = "https://www.boamp.fr/"
+    items[2].update(url_avis=None, idweb=None, id=None)
+    fetch, _ = _pages(items)
+    documents = collect_boamp_documents(_source(), fetch_json=fetch)
+    assert [d.source_url for d in documents] == [
+        "https://www.boamp.fr/pages/avis/?q=idweb:26-11",
+        "https://www.boamp.fr/pages/avis/?q=idweb:26-12",
+    ]

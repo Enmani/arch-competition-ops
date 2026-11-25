@@ -34,5 +34,5 @@ def load_screening_instructions(settings: Settings) -> str:
 def answer_format(settings: Settings) -> tuple[str, dict]:
     contract = render_contract(load_taxonomy(settings))
     schema = ScreeningAnswer.model_json_schema()
-    schema["$defs"]["QuotedFact"]["description"] = contract
+    schema["properties"]["extracted_fields"]["description"] = contract
     return f"{load_screening_instructions(settings)}\n\n{contract}", schema

@@ -7,7 +7,7 @@ import re
 import threading
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import nullcontext
+from contextlib import ExitStack, nullcontext
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -38,6 +38,7 @@ from arch_competition_ops.screening.providers import (
     read_notice,
     screening_model,
 )
+from arch_competition_ops.screening.readability import NoReadableText
 from arch_competition_ops.settings import Settings
 from arch_competition_ops.storage.screening import (
     ScreeningBudgetExceeded,
@@ -315,7 +316,8 @@ def screen_competitions(
             return result
         if not rows:
             return result
-        with nullcontext(client) if client is not None else create_client(settings) as api:
+        with ExitStack() as clients:
+            api = client
             for row in rows:
                 result.attempted += 1
                 try:
@@ -338,6 +340,8 @@ def screen_competitions(
                             request_id = cached["id"]
                             result.cached += 1
                         else:
+                            if api is None:
+                                api = clients.enter_context(create_client(settings))
                             decision, cost, request_id = _request_one(
                                 api,
                                 settings,
@@ -366,6 +370,15 @@ def screen_competitions(
                             "title": row["title"],
                             "cached": bool(cached and not force),
                             **decision.model_dump(),
+                        }
+                    )
+                except NoReadableText as exc:
+                    result.results.append(
+                        {
+                            "competition_id": row["id"],
+                            "outcome": str(exc),
+                            "source_id": row.get("source_id"),
+                            "url_class": exc.url_class,
                         }
                     )
                 except HttpError as exc:

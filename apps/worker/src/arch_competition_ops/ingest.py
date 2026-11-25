@@ -44,6 +44,7 @@ from arch_competition_ops.screening.extraction import NoticeValidationError
 from arch_competition_ops.screening.fingerprints import (
     screening_criteria_hash,
 )
+from arch_competition_ops.screening.readability import NoReadableText
 from arch_competition_ops.screening.service import DocumentAssessment, assess_documents
 from arch_competition_ops.settings import Settings
 from arch_competition_ops.storage import (
@@ -260,6 +261,8 @@ def ingest_source(
             end=end,
             age_days=settings.unread_max_age_days,
         )
+        if pages.missing_notice_url:
+            stats += f" missing_notice_url={pages.missing_notice_url}"
         if pages.unfinished or len(discovered) >= collection_limit:
             stats += (
                 f" discovery_limit source={source_id} pages={pages.used}"
@@ -351,6 +354,19 @@ def ingest_source(
                     cache_path=settings.resolve_path(settings.geocode_cache),
                     geocoder=geocoder,
                 )
+            except NoReadableText as exc:
+                status = backlog.record_unreadable(
+                    db_path,
+                    pending[position].row_id,
+                    exc.url_class,
+                    settings.ai_notice_max_attempts,
+                )
+                result.notes.append(
+                    f"no_readable_text[{source_id}/{exc.url_class}] "
+                    f"{log_url(document.source_url)} {status}"
+                )
+                result.deferred += int(status == "queued")
+                continue
             except (ScreeningBudgetExceeded, ScreeningPaused) as exc:
                 # Budget deferral is not a content rejection. Keep later sources collectable.
                 result.deferred += len(documents) - position

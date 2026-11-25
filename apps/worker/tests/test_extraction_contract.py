@@ -105,7 +105,10 @@ def test_all_fact_names_share_the_validator_and_wire_contract(ai_workspace, repl
     )
     request = json.loads(snapshot)["request"]
     assert contract in request["instructions"]
-    assert contract in request["text"]["format"]["schema"]["$defs"]["QuotedFact"]["description"]
+    assert (
+        contract
+        in request["text"]["format"]["schema"]["properties"]["extracted_fields"]["description"]
+    )
     assert "source_tiers" not in contract and "official_procurement" not in contract
     assert contract not in fields["notice_text"]
     for name, spec in FIELDS.items():

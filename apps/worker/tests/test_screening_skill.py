@@ -35,7 +35,7 @@ def test_packaged_skill_works_without_the_repository(tmp_path, monkeypatch):
     )
     instructions, schema = answer_format(settings)
     assert instructions.startswith("Packaged skill")
-    assert "packaged_label" in schema["$defs"]["QuotedFact"]["description"]
+    assert "packaged_label" in schema["properties"]["extracted_fields"]["description"]
     settings.taxonomy_config = Path("custom-missing-taxonomy.yml")
     with pytest.raises(FileNotFoundError, match="custom-missing-taxonomy"):
         answer_format(settings)

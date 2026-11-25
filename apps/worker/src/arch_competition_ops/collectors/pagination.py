@@ -19,6 +19,7 @@ class Pages:
     repeated: bool = False
     seen_pages: set[bytes] = field(default_factory=set)
     unfinished: int = 0
+    missing_notice_url: int = 0
     used: int = 0
     rows: int = 0
     position: int = 0

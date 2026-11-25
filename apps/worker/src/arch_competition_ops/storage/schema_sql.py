@@ -124,6 +124,7 @@ CREATE TABLE IF NOT EXISTS notice_backlog (
     queued_at TEXT,
     retry_at TEXT,
     transient_count INTEGER NOT NULL DEFAULT 0,
+    empty_reads INTEGER NOT NULL DEFAULT 0,
     terminal_at TEXT,
     PRIMARY KEY(source_id, content_hash)
 );

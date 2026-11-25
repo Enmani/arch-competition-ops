@@ -6,6 +6,7 @@ import json
 import logging
 from datetime import date, timedelta
 from typing import Any
+from urllib.parse import quote, urlsplit
 
 from arch_competition_ops import clock
 from arch_competition_ops.collectors.base import CollectedSourceDocument
@@ -163,7 +164,24 @@ def _build_document(
     estimated_value_eur, estimated_value_text = _pick_estimated_value(nested_payload or {})
     # The search API names the public notice page ``url_avis``; never fall back to the
     # site root, which is not a notice and collides across every BOAMP record.
-    notice_url = item.get("url_avis") or item.get("url")
+    notice_url = None
+    for candidate in (item.get("url_avis"), item.get("url")):
+        if isinstance(candidate, str):
+            parts = urlsplit(candidate)
+            if (
+                parts.scheme in {"http", "https"}
+                and parts.hostname
+                and (parts.path not in {"", "/"} or parts.query or parts.fragment)
+            ):
+                notice_url = candidate
+                break
+    if not notice_url:
+        if not (identifier := item.get("idweb")):
+            if window := current_pages():
+                window.missing_notice_url += 1
+            logger.warning("BOAMP: missing_notice_url")
+            return None
+        notice_url = "https://www.boamp.fr/pages/avis/?q=idweb:" + quote(str(identifier), safe="")
     payload = json.dumps(
         {
             "officialNoticeId": item.get("id") or item.get("idweb"),
@@ -181,7 +199,7 @@ def _build_document(
         },
         ensure_ascii=False,
     )
-    return CollectedSourceDocument(source_url=str(notice_url or source.base_url), payload=payload)
+    return CollectedSourceDocument(source_url=notice_url, payload=payload)
 
 
 def collect_boamp_documents(

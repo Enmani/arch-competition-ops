@@ -44,17 +44,14 @@ def decision_payload(**overrides):
         "extracted_fields": [
             {
                 "field": "title",
-                "value": "Civic School Design Competition",
                 "quote": "Civic School Design Competition",
             },
             {
                 "field": "location_label",
-                "value": "Via Roma 10, Milano",
-                "quote": "Project site: Via Roma 10, Milano.",
+                "quote": "Via Roma 10, Milano",
             },
             {
                 "field": "prize_summary",
-                "value": "Prize fund: EUR 50,000.",
                 "quote": "Prize fund: EUR 50,000.",
             },
             {

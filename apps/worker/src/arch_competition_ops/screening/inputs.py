@@ -14,6 +14,7 @@ from arch_competition_ops.screening.models import ScreeningAnswer, canonical_jso
 from arch_competition_ops.screening.notice_urls import URL, PageLinks, public_url
 from arch_competition_ops.screening.preferences import answer_format
 from arch_competition_ops.screening.providers import provider_identity, structured_request
+from arch_competition_ops.screening.readability import NoReadableText, has_notice_text
 from arch_competition_ops.screening.source_evidence import notice_evidence, notice_title
 from arch_competition_ops.settings import Settings
 
@@ -45,23 +46,9 @@ def enrich_notice_payload(
             max_bytes=2 * 1024 * 1024,
         )
     except HttpError as exc:
-        raw = envelope.get("rawNotice", envelope)
-        if isinstance(raw, dict):
-            has_listing = any(
-                raw.get(key)
-                for key in (
-                    "title",
-                    "heading",
-                    "description",
-                    "name",
-                    "summary",
-                    "objet",
-                    "description-proc",
-                )
-            ) or bool(envelope.get("title"))
-        else:
-            has_listing = bool(isinstance(raw, str) and raw.strip())
-        if not has_listing and (pending or exc.status_code in {403, 429}):
+        if (pending or exc.status_code in {403, 429}) and not (
+            notice_title(payload) or has_notice_text(notice_evidence(payload), source_url)
+        ):
             raise
         if limitations is not None:
             limitations.append(
@@ -71,8 +58,6 @@ def enrich_notice_payload(
         return payload
     media = response.headers.get("Content-Type", response.headers.get("content-type", ""))
     if "pdf" in media.lower() or not response.text.strip():
-        if pending and not envelope.get("rawNotice"):
-            raise HttpError("No readable source text", url=source_url)
         return payload
     if pending and urlsplit(source_url).hostname == "contrataciondelestado.es":
         from arch_competition_ops.collectors.pcsp import _detail_belongs_to, _extract_detail_fields
@@ -112,8 +97,11 @@ def prepare_input(
     if source_payload is None:
         limitations.append("No source notice text supplied")
     version = notice_content_hash(source_payload or "", source_url)
-    title = notice_title(source_payload or "") or row.get("title") or ""
+    notice_heading = notice_title(source_payload or "")
+    title = notice_heading or row.get("title") or ""
     source_payload = notice_evidence(source_payload or "")
+    if not has_notice_text(source_payload, source_url) and not notice_heading:
+        raise NoReadableText(source_url)
     text = re.sub(r"<(script|style)\b[^>]*>.*?</\1>", " ", source_payload or "", flags=re.I | re.S)
     text = strip_html(text) or ""
     links = PageLinks(source_url)

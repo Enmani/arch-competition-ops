@@ -79,7 +79,6 @@ def test_ingest_screens_each_listed_notice_once_until_its_content_changes(
                     extracted_fields=[
                         {
                             "field": "title",
-                            "value": "Stationery supply",
                             "quote": "Stationery supply",
                         }
                     ],

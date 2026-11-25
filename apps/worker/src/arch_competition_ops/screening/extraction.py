@@ -15,10 +15,7 @@ from arch_competition_ops.models import CompetitionRecord, SourceDefinition
 from arch_competition_ops.normalizers.dates import parse_date, slash_order_for_jurisdiction
 from arch_competition_ops.normalizers.money import MONEY_NUMBER_PATTERN, parse_money_number
 from arch_competition_ops.screening.field_contract import FIELDS
-from arch_competition_ops.screening.models import (
-    ScreeningDecision,
-    source_quote,
-)
+from arch_competition_ops.screening.models import ScreeningDecision
 from arch_competition_ops.screening.notice_urls import stored_link
 from arch_competition_ops.settings import Settings
 
@@ -120,9 +117,7 @@ def extract_record(
             )
             valid = bool(converted) and None not in converted
         elif spec.kind == "text":
-            original_value = source_quote(value, quote)
-            valid = original_value is not None
-            converted = original_value
+            converted = quote
         else:
             raise AssertionError(f"Unhandled field kind {spec.kind}")
         if not valid:

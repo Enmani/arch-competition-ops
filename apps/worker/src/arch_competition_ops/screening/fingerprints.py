@@ -4,9 +4,10 @@ import hashlib
 import json
 
 from arch_competition_ops.screening.models import ScreeningAnswer, canonical_json
-from arch_competition_ops.screening.notice_urls import URL, PageLinks, public_url
+from arch_competition_ops.screening.notice_urls import URL, public_url
 from arch_competition_ops.screening.preferences import answer_format
 from arch_competition_ops.screening.providers import provider_identity
+from arch_competition_ops.screening.readability import VisibleNotice
 from arch_competition_ops.screening.source_evidence import notice_evidence, notice_title
 from arch_competition_ops.settings import Settings
 
@@ -27,63 +28,6 @@ def _stable_object(pairs):
     return {k: v for k, v in pairs if k.casefold().replace("_", "") not in volatile}
 
 
-class _VisibleNotice(PageLinks):
-    """Collect text and links from the same visible portion of the document."""
-
-    def __init__(self, url):
-        super().__init__(url)
-        self.text = []
-        self.skipped = []
-        self.content_depth = 0
-
-    def handle_starttag(self, tag, attrs):
-        attributes = dict(attrs)
-        if tag in {
-            "area",
-            "base",
-            "br",
-            "col",
-            "embed",
-            "hr",
-            "img",
-            "input",
-            "link",
-            "meta",
-            "param",
-            "source",
-            "track",
-            "wbr",
-        }:
-            return
-        if self.skipped:
-            self.skipped.append(tag)
-            return
-        if (
-            tag in {"head", "script", "style", "nav", "template"}
-            or (tag == "footer" and not self.content_depth)
-            or "hidden" in attributes
-            or attributes.get("aria-hidden") == "true"
-            or attributes.get("role") == "navigation"
-        ):
-            self.skipped.append(tag)
-            return
-        if tag in {"article", "main"}:
-            self.content_depth += 1
-        super().handle_starttag(tag, attrs)
-
-    def handle_endtag(self, tag):
-        if self.skipped:
-            if tag in self.skipped:
-                while self.skipped.pop() != tag:
-                    pass
-        elif tag in {"article", "main"}:
-            self.content_depth = max(0, self.content_depth - 1)
-
-    def handle_data(self, data):
-        if not self.skipped:
-            self.text.append(data)
-
-
 def notice_content_hash(payload: str, url: str) -> str:
     material = notice_evidence(payload)
     # Structured APIs can change property order or page-generation metadata on every poll.
@@ -95,7 +39,7 @@ def notice_content_hash(payload: str, url: str) -> str:
             pass
         else:
             material = canonical_json(data) + material[end:]
-    page = _VisibleNotice(url)
+    page = VisibleNotice(url)
     page.feed(material)
     page.close()
     text = URL.sub(lambda m: public_url(m[0]), " ".join(page.text))

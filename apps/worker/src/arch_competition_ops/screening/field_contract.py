@@ -14,7 +14,8 @@ class Fact:
 
 
 KIND_FORMAT = {
-    "text": "Copy a contiguous passage from the quote in its original language.",
+    "text": "Return only the exact passage that is the field value, in its original language. "
+    "Do not translate titles; display translations are generated separately.",
     "url": "Copy one exact public URL supplied in notice_links.",
     "date": (
         "Use the buyer's local calendar date as YYYY-MM-DD; cite the date with its "
@@ -123,8 +124,9 @@ def render_contract(taxonomy: Taxonomy) -> str:
     lines = [
         "Extracted facts",
         (
-            "Consider every field below. Include each supported fact once with its value "
-            "and an exact quote. Omit unsupported facts. Output labels classify evidence; "
+            "Consider every field below. Include each supported fact once. For text, give its "
+            "field and exact quote only. For all other kinds, give field, value and exact quote. "
+            "Omit unsupported facts. Output labels classify evidence; "
             "they do not decide eligibility."
         ),
         *(f"{kind}: {rule}" for kind, rule in KIND_FORMAT.items()),

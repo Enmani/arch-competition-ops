@@ -6,7 +6,7 @@ from typing import ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from arch_competition_ops.screening.field_contract import FactName
+from arch_competition_ops.screening.field_contract import FIELDS, FactName
 
 
 class _StrictModel(BaseModel):
@@ -16,8 +16,13 @@ class _StrictModel(BaseModel):
 DetailCategory = Literal["timeline", "commercial", "eligibility", "scope", "submission"]
 
 
-class QuotedFact(_StrictModel):
-    field: FactName
+class TextFact(_StrictModel):
+    field: Literal[*[name for name, spec in FIELDS.items() if spec.kind == "text"]]
+    quote: str
+
+
+class NormalizedFact(_StrictModel):
+    field: Literal[*[name for name, spec in FIELDS.items() if spec.kind != "text"]]
     value: str
     quote: str
 
@@ -38,9 +43,9 @@ class _Judgment(_StrictModel):
 
 
 class ScreeningAnswer(_Judgment):
-    schema_version: ClassVar[int] = 3
+    schema_version: ClassVar[int] = 4
     evidence: list[str]
-    extracted_fields: list[QuotedFact]
+    extracted_fields: list[TextFact | NormalizedFact]
     notice_details: list[QuotedDetail]
 
 
@@ -96,7 +101,7 @@ def validate_evidence(
             facts.append(
                 ExtractedField(
                     field=fact.field,
-                    value=fact.value,
+                    value=match.quote if isinstance(fact, TextFact) else fact.value,
                     quote=match.quote,
                     evidence_field=match.field,
                 )

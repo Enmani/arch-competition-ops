@@ -161,7 +161,7 @@ def enqueue(
                 cx.execute(
                     "UPDATE notice_backlog "
                     "SET status='queued',attempts=0,last_error=NULL,retry_at=NULL,"
-                    "terminal_at=NULL,transient_count=0,payload=?,queued_at=? "
+                    "terminal_at=NULL,transient_count=0,empty_reads=0,payload=?,queued_at=? "
                     "WHERE source_id=? AND content_hash=? AND status='done' "
                     "AND criteria_hash IS NOT ?",
                     (document.payload, now.isoformat(), source_id, version, criteria),
@@ -218,7 +218,7 @@ def queue_stats(cx, source_id, *, new=0, lengths=(), unfinished=1):
     )
     waiting, retry = cx.execute(
         "SELECT count(*),min(retry_at) FROM notice_backlog WHERE source_id=? "
-        "AND status='queued' AND retry_at>?",
+        "AND status='queued' AND last_error NOT LIKE 'no_readable_text/%' AND retry_at>?",
         (source_id, clock.now_utc().isoformat()),
     ).fetchone()
     if waiting:
@@ -236,6 +236,12 @@ def queue_stats(cx, source_id, *, new=0, lengths=(), unfinished=1):
         (source_id,),
     ):
         stats += f" {state}={total}"
+    for state, error, total in cx.execute(
+        "SELECT status,last_error,count(*) FROM notice_backlog WHERE source_id=? "
+        "AND last_error LIKE 'no_readable_text/%' GROUP BY status,last_error",
+        (source_id,),
+    ):
+        stats += f" {error}[{source_id}/{state}]={total}"
     failures = cx.execute(
         "SELECT last_error,count(*) FROM notice_backlog WHERE source_id=? AND status='failed' "
         "GROUP BY last_error ORDER BY last_error",
@@ -261,13 +267,39 @@ def queued(db: Path, source_id: str, limit: int, row_ids: list[int] | None = Non
         return [
             QueuedNotice(row[0], CollectedSourceDocument(*row[1:]))
             for row in cx.execute(
-                "SELECT rowid,source_url,payload FROM notice_backlog "
+                "SELECT rowid,source_url,CASE WHEN empty_reads>0 THEN "
+                "json_object('pendingDetailUrl',coalesce(json_extract("
+                "CASE WHEN json_valid(payload) "
+                "THEN payload END,'$.pendingDetailUrl'),source_url)) ELSE payload END "
+                "FROM notice_backlog "
                 "WHERE source_id=? AND status='queued' "
                 "AND (retry_at IS NULL OR retry_at<=?) "
                 f"{selected}ORDER BY first_seen,rowid LIMIT ?",
                 [*parameters, limit],
             )
         ]
+
+
+def record_unreadable(db, row_id, url_class, limit):
+    now = clock.now_utc()
+    with write_transaction(db) as cx:
+        row = cx.execute(
+            "UPDATE notice_backlog SET empty_reads=empty_reads+1,transient_count=0,last_error=?,"
+            "status=CASE WHEN empty_reads+1>=? THEN 'no_readable_text' ELSE 'queued' END,"
+            "terminal_at=CASE WHEN empty_reads+1>=? THEN ? END,"
+            "retry_at=CASE WHEN empty_reads+1<? THEN ? END "
+            "WHERE rowid=? AND status='queued' RETURNING status",
+            (
+                f"no_readable_text/{url_class}",
+                limit,
+                limit,
+                now.isoformat(),
+                limit,
+                (now + timedelta(days=1)).isoformat(),
+                row_id,
+            ),
+        ).fetchone()
+        return row[0] if row else None
 
 
 def record_failure(db, row_id, error, *, criteria, limit):
@@ -303,8 +335,10 @@ def terminal_notices(db, source_id):
 
     with connect(db) as cx:
         for row in cx.execute(
-            "SELECT status,last_error,attempts,source_url,content_hash FROM notice_backlog "
-            "WHERE source_id=? AND status IN ('failed','aged_out','expired_unread') "
+            "SELECT status,last_error,attempts,empty_reads,source_url,content_hash "
+            "FROM notice_backlog "
+            "WHERE source_id=? AND status IN "
+            "('failed','aged_out','expired_unread','no_readable_text') "
             "ORDER BY first_seen,rowid",
             (source_id,),
         ):
@@ -314,9 +348,10 @@ def terminal_notices(db, source_id):
 def requeue_failed(db, source_id, url=None, version=None):
     with write_transaction(db) as cx:
         return cx.execute(
-            "UPDATE notice_backlog SET attempts=0,status='queued',last_error=NULL,"
+            "UPDATE notice_backlog SET empty_reads=0,attempts=0,status='queued',last_error=NULL,"
             "retry_at=NULL,transient_count=0,terminal_at=NULL,queued_at=? "
-            "WHERE source_id=? AND status='failed' AND (? IS NULL OR source_url=?) "
+            "WHERE source_id=? AND status IN ('failed','no_readable_text') "
+            "AND (? IS NULL OR source_url=?) "
             "AND (? IS NULL OR content_hash=?)",
             (clock.now_utc().isoformat(), source_id, url, url, version, version),
         ).rowcount
