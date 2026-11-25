@@ -1,0 +1,12 @@
+{
+  "CanadaBuys": "title: Refrigeration Training Equipment\nnoticeId: CB-61\ndeadline: 2026-11-12\nsummary: Equipment for a college laboratory.\nofficialUrl: https://buyer.example/notice/61\nprocedureType: Open\npublishedAt: 2026-10-02",
+  "Frankfurt": "title: Gestaltung der Außenanlage\nauthority: Hochbauamt\nprocedureType: Offen\ndeadline: 2026-12-08\npublishedAt: 2026-10-20\nsourceListingUrl: https://vergabe.example/list\ndetailHtml: Projekt 67-2026-00111 Planung der Außenanlage, 125000 EUR.",
+  "BOAMP": "idweb: 26-38966\nobjet: Réhabilitation du collège\ndateparution: 2026-10-18\ndatelimitereponse: 2026-12-02\nnomacheteur: Commune\ndonnees.EFORMS.ContractNotice.lots.amount: 81500\ndonnees.EFORMS.ContractNotice.lots.currency: EUR\ndonnees.EFORMS.ContractNotice.lots.amount: 90000\ndonnees.EFORMS.ContractNotice.lots.currency: EUR",
+  "ANAC": "officialNoticeId: ANAC-73\ntitle: Concorso per biblioteca\nbuyer: Comune\nprocedureType: P7_2\ndeadline: 2026-12-03\nestimatedValueEur: 190000\nsummary: Riqualificazione\nsourceApiUrl: https://anac.example/73",
+  "ggzy": "title: 图书馆设计公告\nnoticeId: G-074\ndeadline: 2026-12-04\nbusinessType: 设计\ndetailUrl: https://ggzy.example/n/74\nrawNoticeHtml: 项目编号 G-074 总额 200000 元。",
+  "World Bank": "id: WB-75\nnotice_lang_name: Português\nsubmission_deadline_date: 2026-12-05\nbid_estimate_amount: 0\nproject_name: Biblioteca\nnotice_text: Consultoria de arquitetura\nbid_reference_no: BR/75",
+  "PCSP": "title: Concurso de diseño\nbuyer: Ayuntamiento\nnoticeId: PC-76\ndeadline: 2026-12-06\nsummary: Los \"Servicios de redacción\" / diseño\ncpv: 71240000\ncpv: 71400000\nestimatedValueEur: 190500\nofficialUrl: https://pcsp.example/76",
+  "SIMAP": "listing.projectNumber: CH-77\nlisting.title.de: Schulhaus\nlisting.title.fr: École\nlisting.corrected: false\nlisting.lots.id: 2\nlisting.lots.id: 1\ndetail.project-info.deadlines.date: 2026-12-07\ndetail.base.amount: 250000\ndetail.hasProjectDocuments: true",
+  "TED": "notice-identifier: TED-78\nnotice-title.eng: Civic design\nnotice-title.fra: Conception\ndeadline-receipt-tender-date-lot: 2026-12-08\nestimated-value-lot: 220000\nlinks.html.ENG: https://ted.example/78",
+  "Doffin": "title: Skoleprosjektering\nbuyer: Kommune\nnoticeId: DO-79\ndeadline: 2026-12-09\nestimatedValueEur: 97500\nestimatedValueText: EUR 97500\nsummary: Prosjektering av skole\ncpv: 71240000\nprocedureType: Open\npublishedAt: 2026-10-19"
+}

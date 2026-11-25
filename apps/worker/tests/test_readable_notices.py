@@ -19,6 +19,11 @@ from arch_competition_ops.storage.connection import connect
         ("https://www.boamp.fr/", "BOAMP Accueil Rechercher un avis Mon compte", "site_root"),
         (
             "https://www.boamp.fr/",
+            'Accueil | Pages — boamp.fr {{ bo_host = "https://compte.boamp.fr" }} Menu Aide : Contact',
+            "site_root",
+        ),
+        (
+            "https://www.boamp.fr/",
             '<div role="navigation"><a href="/a">Avis</a></div>',
             "site_root",
         ),
@@ -140,7 +145,12 @@ def test_refetched_notice_can_be_read_and_saved(ai_workspace, monkeypatch):  # n
 
 def test_structural_check_keeps_short_text_for_unfamiliar_notices():
     from arch_competition_ops.screening.readability import has_notice_text
+    from arch_competition_ops.screening.source_evidence import notice_text
 
-    assert has_notice_text("<nav>Main menu</nav><article>设计</article>", "https://site.example/")
-    assert has_notice_text('{"unfamiliar": ["Biblioteca"]}', "https://www.boamp.fr/")
-    assert not has_notice_text("<nav>Accueil</nav>", "https://site.example/notice/3")
+    def check(payload, url):
+        return has_notice_text(notice_text(payload, url), url)
+
+    assert check("<nav>Main menu</nav><article>设计</article>", "https://site.example/")
+    assert check('{"unfamiliar": ["Biblioteca"]}', "https://www.boamp.fr/")
+    assert check("Architecture du collège", "https://www.boamp.fr/")
+    assert not check("<nav>Accueil</nav>", "https://site.example/notice/3")

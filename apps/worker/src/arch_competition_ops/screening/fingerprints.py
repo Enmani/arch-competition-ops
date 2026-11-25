@@ -28,8 +28,8 @@ def _stable_object(pairs):
     return {k: v for k, v in pairs if k.casefold().replace("_", "") not in volatile}
 
 
-def notice_content_hash(payload: str, url: str) -> str:
-    material = notice_evidence(payload)
+def notice_content_hash(payload: str, url: str, *, collected=True) -> str:
+    material = notice_evidence(payload, collected=collected)
     # Structured APIs can change property order or page-generation metadata on every poll.
     if material.lstrip().startswith(("{", "[")):
         material = material.lstrip()

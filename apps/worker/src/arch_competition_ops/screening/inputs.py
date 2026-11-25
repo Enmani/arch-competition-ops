@@ -9,12 +9,11 @@ from urllib.parse import urlsplit
 from arch_competition_ops.http import HttpError, get_default_client
 from arch_competition_ops.screening.fingerprints import notice_content_hash
 from arch_competition_ops.screening.models import ScreeningAnswer, canonical_json
-from arch_competition_ops.screening.notice_urls import URL, PageLinks, public_url
+from arch_competition_ops.screening.notice_urls import URL, public_url
 from arch_competition_ops.screening.preferences import answer_format
 from arch_competition_ops.screening.providers import provider_identity, structured_request
 from arch_competition_ops.screening.readability import NoReadableText, has_notice_text
 from arch_competition_ops.screening.source_evidence import (
-    notice_evidence,
     notice_text,
     notice_title,
 )
@@ -49,7 +48,8 @@ def enrich_notice_payload(
         )
     except HttpError as exc:
         if (pending or exc.status_code in {403, 429}) and not (
-            notice_title(payload) or has_notice_text(notice_evidence(payload), source_url)
+            notice_title(payload)
+            or has_notice_text(notice_text(payload, source_url, collected=True), source_url)
         ):
             raise
         if limitations is not None:
@@ -77,7 +77,9 @@ def prepare_input(
     source_payload: str | None = None,
     fetch_source: bool = True,
     original_links: dict[str, set[str]] | None = None,
+    collected: bool = False,
 ) -> tuple[str, dict[str, str], list[str]]:
+    """A collector envelope holds local annotations around its source material."""
     limitations: list[str] = []
     source_url = row["source_url"]
     if source_payload is None and fetch_source:
@@ -98,17 +100,12 @@ def prepare_input(
             limitations.append("Source page could not be fetched; structured record only")
     if source_payload is None:
         limitations.append("No source notice text supplied")
-    version = notice_content_hash(source_payload or "", source_url)
+    version = notice_content_hash(source_payload or "", source_url, collected=collected)
     notice_heading = notice_title(source_payload or "")
     title = notice_heading or row.get("title") or ""
-    text = notice_text(source_payload or "")
-    source_payload = notice_evidence(source_payload or "")
-    if not has_notice_text(source_payload, source_url) and not notice_heading:
-        raise NoReadableText(source_url)
-    links = PageLinks(source_url)
-    links.feed(source_payload or "")
-    links.links.extend(URL.findall(text))
-    candidates = [source_url, *links.links]
+    links = []
+    text = notice_text(source_payload or "", source_url, links=links, collected=collected)
+    candidates = [source_url, *links, *URL.findall(text)]
     if original_links is not None:
         for original in candidates:
             if clean_url := public_url(original):
@@ -129,6 +126,8 @@ def prepare_input(
         if len(clean) > remaining:
             limitations.append("Input was truncated to the configured character limit")
         remaining -= len(fields[name])
+    if not has_notice_text(fields["notice_text"], source_url) and not notice_heading:
+        raise NoReadableText(source_url)
     instructions, schema = answer_format(settings)
     request = structured_request(
         settings.ai_provider,

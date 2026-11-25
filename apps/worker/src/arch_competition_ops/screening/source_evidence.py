@@ -4,8 +4,8 @@ import json
 import re
 from urllib.parse import urlsplit
 
-from arch_competition_ops.normalizers.text import strip_html
 from arch_competition_ops.screening.notice_urls import stored_link
+from arch_competition_ops.screening.readability import VisibleNotice
 
 # Model input needs the source number's spelling, including decimals beyond binary64 precision.
 _TEXT_DECODER = json.JSONDecoder(parse_int=str, parse_float=str)
@@ -30,36 +30,68 @@ def notice_title(payload: str) -> str:
     return ""
 
 
-def _parts(payload: str, decoder: json.JSONDecoder) -> list:
+# These keys are local annotations in the identifiable legacy *adapter* format.
+# A raw upstream object, including one inside rawNotice, owns its keys and values.
+_LOCAL_FIELDS = {
+    "opportunityType",
+    "evidenceLevel",
+    "evidenceNote",
+    "competitionTypes",
+    "projectTypes",
+    "buildingCategories",
+    "officialSectors",
+    "builtAssetTypes",
+    "designScopes",
+    "projectModes",
+}
+
+
+def _archive_source(value):
+    if (
+        isinstance(value, dict)
+        and {"opportunityType", "evidenceLevel", "evidenceNote"} <= value.keys()
+    ):
+        return {k: v for k, v in value.items() if k not in _LOCAL_FIELDS}
+    return value
+
+
+def _source_parts(value, collected):
+    if not isinstance(value, dict):
+        return [value]
+    raw_keys = {"rawNotice", "rawNoticeHtml"}
+    # A flat archived source may itself have a rawNoticeHtml field with sibling source facts.
+    # Current collectors identify their envelope explicitly. Raw replay wrappers and deferred
+    # detail jobs can also be recognised by their reserved wrapper keys alone.
+    if "pendingDetailUrl" in value or (
+        raw_keys.intersection(value)
+        and (collected or value.keys() <= raw_keys | {"summary", "extra"})
+    ):
+        return [v for k, v in value.items() if k in raw_keys and v is not None]
+    if collected and "opportunityType" in value and "evidenceNote" not in value:
+        # Pre-archive adapter summaries and inferred labels have no original-source provenance.
+        return [{k: v for k, v in value.items() if k not in _LOCAL_FIELDS and k != "summary"}]
+    return [_archive_source(value)]
+
+
+def _parts(payload, decoder, *, collected):
     stripped = payload.lstrip()
-    if not stripped.startswith("{"):
+    if not stripped.startswith(("{", "[")):
         return [payload]
     try:
-        notice, end = decoder.raw_decode(stripped)
+        value, end = decoder.raw_decode(stripped)
     except ValueError:
-        return []
-    parts = []
-    for key in ("rawNotice", "rawNoticeHtml"):
-        value = notice.get(key)
-        if isinstance(value, str):
-            parts.append(value)
-        elif key == "rawNotice" and isinstance(value, dict | list):
-            parts.append(value)
-    if not parts:
-        parts.append(
-            {key: notice[key] for key in ("title", "category") if isinstance(notice.get(key), str)}
-        )
-    tail = stripped[end:].lstrip("\n")
-    detail = tail.removeprefix("Source notice detail:\n")
-    if detail != tail:
-        parts.append(detail)
+        return [payload]  # Archived input can end in the middle of a JSON value.
+    parts = _source_parts(value, collected)
+    tail = stripped[end:].strip().removeprefix("Source notice detail:").lstrip()
+    if tail:
+        parts.append(tail)
     return parts
 
 
-def notice_evidence(payload: str) -> str:
-    parts = _parts(payload, json.JSONDecoder())
+def notice_evidence(payload: str, *, collected=True) -> str:
     return "\n".join(
-        part if isinstance(part, str) else json.dumps(part, ensure_ascii=False) for part in parts
+        part if isinstance(part, str) else json.dumps(part, ensure_ascii=False)
+        for part in _parts(payload, json.JSONDecoder(), collected=collected)
     ).replace(r"\/", "/")
 
 
@@ -72,34 +104,49 @@ def _decoded(value):
     return value
 
 
-def _lines(value, path=""):
+_HTML = re.compile(r"<(?:[A-Za-z][\w:.-]*(?:\s[^<>]*)?/?>|!--|!DOCTYPE\b)", re.I)
+
+
+def _lines(value, path, url, links):
     value = _decoded(value)
     if isinstance(value, dict):
-        for key in sorted(value):
-            yield from _lines(value[key], f"{path}.{key}" if path else key)
+        for key, item in value.items():
+            yield from _lines(item, f"{path}.{key}" if path else key, url, links)
     elif isinstance(value, list):
         for item in value:
-            yield from _lines(item, path)
-    elif value is not None and value != "":
+            yield from _lines(item, path, url, links)
+    elif value is not None:
         text = json.dumps(value) if isinstance(value, bool) else str(value)
-        yield f"{path}: {text}" if path else text
+        if not text.lstrip().startswith(("{", "[")) and _HTML.search(text):
+            page = VisibleNotice(url, content_only=True)
+            page.feed(text)
+            page.close()
+            text = " ".join(" ".join(page.text).split())
+            if links is not None:
+                links.extend(page.links)
+        if text.strip():
+            yield f"{path}: {text}" if path else text
 
 
-def _plain_text(part):
-    visible = re.sub(r"<(script|style)\b[^>]*>.*?</\1>", " ", part, flags=re.I | re.S)
-    return strip_html(visible.replace(r"\/", "/")) or ""
-
-
-def notice_text(payload: str) -> str:
-    parts = [_decoded(raw) for raw in _parts(payload, _TEXT_DECODER)]
-    if all(isinstance(part, str) for part in parts):
-        return _plain_text("\n".join(parts))
+def notice_text(payload: str, url="", *, links=None, collected=False) -> str:
+    parts = _parts(payload, _TEXT_DECODER, collected=collected)
     lines = []
     for part in parts:
-        if isinstance(part, dict | list):
-            lines.extend(_lines(part))
-        elif text := _plain_text(part):
-            lines.append(text)
+        if isinstance(part, str):
+            # A saved model input can itself contain a JSON object plus appended detail text.
+            if part.lstrip().startswith(("{", "[")):
+                try:
+                    data, end = _TEXT_DECODER.raw_decode(part.lstrip())
+                except ValueError:
+                    pass
+                else:
+                    lines.extend(
+                        _lines(data if collected else _archive_source(data), "", url, links)
+                    )
+                    part = (
+                        part.lstrip()[end:].strip().removeprefix("Source notice detail:").lstrip()
+                    )
+        lines.extend(_lines(part, "", url, links))
     return "\n".join(lines)
 
 

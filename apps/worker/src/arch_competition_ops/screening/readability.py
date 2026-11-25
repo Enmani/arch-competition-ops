@@ -1,6 +1,5 @@
 """Distinguish source text from empty data structures and site navigation before billing."""
 
-import json
 import re
 from urllib.parse import urlsplit
 
@@ -87,45 +86,37 @@ class VisibleNotice(PageLinks):
             self.text.append(data)
 
 
-def has_notice_text(material, url):
-    """Ignore JSON keys, identifiers and links. Any remaining human text suffices."""
-
+def has_notice_text(text, url):
+    """Decide on the rendered values without changing the material the model will read."""
     boamp_index = url_class(url) == "site_root" and urlsplit(url).hostname in {
         "boamp.fr",
         "www.boamp.fr",
     }
-
-    def readable(value, *, page_text=False):
-        if isinstance(value, dict):
-            return any(
-                readable(v)
-                for k, v in value.items()
-                if not re.search(r"^id(?:$|[A-Z_])|(?:Id|ID|_id)$", k)
-            )
-        if isinstance(value, list):
-            return any(readable(v) for v in value)
-        if not isinstance(value, str) or not (value := value.strip()):
-            return False
-        if value.startswith(("{", "[")):
-            try:
-                data, end = json.JSONDecoder().raw_decode(value)
-            except ValueError:
-                pass
-            else:
-                return readable(data) or readable(value[end:], page_text=page_text)
-        # Historic BOAMP URLs can point at its index. Even flattened page text there belongs
-        # to the index; structured listing fields can still identify a real notice.
-        if page_text and boamp_index:
-            return False
-        if "<" in value:
-            page = VisibleNotice(url, content_only=True)
-            page.feed(value)
-            page.close()
-            value = " ".join(page.text)
-        if not page_text and re.fullmatch(r"(?=.*[0-9])[A-Z0-9_.-]+", value):
-            return False
-        if not page_text and re.fullmatch(r"\d{4}-\d\d-\d\d(?:[T ][\d:.+Z-]+)?", value):
-            return False
-        return any(c.isalpha() for c in URL.sub("", value))
-
-    return readable(material, page_text=True)
+    host = urlsplit(url).hostname
+    for line in text.splitlines():
+        # Archived ANAC detail pages can consist solely of the platform banner after HTML stripping.
+        if host == "pubblicitalegale.anticorruzione.it" and line.strip().removesuffix(
+            "-->"
+        ).strip() == ("ANAC | Piattaforma di Pubblicità a Valore Legale"):
+            continue
+        path, separator, value = line.partition(": ")
+        if not separator or any(c.isspace() for c in path):
+            # These historical index pages had already lost their HTML navigation elements.
+            if boamp_index and (
+                line.startswith("BOAMP Accueil ")
+                or re.match(r"^[^{}]*boamp\.fr\s+\{\{\s*bo_host\s*=", line, re.I)
+            ):
+                continue
+            value = line
+        else:
+            leaf = path.rsplit(".", 1)[-1]
+            if re.search(r"^id(?:$|[A-Z_])|(?:Id|ID|_id)$", leaf):
+                continue
+        value = URL.sub("", value).strip()
+        if value in {"true", "false"} or re.fullmatch(r"(?=.*[0-9])[A-Z0-9_.:-]+", value):
+            continue
+        if re.fullmatch(r"\d{4}-\d\d-\d\d(?:[T ][\d:.+Z-]+)?", value):
+            continue
+        if any(c.isalpha() for c in value):
+            return True
+    return False

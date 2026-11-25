@@ -196,6 +196,7 @@ def assess_document(
             settings,
             original_links=original_links,
             source_payload=payload,
+            collected=True,
             fetch_source=False,
         )
         limitations.extend(detail_limits)
@@ -336,6 +337,7 @@ def screen_competitions(
                         settings,
                         model_id=model.id,
                         source_payload=(source_payloads or {}).get(row["id"]),
+                        collected=True,
                         fetch_source=fetch_source,
                     )
                     with exclusive_lock(

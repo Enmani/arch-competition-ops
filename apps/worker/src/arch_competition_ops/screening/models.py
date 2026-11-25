@@ -45,7 +45,7 @@ class _Judgment(_StrictModel):
 
 
 class ScreeningAnswer(_Judgment):
-    schema_version: ClassVar[int] = 5
+    schema_version: ClassVar[int] = 6
     title_quote: str = Field(description=FIELDS["title"].description)
     evidence: list[str]
     extracted_fields: list[TextFact | NormalizedFact]

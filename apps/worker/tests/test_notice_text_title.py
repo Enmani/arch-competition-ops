@@ -18,9 +18,9 @@ def test_json_text_and_quote_have_identical_source_characters(ai_workspace):  # 
     raw = r'{"title":"Concurso \"Red\/Sur\" \u2013 dise\u00f1o","lots":[{"value":123456789012345678901234567890},{"value":123456789.000000000000000001}]}'
     title = 'Concurso "Red/Sur" – diseño'
     expected = (
+        f"title: {title}\n"
         "lots.value: 123456789012345678901234567890\n"
-        "lots.value: 123456789.000000000000000001\n"
-        f"title: {title}"
+        "lots.value: 123456789.000000000000000001"
     )
     for payload in (json.dumps({"rawNotice": raw}), '{"rawNotice":' + raw + "}"):
         wire, fields, _ = prepare_input(
@@ -86,4 +86,4 @@ def test_top_level_title_and_unstructured_html_preserve_source_text(ai_workspace
     html = "<h1>Civic hall</h1><script>hidden</script><p>Entry conditions</p>"
     payload = json.dumps({"rawNoticeHtml": html}) + "\nSource notice detail:\n<p>No fee.</p>"
     _, fields, _ = prepare_input(row, settings, source_payload=payload)
-    assert fields["notice_text"] == "Civic hall Entry conditions No fee."
+    assert fields["notice_text"].split() == "Civic hall Entry conditions No fee.".split()

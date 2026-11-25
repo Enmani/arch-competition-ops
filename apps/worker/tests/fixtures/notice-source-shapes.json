@@ -1,0 +1,136 @@
+{
+  "CanadaBuys": {
+    "title": "Refrigeration Training Equipment",
+    "buyer": null,
+    "noticeId": "CB-61",
+    "deadline": "2026-11-12",
+    "summary": "Equipment for a college laboratory.",
+    "officialUrl": "https://buyer.example/notice/61",
+    "procedureType": "Open",
+    "publishedAt": "2026-10-02"
+  },
+  "Frankfurt": {
+    "title": "Gestaltung der Außenanlage",
+    "authority": "Hochbauamt",
+    "procedureType": "Offen",
+    "deadline": "2026-12-08",
+    "publishedAt": "2026-10-20",
+    "sourceListingUrl": "https://vergabe.example/list",
+    "detailHtml": "<nav>HIDDEN MENU</nav><main><p>Projekt 67-2026-00111</p><p>Planung der Außenanlage, 125000 EUR.</p></main><script>HIDDEN SCRIPT</script>"
+  },
+  "BOAMP": {
+    "idweb": "26-38966",
+    "objet": "Réhabilitation du collège",
+    "dateparution": "2026-10-18",
+    "datelimitereponse": "2026-12-02",
+    "nomacheteur": "Commune",
+    "donnees": "{\"EFORMS\": {\"ContractNotice\": {\"lots\": [{\"amount\": 81500, \"currency\": \"EUR\"}, {\"amount\": 90000, \"currency\": \"EUR\"}]}}}"
+  },
+  "ANAC": {
+    "officialNoticeId": "ANAC-73",
+    "title": "Concorso per biblioteca",
+    "buyer": "Comune",
+    "procedureType": "P7_2",
+    "deadline": "2026-12-03",
+    "estimatedValueEur": 190000,
+    "summary": "Riqualificazione",
+    "sourceApiUrl": "https://anac.example/73"
+  },
+  "ggzy": {
+    "title": "图书馆设计公告",
+    "noticeId": "G-074",
+    "deadline": "2026-12-04",
+    "businessType": "设计",
+    "detailUrl": "https://ggzy.example/n/74",
+    "rawNoticeHtml": "<style>HIDDEN STYLE</style><nav>HIDDEN MENU</nav><article><p>项目编号 G-074</p><p>总额 200000 元。</p></article>"
+  },
+  "World Bank": {
+    "id": "WB-75",
+    "notice_lang_name": "Português",
+    "submission_deadline_date": "2026-12-05",
+    "bid_estimate_amount": 0,
+    "project_name": "Biblioteca",
+    "notice_text": "<main>Consultoria de arquitetura</main>",
+    "bid_reference_no": "BR/75"
+  },
+  "PCSP": {
+    "title": "Concurso de diseño",
+    "buyer": "Ayuntamiento",
+    "noticeId": "PC-76",
+    "deadline": "2026-12-06",
+    "summary": "Los \"Servicios de redacción\" / diseño",
+    "cpv": [
+      "71240000",
+      "71400000"
+    ],
+    "estimatedValueEur": 190500,
+    "officialUrl": "https://pcsp.example/76"
+  },
+  "SIMAP": {
+    "listing": {
+      "projectNumber": "CH-77",
+      "title": {
+        "de": "Schulhaus",
+        "fr": "École"
+      },
+      "corrected": false,
+      "lots": [
+        {
+          "id": 2
+        },
+        {
+          "id": 1
+        }
+      ]
+    },
+    "detail": {
+      "project-info": {
+        "deadlines": [
+          {
+            "date": "2026-12-07"
+          }
+        ]
+      },
+      "base": {
+        "amount": 250000
+      },
+      "hasProjectDocuments": true
+    }
+  },
+  "TED": {
+    "notice-identifier": "TED-78",
+    "notice-title": {
+      "eng": [
+        "Civic design"
+      ],
+      "fra": [
+        "Conception"
+      ]
+    },
+    "deadline-receipt-tender-date-lot": [
+      "2026-12-08"
+    ],
+    "estimated-value-lot": [
+      220000
+    ],
+    "links": {
+      "html": {
+        "ENG": "https://ted.example/78"
+      }
+    }
+  },
+  "Doffin": {
+    "title": "Skoleprosjektering",
+    "buyer": "Kommune",
+    "noticeId": "DO-79",
+    "deadline": "2026-12-09",
+    "estimatedValueEur": 97500,
+    "estimatedValueText": "EUR 97500",
+    "summary": "Prosjektering av skole",
+    "cpv": [
+      "71240000"
+    ],
+    "procedureType": "Open",
+    "publishedAt": "2026-10-19"
+  }
+}
