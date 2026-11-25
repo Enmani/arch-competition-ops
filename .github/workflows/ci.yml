@@ -26,6 +26,13 @@ jobs:
         with:
           enable-cache: true # keyed on uv.lock
 
+      # Worker integration tests execute the real preview CLI and the SQLite-to-D1 exporter.
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+
       # Python version comes from .python-version.
       - run: uv sync --frozen
 

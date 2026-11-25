@@ -200,14 +200,3 @@ def extract_detail_title(detail_html: str) -> str | None:
         r'<h4[^>]*class="h4_o"[^>]*>(.*?)</h4>', detail_html, flags=re.IGNORECASE | re.DOTALL
     )
     return strip_html_block(match.group(1)) if match else None
-
-
-def extract_original_category_text(original_html: str) -> str | None:
-    bread_match = re.search(
-        r'<div[^>]+class="[^"]*\bewb-bread\b[^"]*"[^>]*>(.*?)</div>',
-        original_html,
-        flags=re.IGNORECASE | re.DOTALL,
-    )
-    if not bread_match:
-        return None
-    return strip_html_block(bread_match.group(1))

@@ -76,12 +76,15 @@ test("third-party actions are pinned to a version tag like ci.yml", () => {
   assert.ok(uses.includes("astral-sh/setup-uv@v6"));
 });
 
-test("only the three project secrets are used, each on the steps that need it", () => {
+test("only the configured project secrets are used, each on the steps that need it", () => {
   const code = CODE.join("\n");
   const secrets = new Set([...code.matchAll(/secrets\.(\w+)/g)].map((match) => match[1]));
-  assert.deepEqual([...secrets].sort(), ["CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN", "OPENAI_API_KEY"]);
+  assert.deepEqual([...secrets].sort(), ["ANTHROPIC_API_KEY", "CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN", "OPENAI_API_KEY"]);
   assert.doesNotMatch(code, /secrets\.\w+/.exec(code.split("steps:")[0]) ?? /(?!)/, "no secret at workflow or job level");
   assert.doesNotMatch(code.split("steps:")[0], /secrets\./, "no secret at workflow or job level");
+  const steps = code.split(/\n +- name:/);
+  assert.deepEqual(steps.filter(step => step.includes("secrets.ANTHROPIC_API_KEY"))
+    .map(step => step.trimStart().split("\n")[0]), ["Ingest batch", "Polish titles"]);
   assert.doesNotMatch(code, /toJSON\(secrets\)|secrets\[/);
 });
 
@@ -108,7 +111,7 @@ test("the sequence: pull, cleanup, repair countries, ingest, sync, push, keepali
 
   // Sync and push run after a failed ingest but never after a failed pull; dry runs skip the paid
   // ingest and the D1 apply.
-  assert.match(WORKFLOW, /name: Sync to D1\n {8}if: \$\{\{ always\(\) && steps\.pull\.outcome == 'success' && inputs\.dry_run != true \}\}/);
+  assert.match(WORKFLOW, /name: Sync to D1\n {8}if: \$\{\{ always\(\) && steps\.pull\.outcome == 'success' && inputs\.dry_run != true && inputs\.collect_only != true \}\}/);
   assert.match(WORKFLOW, /name: Push state to R2\n {8}id: push\n {8}if: \$\{\{ always\(\) && steps\.pull\.outcome == 'success' \}\}/);
   assert.match(WORKFLOW, /name: Ingest batch\n {8}id: ingest\n {8}if: \$\{\{ inputs\.dry_run != true \}\}/);
   assert.match(WORKFLOW, /name: Pull state from R2\n {8}id: pull\n/);
@@ -123,7 +126,7 @@ test("the budget and concurrency settings are set for the cloud run", () => {
   for (const line of [
     'ARCH_COMPETITION_OPS_AI_ENABLED: "1"',
     'ARCH_COMPETITION_OPS_AI_CONCURRENCY: "8"',
-    'ARCH_COMPETITION_OPS_AI_DAILY_BUDGET_USD: "15"',
+    'ARCH_COMPETITION_OPS_AI_DAILY_BUDGET_USD: "5"',
     'ARCH_COMPETITION_OPS_AI_MONTHLY_BUDGET_USD: "100"',
   ]) {
     assert.ok(CODE.some((code) => code.trim() === line), line);

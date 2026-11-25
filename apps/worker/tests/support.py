@@ -58,6 +58,10 @@ def write_source_catalog(root: Path, *source_ids: str, verifier: str | None = No
     ]
     text = "sources:" + ("".join(blocks) if blocks else " []\n")
     (root / "config" / "sources.yml").write_text(text, encoding="utf-8")
+    skill = root / DEFAULT_AI_SKILL
+    skill.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy(REPO_ROOT / DEFAULT_AI_SKILL, skill)
+    shutil.copy(REPO_ROOT / "config/taxonomy.yml", root / "config")
     # A checkout always has the shared procedure registry next to sources.yml.
     shutil.copy(REPO_ROOT / "config" / "procedure-type-registry.json", root / "config")
 
@@ -172,7 +176,6 @@ def write_minimal_config(root: Path, sources_yaml: str) -> None:
     """A config/ directory just complete enough for doctor/verify to run."""
     (root / "config").mkdir(exist_ok=True)
     (root / "config" / "sources.yml").write_text(sources_yaml, encoding="utf-8")
-    (root / "config" / "filters.yml").write_text("targeting: {}\n", encoding="utf-8")
     (root / "config" / "taxonomy.yml").write_text(MINIMAL_TAXONOMY + "\n", encoding="utf-8")
     skill = root / DEFAULT_AI_SKILL
     skill.parent.mkdir(parents=True, exist_ok=True)

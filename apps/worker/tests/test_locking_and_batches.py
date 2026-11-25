@@ -165,7 +165,7 @@ def test_ai_sources_overlap_but_share_the_batch_lock(tmp_path, monkeypatch):
         return IngestResult(source_id=source_id, status="success", document_count=5, deferred=2)
 
     monkeypatch.setattr("arch_competition_ops.automation.ingest_source", ingest)
-    result = run_automation_batch(settings, batch_id="all")
+    result = run_automation_batch(settings, batch_id="all", collect_only=True)
     assert not result.has_failures
     assert [r.source_id for r in result.succeeded] == ["first", "second"]
     assert all(r.document_count == 5 and r.deferred == 2 for r in result.succeeded)
@@ -185,7 +185,7 @@ def test_batch_holds_the_ingest_lock_while_it_runs(tmp_path, monkeypatch) -> Non
     settings = Settings(root=tmp_path)
     observed = {}
 
-    def fake_ingest(settings_arg, *, source_id, limit, publication_date_from):
+    def fake_ingest(settings_arg, *, source_id, limit, publication_date_from, collect_only):
         observed["locked_during_ingest"] = is_locked(
             settings_arg.resolve_path(settings_arg.ingest_lock)
         )
@@ -257,7 +257,7 @@ def test_ingest_batch_command_runs_lists_and_reports_failures(
 
     monkeypatch.setattr("arch_competition_ops.automation.ingest_source", failing)
     assert main(["ingest-batch", "--batch-id", "official"]) == 1
-    assert "[FAIL] ted_design_notices :: source exploded" in capsys.readouterr().out
+    assert "[FAIL] ted_design_notices :: RuntimeError" in capsys.readouterr().out
 
 
 def test_partial_source_failures_make_the_batch_exit_nonzero(tmp_path, monkeypatch, capsys) -> None:

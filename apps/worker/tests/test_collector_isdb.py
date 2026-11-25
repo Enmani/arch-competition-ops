@@ -125,31 +125,24 @@ def test_the_page_heading_article_is_not_a_tender(caplog: pytest.LogCaptureFixtu
 def test_keeps_open_notices_that_are_not_awards_and_gives_each_its_own_url() -> None:
     site = FakeSite([[FIXTURE.read_text(encoding="utf-8")]])
 
-    documents = collect_isdb_documents(
-        _source(), limit=100, include_unclassified=True, fetch_text=site
-    )
+    documents = collect_isdb_documents(_source(), limit=100, fetch_text=site)
 
     urls = [document.source_url for document in documents]
-    assert len(urls) == 3  # closed ones and the contract award stay out
-    assert len(set(urls)) == 3
-    assert all(url.startswith(f"{SITE}/project-procurement/tenders/2026/") for url in urls)
+    original = parse_tender_list(FIXTURE.read_text(encoding="utf8"))
+    assert urls == [SITE + r["path"] for r in original]
     assert [json.loads(d.payload)["noticeType"] for d in documents] == [
-        "General Procurement Notice",
-        "Expression of Interest",
-        "Pre-Qualification",
+        r["noticeType"] for r in original
     ]
 
 
 def test_a_general_procurement_notice_close_date_is_not_a_deadline() -> None:
     site = FakeSite([[FIXTURE.read_text(encoding="utf-8")]])
 
-    documents = collect_isdb_documents(
-        _source(), limit=100, include_unclassified=True, fetch_text=site
-    )
-    gpn, eoi, _ = (json.loads(d.payload) for d in documents)
+    documents = collect_isdb_documents(_source(), limit=100, fetch_text=site)
+    gpn, eoi = (json.loads(d.payload) for d in documents[1:3])
 
     assert gpn["deadline"] is None
-    assert gpn["rawNotice"]["closeDate"] == "2026-11-16"  # evidence keeps what the site says
+    assert "16 November 2026" in gpn["rawNotice"]  # evidence keeps what the site says
     assert eoi["deadline"] == "2026-11-24"
 
 
@@ -164,12 +157,10 @@ def test_an_active_notice_past_its_close_date_is_skipped() -> None:
         ]
     )
 
-    documents = collect_isdb_documents(
-        _source(), limit=100, include_unclassified=True, fetch_text=site
-    )
+    documents = collect_isdb_documents(_source(), limit=100, fetch_text=site)
 
-    assert [d.source_url.rsplit("/", 1)[-1] for d in documents] == ["today", "undated"]
-    assert json.loads(documents[1].payload)["deadline"] is None
+    assert [d.source_url.rsplit("/", 1)[-1] for d in documents] == ["late", "today", "undated"]
+    assert json.loads(documents[2].payload)["deadline"] is None
 
 
 def test_pages_until_an_empty_page_and_keeps_a_notice_listed_twice_once() -> None:
@@ -180,9 +171,7 @@ def test_pages_until_an_empty_page_and_keeps_a_notice_listed_twice_once() -> Non
         ]
     )
 
-    documents = collect_isdb_documents(
-        _source(), limit=100, include_unclassified=True, fetch_text=site
-    )
+    documents = collect_isdb_documents(_source(), limit=100, fetch_text=site)
 
     assert [d.source_url.rsplit("/", 1)[-1] for d in documents] == ["a", "b", "c"]
     queries = [dict(parse.parse_qsl(parse.urlsplit(url).query)) for url in site.urls]
@@ -194,9 +183,7 @@ def test_page_cap_stops_paging_and_logs_a_warning(caplog: pytest.LogCaptureFixtu
     site = FakeSite([[_article(f"n{index}")] for index in range(MAX_PAGES + 5)])
 
     with caplog.at_level(logging.WARNING, logger=isdb.logger.name):
-        documents = collect_isdb_documents(
-            _source(), limit=1000, include_unclassified=True, fetch_text=site
-        )
+        documents = collect_isdb_documents(_source(), limit=1000, fetch_text=site)
 
     assert len(site.urls) == MAX_PAGES
     assert len(documents) == MAX_PAGES
@@ -206,15 +193,13 @@ def test_page_cap_stops_paging_and_logs_a_warning(caplog: pytest.LogCaptureFixtu
 def test_returns_at_most_limit_documents_and_stops_paging() -> None:
     site = FakeSite([[_article(f"p{page}n{n}") for n in range(3)] for page in range(4)])
 
-    documents = collect_isdb_documents(
-        _source(), limit=4, include_unclassified=True, fetch_text=site
-    )
+    documents = collect_isdb_documents(_source(), limit=4, fetch_text=site)
 
     assert len(documents) == 4
     assert len(site.urls) == 2
 
 
-def test_keyword_gate_applies_without_ai_mode() -> None:
+def test_collection_preserves_unclassified_source_material() -> None:
     site = FakeSite(
         [
             [
@@ -226,16 +211,14 @@ def test_keyword_gate_applies_without_ai_mode() -> None:
 
     documents = collect_isdb_documents(_source(), limit=100, fetch_text=site)
 
-    assert [d.source_url.rsplit("/", 1)[-1] for d in documents] == ["school"]
-    assert "rawNotice" not in json.loads(documents[0].payload)
+    assert [d.source_url.rsplit("/", 1)[-1] for d in documents] == ["school", "audit"]
+    assert "rawNotice" in json.loads(documents[0].payload)
 
 
 def test_payload_parses_as_a_generic_listing_notice() -> None:
     site = FakeSite([[_article("school")]])
 
-    [document] = collect_isdb_documents(
-        _source(), limit=5, include_unclassified=True, fetch_text=site
-    )
+    [document] = collect_isdb_documents(_source(), limit=5, fetch_text=site)
     payload = json.loads(document.payload)
 
     assert payload["officialUrl"] == document.source_url

@@ -43,7 +43,7 @@ dt_upd,id_avviso,rup,codice_fiscale_stazione_appaltante,denominazione_stazione_a
     assert payload["deadline"] == "2026-05-15"
 
 
-def test_collect_scp_documents_can_focus_on_curated_italian_authorities() -> None:
+def test_collect_scp_documents_keeps_all_italian_authorities() -> None:
     from arch_competition_ops.collectors.scp import collect_scp_documents
 
     source = _build_source(
@@ -70,10 +70,14 @@ dt_upd,id_avviso,rup,codice_fiscale_stazione_appaltante,denominazione_stazione_a
         fetch_text=lambda _url: csv_payload,
     )
 
-    assert len(documents) == 2
+    assert len(documents) == 3
     payloads = [json.loads(document.payload) for document in documents]
-    assert [payload["buyer"] for payload in payloads] == ["Comune di Milano", "Roma Capitale"]
-    assert [payload["officialNoticeId"] for payload in payloads] == ["700206", "700207"]
+    assert [payload["buyer"] for payload in payloads] == [
+        "Comune di Torino",
+        "Comune di Milano",
+        "Roma Capitale",
+    ]
+    assert [payload["officialNoticeId"] for payload in payloads] == ["700204", "700206", "700207"]
 
 
 def test_collect_anac_documents_transforms_public_api_items() -> None:

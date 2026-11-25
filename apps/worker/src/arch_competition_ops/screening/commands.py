@@ -9,10 +9,9 @@ from pathlib import Path
 
 from openai import APIError, APIStatusError
 
-from arch_competition_ops.config_loader import load_source_catalog
 from arch_competition_ops.screening.catalog import MODELS
 from arch_competition_ops.screening.client import ScreeningError, create_client
-from arch_competition_ops.screening.service import assess_document, screen_competitions
+from arch_competition_ops.screening.service import screen_competitions, screen_notice
 from arch_competition_ops.settings import Settings
 from arch_competition_ops.storage.screening import list_screenings
 
@@ -25,7 +24,7 @@ def add_parsers(subparsers) -> None:
     analyze.add_argument("--path", required=True)
     analyze.add_argument("--source-url", required=True)
     models = subparsers.add_parser("show-ai-models", help="list screening models and USD prices")
-    models.add_argument("--live", action="store_true", help="check the account model list")
+    models.add_argument("--live", action="store_true", help="check the OpenAI account model list")
     models.add_argument("--json", action="store_true")
     screen = subparsers.add_parser(
         "screen-competitions", help="screen stored opportunities with AI"
@@ -51,23 +50,19 @@ def add_parsers(subparsers) -> None:
 
 def handle(settings: Settings, args: argparse.Namespace, emit: Callable[[str], None]) -> int:
     if args.command == "analyze-source-file":
-        source = next(
-            (s for s in load_source_catalog(settings).sources if s.source_id == args.source_id),
-            None,
-        )
-        if source is None:
-            raise ValueError(f"Unknown source id: {args.source_id}")
-        assessment = assess_document(
+        assessment = screen_notice(
             settings,
-            source=source,
-            source_url=args.source_url,
-            payload=settings.resolve_path(Path(args.path)).read_text(encoding="utf-8"),
+            {"source_id": args.source_id, "source_url": args.source_url},
+            settings.resolve_path(Path(args.path)).read_text(encoding="utf-8"),
         )
         emit(
             json.dumps(
                 {
-                    "record": assessment.record.model_dump(mode="json"),
-                    "assessment": assessment.decision.model_dump(),
+                    "record": assessment.record.model_dump(mode="json")
+                    if assessment.record
+                    else None,
+                    "assessment": assessment.decision.model_dump() if assessment.decision else None,
+                    "failure": assessment.failure,
                     "model": assessment.model,
                     "cached": assessment.cached,
                     "estimated_cost_usd": assessment.cost_usd,
@@ -76,7 +71,7 @@ def handle(settings: Settings, args: argparse.Namespace, emit: Callable[[str], N
                 indent=2,
             )
         )
-        return 0
+        return int(assessment.failure is not None)
     if args.command == "show-ai-models":
         available = None
         if args.live:
@@ -94,16 +89,19 @@ def handle(settings: Settings, args: argparse.Namespace, emit: Callable[[str], N
                 "model": model.id,
                 "input_usd_per_million_tokens": model.input_per_million,
                 "output_usd_per_million_tokens": model.output_per_million,
+                "cache_read_usd_per_million_tokens": model.cache_read_per_million,
                 "purpose": model.purpose,
                 "default": model.id == settings.ai_model,
-                "listed_for_account": model.id in available if available is not None else None,
+                "listed_for_account": model.id in available
+                if available is not None and model.provider == "openai"
+                else None,
             }
             for model in MODELS
         ]
         if args.json:
             emit(json.dumps(rows, ensure_ascii=False, indent=2))
         else:
-            emit("Standard short-context USD / 1M tokens; prices checked 2026-10-30")
+            emit("Standard short-context USD / 1M tokens")
             for row in rows:
                 marker = " (default)" if row["default"] else ""
                 access = f" | listed={row['listed_for_account']}" if args.live else ""

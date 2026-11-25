@@ -23,6 +23,10 @@ on:
         description: "Optional YYYY-MM-DD: read notices published on or after this day (backfill)"
         type: string
         default: ""
+      collect_only:
+        description: "Save notices to the private backlog without paid reading or publication"
+        type: boolean
+        default: false
       dry_run:
         description: "Everything except the paid ingest and the D1 apply (still pulls, cleans up, checks the export and pushes state)"
         type: boolean
@@ -56,10 +60,11 @@ jobs:
       NO_COLOR: "1"
       BATCH_ID: ${{ inputs.batch_id || 'all_enabled' }}
       PUBLICATION_DATE_FROM: ${{ inputs.publication_date_from }}
+      COLLECT_ONLY: ${{ inputs.collect_only }}
       DRY_RUN: ${{ inputs.dry_run == true && 'true' || 'false' }}
       ARCH_COMPETITION_OPS_AI_ENABLED: "1"
       ARCH_COMPETITION_OPS_AI_CONCURRENCY: "8"
-      ARCH_COMPETITION_OPS_AI_DAILY_BUDGET_USD: "15"
+      ARCH_COMPETITION_OPS_AI_DAILY_BUDGET_USD: "5"
       ARCH_COMPETITION_OPS_AI_MONTHLY_BUDGET_USD: "100"
     steps:
       - uses: actions/checkout@v4
@@ -122,27 +127,37 @@ jobs:
         if: ${{ inputs.dry_run != true }}
         timeout-minutes: 290
         env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ARCH_COMPETITION_OPS_AI_PROVIDER: ${{ vars.AI_PROVIDER || 'anthropic' }}
+          ARCH_COMPETITION_OPS_AI_MODEL: ${{ vars.AI_MODEL || 'claude-haiku-5-5' }}
+          ARCH_COMPETITION_OPS_AI_REASONING_EFFORT: ${{ vars.AI_REASONING_EFFORT || 'low' }}
         run: |
           set +e
           args=(run arch-competition-ops ingest-batch --batch-id "$BATCH_ID")
+          if [ "$COLLECT_ONLY" = "true" ]; then args+=(--collect-only); fi
           if [ -n "$PUBLICATION_DATE_FROM" ]; then
             args+=(--publication-date-from "$PUBLICATION_DATE_FROM")
           fi
           uv "${args[@]}" 2>&1 | tee "$RUNNER_TEMP/ingest.log"
           echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+          if grep -Fxq 'paid_reading_paused=true' "$RUNNER_TEMP/ingest.log"; then
+            echo "paid_reading_paused=true" >> "$GITHUB_OUTPUT"
+          fi
           exit 0
 
-      # Sources run in parallel and polishing display titles takes a non-blocking lock, so a source
-      # that finishes while another one polishes leaves its new titles as rules-cleaned only. One
-      # pass here translates whatever is still pending (cached answers cost nothing). Best effort.
       - name: Polish titles
-        if: ${{ always() && steps.pull.outcome == 'success' && inputs.dry_run != true }}
-        timeout-minutes: 20
+        if: ${{ steps.ingest.outcome == 'success' && steps.ingest.outputs.paid_reading_paused != 'true' && inputs.dry_run != true && inputs.collect_only != true }}
         continue-on-error: true
+        timeout-minutes: 20
         env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: uv run arch-competition-ops polish-titles --max-batches 100 | tee "$RUNNER_TEMP/titles.log"
+          ARCH_COMPETITION_OPS_AI_PROVIDER: ${{ vars.AI_PROVIDER || 'anthropic' }}
+          ARCH_COMPETITION_OPS_AI_MODEL: ${{ vars.AI_MODEL || 'claude-haiku-5-5' }}
+          ARCH_COMPETITION_OPS_AI_REASONING_EFFORT: ${{ vars.AI_REASONING_EFFORT || 'low' }}
+        run: |
+          uv run arch-competition-ops polish-titles --max-batches 100
 
       - name: Check the D1 export (dry run)
         if: ${{ inputs.dry_run == true }}
@@ -151,7 +166,7 @@ jobs:
       # From here on, run whenever the pull worked (also after a failed ingest), never after a
       # failed pull.
       - name: Sync to D1
-        if: ${{ always() && steps.pull.outcome == 'success' && inputs.dry_run != true }}
+        if: ${{ always() && steps.pull.outcome == 'success' && inputs.dry_run != true && inputs.collect_only != true }}
         timeout-minutes: 30
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -193,6 +208,9 @@ jobs:
               echo "- ingest exit code: \`${{ steps.ingest.outputs.exit_code }}\`"
               failed="$(sed -n 's/^\[FAIL\] \([^ ]*\) :: .*/\1/p' "$RUNNER_TEMP/ingest.log" | head -n 20 | paste -sd ' ' -)"
               if [ -n "$failed" ]; then echo "- failed sources: $failed"; fi
+              awk '/^\[(OK|PARTIAL)\]/ {source=$2} /^  \[NOTE\] new=/ {
+                sub(/^  \[NOTE\] /, ""); print "- " source " " $0
+              }' "$RUNNER_TEMP/ingest.log"
             fi
             if [ -s "$RUNNER_TEMP/stats-before.txt" ] && [ -s "$RUNNER_TEMP/stats-after.txt" ]; then
               echo
@@ -204,7 +222,7 @@ jobs:
             if [ -s "$RUNNER_TEMP/d1.log" ]; then
               echo
               echo "D1:"
-              grep -E '^(D1 sync complete|d1_rows_upserted|d1_remote_competitions)' "$RUNNER_TEMP/d1.log" | sed 's/^/- /' || true
+              grep -E '^(D1 sync complete|d1_snapshot_rows|Published snapshot unchanged)' "$RUNNER_TEMP/d1.log" | sed 's/^/- /' || true
             fi
             if [ -s "$RUNNER_TEMP/push.log" ]; then echo; echo "- $(head -n 1 "$RUNNER_TEMP/push.log")"; fi
           } >> "$GITHUB_STEP_SUMMARY"

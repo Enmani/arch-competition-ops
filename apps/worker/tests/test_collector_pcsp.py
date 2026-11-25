@@ -116,9 +116,7 @@ def test_follows_next_links_until_the_file_that_leaves_the_window() -> None:
         }
     )
 
-    documents = collect_pcsp_documents(
-        _source(), limit=100, include_unclassified=True, fetch_text=site
-    )
+    documents = collect_pcsp_documents(_source(), limit=100, fetch_text=site)
 
     assert [d.source_url.removeprefix(DEEPLINK) for d in documents] == ["a", "b"]
     assert f"{FEED_URL}.2" not in site.requested
@@ -145,11 +143,20 @@ def test_ai_scope_uses_codice_codes_before_fetching_details() -> None:
     ]
     site = _Site({FEED_URL: _feed(entries)})
 
-    documents = collect_pcsp_documents(
-        _source(), limit=100, include_unclassified=True, fetch_text=site
-    )
+    documents = collect_pcsp_documents(_source(), limit=100, fetch_text=site)
 
-    kept = ["design", "planning", "lot-design", "unclassified", "contest"]
+    kept = [
+        "design",
+        "planning",
+        "lot-design",
+        "unclassified",
+        "contest",
+        "cleaning",
+        "awarded",
+        "evaluating",
+        "prior",
+        "closed",
+    ]
     assert [d.source_url.removeprefix(DEEPLINK) for d in documents] == kept
     assert site.detail_keys() == kept
 
@@ -165,9 +172,7 @@ def test_feed_paging_stops_at_the_file_cap_with_a_warning(monkeypatch, caplog) -
     site = _Site(files)
 
     with caplog.at_level("WARNING", logger=pcsp.__name__):
-        documents = collect_pcsp_documents(
-            _source(), limit=100, include_unclassified=True, fetch_text=site
-        )
+        documents = collect_pcsp_documents(_source(), limit=100, fetch_text=site)
 
     assert len(documents) == 3
     assert "PCSP feed paging stopped after 3 files" in caplog.text
@@ -187,15 +192,13 @@ def test_stops_reading_files_once_the_limit_is_reached() -> None:
         }
     )
 
-    documents = collect_pcsp_documents(
-        _source(), limit=2, include_unclassified=True, fetch_text=site
-    )
+    documents = collect_pcsp_documents(_source(), limit=2, fetch_text=site)
 
     assert len(documents) == 2
     assert f"{FEED_URL}.1" not in site.requested
 
 
-def test_classic_mode_keeps_keyword_gate_and_reads_older_files() -> None:
+def test_collection_preserves_unclassified_source_material() -> None:
     site = _Site(
         {
             FEED_URL: _feed(
@@ -217,9 +220,9 @@ def test_classic_mode_keeps_keyword_gate_and_reads_older_files() -> None:
 
     documents = collect_pcsp_documents(_source(), limit=5, fetch_text=site)
 
-    assert [d.source_url.removeprefix(DEEPLINK) for d in documents] == ["library"]
-    payload = json.loads(documents[0].payload)
-    assert "rawNotice" not in payload and "rawNoticeHtml" not in payload
+    assert [d.source_url.removeprefix(DEEPLINK) for d in documents] == ["clean", "library"]
+    payload = json.loads(documents[1].payload)
+    assert "rawNotice" in payload and "rawNoticeHtml" in payload
     # The detail page states no CPV; the entry's own code is kept.
     assert payload["cpv"] == ["71221000"]
 
@@ -241,9 +244,7 @@ def test_ai_scope_keeps_design_and_build_works_tenders_by_title() -> None:
     ]
     site = _Site({FEED_URL: _feed(entries)})
 
-    documents = collect_pcsp_documents(
-        _source(), limit=100, include_unclassified=True, fetch_text=site
-    )
+    documents = collect_pcsp_documents(_source(), limit=100, fetch_text=site)
 
-    assert [d.source_url.removeprefix(DEEPLINK) for d in documents] == ["mixto"]
-    assert site.detail_keys() == ["mixto"]
+    assert [d.source_url.removeprefix(DEEPLINK) for d in documents] == ["mixto", "obras"]
+    assert site.detail_keys() == ["mixto", "obras"]

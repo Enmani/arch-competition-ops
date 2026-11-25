@@ -19,10 +19,9 @@ from test_ai_screening import (
 
 from arch_competition_ops.collectors.base import CollectedSourceDocument
 from arch_competition_ops.ingest import ingest_source
-from arch_competition_ops.screening import client as client_module
 from arch_competition_ops.screening import service
 from arch_competition_ops.screening.catalog import get_model
-from arch_competition_ops.screening.client import ScreeningError, call_with_rate_limit_retry
+from arch_competition_ops.screening.client import ProviderResult, ScreeningError, read_with_retries
 from arch_competition_ops.screening.service import assess_document, assess_documents
 from arch_competition_ops.settings import Settings
 from arch_competition_ops.storage import ensure_schema
@@ -45,7 +44,7 @@ def listing(count: int) -> list[CollectedSourceDocument]:
 
 
 def reference_in(request: httpx.Request) -> int:
-    text = json.loads(json.loads(request.content)["input"])["evidence_fields"]["notice_text"]
+    text = json.loads(request.content)["input"].partition("notice_text:\n")[2]
     return int(text.split("Reference number ")[1].split(".")[0])
 
 
@@ -80,7 +79,6 @@ def workspace(ai_workspace):  # noqa: F811
 def ingest_workspace(workspace, monkeypatch):
     settings, source = workspace
     settings.ai_enabled = True
-    settings.ai_triage_enabled = False
     (settings.root / "config" / "sources.yml").write_text(
         yaml.safe_dump({"sources": [source.model_dump()]}), encoding="utf-8"
     )
@@ -106,7 +104,7 @@ def collect(monkeypatch, documents) -> None:
 
 def ledger_rows(settings: Settings) -> int:
     with connect(settings.resolve_path(settings.db)) as connection:
-        return connection.execute("SELECT COUNT(*) FROM ai_notice_ledger").fetchone()[0]
+        return connection.execute("SELECT COUNT(*) FROM items WHERE status='done'").fetchone()[0]
 
 
 # -- concurrency ---------------------------------------------------------------------------------
@@ -206,7 +204,7 @@ def test_one_failing_notice_does_not_sink_the_others_or_enter_the_ledger(
 
     def handler(request):
         if reference_in(request) == 2:
-            return httpx.Response(500, json={"error": {"message": "boom"}})
+            return httpx.Response(400, json={"error": {"message": "boom"}})
         return response(decision_payload())
 
     serve(monkeypatch, handler)
@@ -216,7 +214,7 @@ def test_one_failing_notice_does_not_sink_the_others_or_enter_the_ledger(
     assert [f.source_url for f in result.failures] == [url(2)]
     assert result.failures[0].stage == "ai_extract_and_screen"
     assert len(result.ingested_ids) == 5
-    assert result.deferred == 0
+    assert result.deferred == 1  # a lone 400 is deferred, not counted against the notice
     assert ledger_rows(settings) == 5  # the failed notice is retried on the next run
 
 
@@ -417,43 +415,11 @@ def test_5xx_keeps_its_cost_reservation_as_before(workspace):
 
     with connect(settings.resolve_path(settings.db)) as connection:
         row = connection.execute("SELECT status, cost_usd FROM ai_screening_runs").fetchone()
-    assert row["status"] == "failed" and row["cost_usd"] > 0
+    assert row["status"] == "uncertain" and row["cost_usd"] > 0
 
 
 def test_retry_helper_returns_the_first_success_and_does_not_sleep_without_a_429():
     sleeps = []
-    assert call_with_rate_limit_retry(lambda: "ok", sleep=sleeps.append) == "ok"
+    result = ProviderResult(response_id="ok")
+    assert read_with_retries(lambda: result, provider="openai", sleep=sleeps.append) is result
     assert sleeps == []
-
-
-def test_triage_decisions_call_retries_a_429(tmp_path, monkeypatch):
-    from support import write_minimal_config
-
-    from arch_competition_ops.screening.triage import triage_documents
-
-    write_minimal_config(tmp_path, "sources: []")
-    settings = Settings(root=tmp_path, _env_file=None)
-    slept = []
-    monkeypatch.setattr(client_module.time, "sleep", slept.append)
-    answers = [
-        rate_limited(),
-        httpx.Response(
-            200,
-            json={
-                "answers": [
-                    {"type": "choice", "name": "candidate_0", "choice": "keep", "confidence": 0.9}
-                ],
-                "usage": {"input_tokens": 1000},
-            },
-        ),
-    ]
-
-    with mock_client(lambda _r: answers.pop(0)) as client:
-        result = triage_documents(
-            settings,
-            [CollectedSourceDocument("https://example.org/1", "School")],
-            limit=20,
-            client=client,
-        )
-
-    assert len(result.documents) == 1 and len(slept) == 1 and answers == []

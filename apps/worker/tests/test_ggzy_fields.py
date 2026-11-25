@@ -7,11 +7,6 @@ import pytest
 from support import build_source
 
 from arch_competition_ops.collectors.ggzy import collect_ggzy_documents
-from arch_competition_ops.collectors.ggzy.collect import (
-    MAX_DETAIL_BUDGET,
-    MIN_DETAIL_BUDGET,
-    detail_budget,
-)
 from arch_competition_ops.collectors.ggzy.html_text import extract_notice_body_text
 from arch_competition_ops.extractors.ggzy_fields import (
     extract_deadline_iso,
@@ -234,14 +229,7 @@ def test_detail_fetching_is_bounded_by_the_requested_limit() -> None:
         today=date(2026, 5, 9),
     )
 
-    assert len(fetched) <= detail_budget(2) <= MAX_DETAIL_BUDGET
-    assert len(fetched) < 80
-
-
-def test_detail_budget_scales_with_limit_within_bounds() -> None:
-    assert detail_budget(1) == MIN_DETAIL_BUDGET
-    assert detail_budget(10) == 30
-    assert detail_budget(1000) == MAX_DETAIL_BUDGET
+    assert len(fetched) == 2
 
 
 def test_raw_detail_pages_are_archived_as_evidence(tmp_path) -> None:

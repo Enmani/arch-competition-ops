@@ -153,7 +153,7 @@ def test_network_errors_never_print_a_traceback(tmp_path, monkeypatch, capsys) -
     captured = capsys.readouterr()
     assert exit_code == 1
     assert "error: network or file access failed" in captured.out
-    assert "dns failure" in captured.out
+    assert "HttpTransportError" in captured.out and "dns failure" not in captured.out
     assert "Traceback" not in captured.out + captured.err
 
 

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
+import math
 import re
-from datetime import date
+from datetime import datetime
 from urllib.parse import urlsplit
 
 from arch_competition_ops.config_loader import load_taxonomy
@@ -13,59 +14,55 @@ from arch_competition_ops.location import get_country_label_for_jurisdiction
 from arch_competition_ops.models import CompetitionRecord, SourceDefinition
 from arch_competition_ops.normalizers.dates import parse_date, slash_order_for_jurisdiction
 from arch_competition_ops.normalizers.money import MONEY_NUMBER_PATTERN, parse_money_number
-from arch_competition_ops.screening.models import ScreeningDecision, source_quote
+from arch_competition_ops.screening.field_contract import FIELDS
+from arch_competition_ops.screening.models import ScreeningDecision
+from arch_competition_ops.screening.notice_urls import stored_link
 from arch_competition_ops.settings import Settings
 
-_URL_FIELDS = {"official_url", "brief_pdf_url", "documents_portal_url"}
-_BOOL_FIELDS = {"licensed_architect_required", "local_partner_required"}
-_MONEY_FIELDS = {"registration_fee_eur", "submission_fee_eur", "estimated_contract_value_eur"}
-_LIST_FIELDS = {
-    "competition_types",
-    "project_types",
-    "building_categories",
-    "design_scopes",
-    "project_modes",
-    "audience",
-    "languages",
-}
-_TAXONOMY = {
-    "opportunity_type": "opportunity_types",
-    "procedure_type": "procedure_types",
-    "implementation_path": "implementation_paths",
-    "jurisdiction": "regions",
-}
+
+def _label(value, allowed):
+    if not isinstance(value, str):
+        return None
+    if value in allowed:
+        return value
+    key = "_".join(value.casefold().split())
+    return next((label for label in allowed if "_".join(label.casefold().split()) == key), None)
+
+
+class NoticeValidationError(ValueError):
+    """A source-grounded record could not be produced from this particular notice."""
 
 
 def extract_record(
     decision: ScreeningDecision,
     evidence_fields: dict[str, str],
     *,
+    mapped_names=frozenset(),
+    original_links: dict[str, set[str]] | None = None,
     source: SourceDefinition,
     source_url: str,
     settings: Settings,
-) -> tuple[CompetitionRecord, list[str]]:
+) -> tuple[CompetitionRecord | None, list[str]]:
+    if decision.decision == "exclude":
+        return None, []
+    source_url, source_redacted = stored_link(source_url)
     updates: dict = {}
     warnings: list[str] = []
     evidence_notes: list[str] = []
+    if source_redacted:
+        evidence_notes.append("Source URL: credential-like parameters removed.")
     taxonomy = load_taxonomy(settings)
     seen: set[str] = set()
     for claim in decision.extracted_fields:
         field, value, quote = claim.field, claim.value.strip(), claim.quote
-        evidence = evidence_fields.get(claim.evidence_field, "")
-        original_quote = source_quote(quote, evidence)
-        if (
-            field in seen
-            or not claim.evidence_field.startswith("notice_")
-            or original_quote is None
-        ):
-            warnings.append(f"{field}: missing, duplicated or unsupported source quote")
+        if field in seen:
+            warnings.append(f"{field}: duplicate extracted field")
             continue
         seen.add(field)
-        quote = original_quote
-        claim.quote = quote
         converted: object = value
         valid = True
-        if field in _URL_FIELDS:
+        spec = FIELDS[field]
+        if spec.kind == "url":
             parts = urlsplit(value)
             valid = (
                 parts.scheme in {"http", "https"}
@@ -78,60 +75,70 @@ def extract_record(
                 "/"
             ) == source.base_url.rstrip("/"):
                 valid = False  # The source's collection/landing URL is not a project website.
-        elif field in _MONEY_FIELDS:
-            amount = parse_money_number(value)
+            if valid and original_links is not None:
+                originals = original_links.get(value, set())
+                resolved = {stored_link(link) for link in originals}
+                targets = {url for url, _ in resolved}
+                valid = len(targets) == 1
+                if valid:
+                    converted = targets.pop()
+                    if any(redacted for _, redacted in resolved):
+                        evidence_notes.append(f"{field}: credential-like parameters removed.")
+        elif spec.kind == "money":
+            amount = float(value) if re.fullmatch(r"[0-9]+(?:\.[0-9]+)?", value) else None
             cited = [parse_money_number(token) for token in MONEY_NUMBER_PATTERN.findall(quote)]
             valid = (
                 amount is not None
-                and re.fullmatch(r"\d+(?:\.\d+)?", value) is not None
-                and amount >= 0
+                and math.isfinite(amount)
                 and amount in cited
-                and bool(re.search(r"€|\bEUR\b|\beuros?\b", quote, re.I))
+                and (
+                    quote.startswith("estimatedValueEur: ")
+                    or bool(re.search(r"€|\bEUR\b|\beuros?\b", quote, re.I))
+                )
             )
             converted = amount
-        elif field == "deadline_at":
+        elif spec.kind == "date":
             try:
-                converted = date.fromisoformat(value)
+                # Store the buyer's calendar day, including when the model copied an ISO time.
+                converted = datetime.fromisoformat(value).date()
             except ValueError:
-                valid = False
-            parsed = parse_date(
+                converted = None
+            valid = converted is not None and converted == parse_date(
                 quote, slash_order=slash_order_for_jurisdiction(source.jurisdiction)
             )
-            if parsed is not None:
-                valid = valid and parsed == converted
-            elif re.search(r"\b\d{1,2}/\d{1,2}/\d{4}\b", quote):
-                valid = False
-        elif field in _BOOL_FIELDS:
+        elif spec.kind == "bool":
             valid = value in {"true", "false"}
             converted = value == "true"
-        elif field in _TAXONOMY:
-            valid = value in getattr(taxonomy, _TAXONOMY[field])
-        elif field in _LIST_FIELDS:
+        elif spec.kind == "label":
+            converted = _label(value, getattr(taxonomy, spec.taxonomy))
+            valid = converted is not None
+        elif spec.kind == "label-list":
             try:
-                converted = json.loads(value)
-                valid = (
-                    isinstance(converted, list)
-                    and bool(converted)
-                    and all(
-                        isinstance(label, str) and label in getattr(taxonomy, field)
-                        for label in converted
-                    )
-                )
+                labels = json.loads(value)
             except ValueError:
-                valid = False
+                labels = None
+            allowed = getattr(taxonomy, spec.taxonomy)
+            converted = (
+                [_label(label, allowed) for label in labels] if isinstance(labels, list) else []
+            )
+            valid = bool(converted) and None not in converted
+        elif spec.kind == "text":
+            converted = quote
         else:
-            original_value = source_quote(value, quote)
-            valid = original_value is not None
-            converted = original_value
+            raise AssertionError(f"Unhandled field kind {spec.kind}")
         if not valid:
             warnings.append(f"{field}: value not supported by the cited source")
             continue
         updates[field] = converted
-        evidence_notes.append(f"AI {field} [{source_url}]: {quote}")
+        origin = "Source" if field in mapped_names else "AI"
+        evidence_notes.append(f"{origin} {field} [{source_url}]: {quote}")
     title = updates.pop("title", "")
+    if (original := evidence_fields.get("notice_title")) and original != title:
+        title = original
+        evidence_notes.append(f"Original notice title [{source_url}]: {title}")
     place_components = [updates.pop("location_city", None), updates.pop("location_region", None)]
     if not title:
-        raise ValueError("AI could not extract a source-grounded project title")
+        raise NoticeValidationError("AI could not extract a source-grounded project title")
     record = CompetitionRecord(
         title=title,
         source_url=source_url,

@@ -1,19 +1,23 @@
 from __future__ import annotations
 
+import json
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from datetime import timedelta
+from itertools import groupby
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from arch_competition_ops import clock
 from arch_competition_ops.config_loader import load_source_catalog, load_yaml_file
-from arch_competition_ops.ingest import ingest_source
+from arch_competition_ops.ingest import IngestError, ingest_source
 from arch_competition_ops.locking import exclusive_lock
 from arch_competition_ops.models import SourceDefinition
+from arch_competition_ops.run_errors import error_class
 from arch_competition_ops.settings import Settings
+from arch_competition_ops.storage.connection import connect
 
 DEFAULT_AUTOMATION_CONFIG_PATH = Path("config") / "automation.yml"
 logger = logging.getLogger(__name__)
@@ -66,6 +70,7 @@ class AutomationBatchResult:
     source_ids: list[str]
     publication_date_from: str | None
     limit_per_source: int
+    paid_reading_paused: bool = False
     succeeded: list[AutomationSourceRun] = field(default_factory=list)
     failed: list[AutomationSourceFailure] = field(default_factory=list)
 
@@ -89,6 +94,7 @@ class AutomationBatchResult:
             "limit_per_source": self.limit_per_source,
             "total_sources": self.total_sources,
             "total_ingested": self.total_ingested,
+            "paid_reading_paused": self.paid_reading_paused,
             "has_failures": self.has_failures,
             "succeeded": [asdict(run) for run in self.succeeded],
             "failed": [asdict(failure) for failure in self.failed],
@@ -163,7 +169,7 @@ def resolve_batch_sources(
 def _default_publication_date_from(window_days: int | None) -> str | None:
     if window_days is None:
         return None
-    return (clock.today() - timedelta(days=window_days)).isoformat()
+    return (clock.today() - timedelta(days=window_days - 1)).isoformat()
 
 
 def run_automation_batch(
@@ -173,6 +179,7 @@ def run_automation_batch(
     config_path: Path = DEFAULT_AUTOMATION_CONFIG_PATH,
     limit_per_source: int | None = None,
     publication_date_from: str | None = None,
+    collect_only: bool = False,
     continue_on_error: bool = True,
     use_lock: bool = True,
 ) -> AutomationBatchResult:
@@ -198,12 +205,17 @@ def run_automation_batch(
         limit_per_source=effective_limit,
     )
 
+    settings = settings.model_copy()
+    settings._source_daily_limit = effective_limit
+    settings._reading_run_since = clock.now_utc().isoformat()
+
     def run_sources() -> None:
         def run_one(index: int, source: SourceDefinition):
             logger.info("Source %d/%d: %s", index, len(sources), source.source_id)
             return ingest_source(
                 settings,
                 source_id=source.source_id,
+                collect_only=True,
                 limit=effective_limit,
                 publication_date_from=effective_publication_date_from,
             )
@@ -218,7 +230,10 @@ def run_automation_batch(
                     ingest = futures[index - 1].result() if futures else run_one(index, source)
                 except Exception as exc:
                     result.failed.append(
-                        AutomationSourceFailure(source_id=source.source_id, error=str(exc))
+                        AutomationSourceFailure(
+                            source.source_id,
+                            str(exc) if isinstance(exc, IngestError) else error_class(exc),
+                        )
                     )
                     if not continue_on_error:
                         raise
@@ -237,6 +252,49 @@ def run_automation_batch(
                         deferred=ingest.deferred,
                     )
                 )
+
+        if not settings.ai_enabled or collect_only:
+            return
+        db_path = settings.resolve_path(settings.db)
+        by_id = {run.source_id: run for run in result.succeeded}
+        # A failed discovery still has readable notices from previous runs.
+        with connect(db_path) as cx:
+            ids = cx.execute(
+                "WITH pending AS (SELECT source_id, rowid AS notice_id, first_seen, "
+                "row_number() OVER (PARTITION BY source_id ORDER BY first_seen,rowid) AS position "
+                "FROM items WHERE status='queued' AND (retry_at IS NULL OR retry_at<=?) "
+                "AND source_id IN (SELECT value FROM json_each(?))) "
+                "SELECT source_id,notice_id FROM pending WHERE position<=? "
+                "ORDER BY source_id,first_seen,notice_id",
+                (clock.now_utc().isoformat(), json.dumps(result.source_ids), effective_limit),
+            ).fetchall()
+        for source_id, group in groupby(ids, key=lambda item: item[0]):
+            row_ids = [row_id for _, row_id in group]
+            run = by_id.get(source_id)
+            try:
+                read = ingest_source(
+                    settings, source_id=source_id, queued_row_ids=row_ids, limit=len(row_ids)
+                )
+            except IngestError as exc:
+                result.failed.append(AutomationSourceFailure(source_id, str(exc)))
+                if not continue_on_error:
+                    raise
+                continue
+            if run is None:
+                run = AutomationSourceRun(source_id, 0)
+                by_id[source_id] = run
+                result.succeeded.append(run)
+            run.ingested_ids.extend(read.ingested_ids)
+            run.ingested_count += len(read.ingested_ids)
+            run.failure_count += read.parse_failure_count
+            run.notes.extend(read.notes)
+            run.filtered_out += read.filtered_out
+            run.deferred -= min(
+                run.deferred, len(read.ingested_ids) + read.skipped_expired + read.filtered_out
+            )
+            if read.batch_paused:
+                result.paid_reading_paused = True
+                break
 
     if use_lock:
         with exclusive_lock(settings.resolve_path(settings.ingest_lock), label=f"batch:{batch_id}"):

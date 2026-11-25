@@ -13,7 +13,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 
 export const WRANGLER_CMD_ENV_VAR = "ARCH_WRANGLER_CMD";
-const SECRET_ENV_VARS = ["CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "OPENAI_API_KEY", "GH_TOKEN"];
+const SECRET_ENV_VARS = ["CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GH_TOKEN"];
 const MAX_FAILURE_TEXT = 400;
 
 export function resolveWrangler(env, repoRoot) {

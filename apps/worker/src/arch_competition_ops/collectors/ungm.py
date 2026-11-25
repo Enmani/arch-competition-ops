@@ -1,25 +1,4 @@
-"""UN Global Marketplace public procurement notices (``www.ungm.org/Public/Notice``).
-
-One public notice list for 32 UN organisations (UNOPS, UNDP, UN-Habitat, UNRWA, UNHCR, UNICEF,
-WHO...), no login. Shape verified live on 2026-11-15:
-
-* ``GET /Public/Notice`` serves the page with an anti-forgery token (hidden input plus cookie).
-  ``POST /Public/Notice/Search`` with a JSON body and the token in the ``RequestVerificationToken``
-  header answers an HTML fragment of table rows, fifteen per page. Any other ``PageSize`` answers
-  HTTP 400. This is the call the public page itself makes; no account is involved.
-* The body mirrors the page filters: ``PageIndex`` (zero based), ``PublishedFrom``
-  (``DD-Mon-YYYY``), ``UNSPSCs`` (internal ids of the code tree; a parent id matches its whole
-  subtree and several ids combine with OR), ``IsActive`` (only notices still open),
-  ``SortField``/``SortAscending``.
-* A row carries the notice id, title, deadline (``DD-Mon-YYYY HH:MM (GMT x)``), publication date,
-  agency, type of opportunity, reference and beneficiary country. The description and the code
-  list are on the notice page (``/Public/Notice/<id>``, server rendered) and its ``Unspscs`` tab.
-* About 650 notices a week are open in all, almost all goods and operations; notices always carry
-  UNSPSC codes (a week sample had none without), so the server-side code filter loses no uncoded
-  notice. The design scope below is about 40 a week.
-* The service answers HTTP 429 after a burst (a loop of about 100 requests within a few minutes
-  was throttled); the default fetcher paces itself and waits out a 429 a bounded number of times.
-"""
+"""UN Global Marketplace public procurement notices (``www.ungm.org/Public/Notice``)."""
 
 from __future__ import annotations
 
@@ -35,12 +14,15 @@ from typing import Any
 from arch_competition_ops import clock
 from arch_competition_ops.collectors.base import CollectedSourceDocument
 from arch_competition_ops.collectors.common import DEFAULT_HEADERS, fetch_text_get
-from arch_competition_ops.collectors.relevance import (
-    has_built_environment_context,
-    is_design_relevant,
+from arch_competition_ops.collectors.pagination import (
+    numbered_pages,
+    page_items,
+    page_limit,
+    unfinished_page,
 )
 from arch_competition_ops.http import HttpStatusError, get_default_client
 from arch_competition_ops.models import SourceDefinition
+from arch_competition_ops.run_errors import error_class
 
 logger = logging.getLogger(__name__)
 
@@ -55,13 +37,6 @@ PAGE_PAUSE_SECONDS = 1.0
 # Waits before the second and third attempt at a throttled (HTTP 429) page.
 THROTTLE_WAITS_SECONDS = (20.0, 60.0)
 
-# Internal ids of the UNSPSC tree nodes (``GET /Shared/Unspsc/ChildUnspscs/<id>``), each matching
-# its whole subtree. 81100000 professional engineering services holds architectural engineering,
-# landscape architecture and design, and urban design and engineering; 72000000 building and
-# facility construction and maintenance services holds building works, renovation, interior
-# design and decorating, landscape architecture services; 93142000 urban development holds urban
-# development planning. Verified against the live code tree on 2026-11-15.
-SCOPE_UNSPSC_IDS = (107372, 107328, 109907)
 
 _MONTHS = {
     name: number
@@ -166,6 +141,7 @@ def parse_notice_rows(fragment: str) -> tuple[int, list[dict[str, str | None]]]:
         published = _parse_day(cells[3])
         notices.append(
             {
+                "listingText": "\n".join([row["title"], *cells]),
                 "noticeId": row["noticeId"],
                 "title": row["title"],
                 "deadline": deadline.isoformat() if deadline else None,
@@ -180,7 +156,7 @@ def parse_notice_rows(fragment: str) -> tuple[int, list[dict[str, str | None]]]:
     return len(parser.rows), notices
 
 
-def _search_body(page: int, window_start: date, *, scoped: bool) -> dict[str, Any]:
+def _search_body(page: int, window_start: date) -> dict[str, Any]:
     return {
         "PageIndex": page,
         "PageSize": PAGE_SIZE,
@@ -193,13 +169,13 @@ def _search_body(page: int, window_start: date, *, scoped: bool) -> dict[str, An
         "DeadlineTo": "",
         "Countries": [],
         "Agencies": [],
-        "UNSPSCs": list(SCOPE_UNSPSC_IDS) if scoped else [],
+        "UNSPSCs": [],
         "NoticeTypes": [],
         "SortField": "DatePublished",
         "SortAscending": False,
         "isPicker": False,
         "IsSustainable": False,
-        "IsActive": True,
+        "IsActive": False,
         "NoticeDisplayType": None,
         "NoticeSearchTotalLabelId": "noticeSearchTotal",
         "TypeOfCompetitions": [],
@@ -255,13 +231,7 @@ def _window_start(publication_date_from: str | None) -> date:
     return clock.today() - timedelta(days=DEFAULT_LOOKBACK_DAYS)
 
 
-def _is_design_notice(title: str) -> bool:
-    return is_design_relevant(title) and has_built_environment_context(title)
-
-
-def _build_document(
-    notice: dict[str, str | None], *, include_unclassified: bool
-) -> CollectedSourceDocument:
+def _build_document(notice: dict[str, str | None]) -> CollectedSourceDocument:
     page_url = UNGM_NOTICE_PAGE_URL.format(notice_id=notice["noticeId"])
     payload = {
         "title": notice["title"],
@@ -280,7 +250,7 @@ def _build_document(
         "publishedAt": notice["publishedAt"],
         # The notice page is server rendered with the description, so ``rawNoticeHtml`` is left
         # out and AI enrichment reads the page itself.
-        **({"rawNotice": notice} if include_unclassified else {}),
+        "rawNotice": notice["listingText"],
     }
     return CollectedSourceDocument(
         source_url=page_url, payload=json.dumps(payload, ensure_ascii=False)
@@ -293,31 +263,26 @@ def collect_ungm_documents(
     limit: int = 20,
     publication_date_from: str | None = None,
     fetch_search: FetchSearch | None = None,
-    include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
-    """Open design-scope notices published since ``publication_date_from``, newest first.
-
-    The code filter (``SCOPE_UNSPSC_IDS``) is server side in both modes. With
-    ``include_unclassified`` every notice it returns is kept and the triage and assessment models
-    judge relevance; otherwise a title keyword gate also applies.
-    """
+    """Collect public notices in the requested publication window."""
     fetch = fetch_search or make_default_fetch_search()
     window_start = _window_start(publication_date_from)
     documents: list[CollectedSourceDocument] = []
     seen: set[str] = set()
 
-    for page in range(MAX_PAGES):
+    for page in numbered_pages(range(page_limit(MAX_PAGES))):
         try:
-            fragment = fetch(_search_body(page, window_start, scoped=True))
-        except Exception:
-            if page == 0:
+            fragment = fetch(_search_body(page, window_start))
+        except Exception as exc:
+            if not documents:
                 raise
             # An error after the first page keeps what was read: the next run covers the window.
-            logger.warning("UNGM paging stopped at page %d after an error", page, exc_info=True)
+            unfinished_page()
+            logger.warning("UNGM paging stopped at page %d after %s", page, error_class(exc))
             return documents
         row_count, notices = parse_notice_rows(fragment)
 
-        for notice in notices:
+        for notice in page_items(notices):
             published = notice["publishedAt"]
             if published is not None and date.fromisoformat(published) < window_start:
                 return documents
@@ -325,15 +290,14 @@ def collect_ungm_documents(
             if notice_id in seen:  # new notices shift later pages while a run is paging
                 continue
             seen.add(notice_id)
-            if not include_unclassified and not _is_design_notice(str(notice["title"])):
-                continue
-            documents.append(_build_document(notice, include_unclassified=include_unclassified))
+            documents.append(_build_document(notice))
             if len(documents) >= limit:
                 return documents
 
         if row_count < PAGE_SIZE:
             return documents
 
+    unfinished_page()
     logger.warning(
         "UNGM paging stopped after %d pages; notices published since %s may not have been read",
         MAX_PAGES,

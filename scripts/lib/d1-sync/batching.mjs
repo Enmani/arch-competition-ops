@@ -86,7 +86,8 @@ export function planFiles({ tableStatements, retentionStatements = null, pruneSt
   }
 
   if (pruneStatements) {
-    const pruneFile = toFile(PRUNE_FILE_NAME, "competitions", guarded(pruneStatements));
+    const pruneFile = toFile(PRUNE_FILE_NAME, "competitions",
+      publication ? [publication.pruneGuard, ...pruneStatements] : pruneStatements);
     if (
       pruneFile.statements > limits.maxStatementsPerFile ||
       pruneFile.bytes > limits.maxFileBytes

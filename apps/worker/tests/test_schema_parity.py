@@ -13,8 +13,8 @@ from arch_competition_ops.storage.schema import SCHEMA_SQL
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "web" / "migrations"
 
-# No exceptions: every table and index the Web migrations create must also be in SCHEMA_SQL.
-WEB_ONLY_TABLES: set[str] = set()
+# Historical web migration 0008 is immutable; the worker imports its ledger into items.
+WEB_ONLY_TABLES = {"ai_notice_ledger"}
 WEB_ONLY_INDEXES: set[str] = set()
 
 
@@ -80,20 +80,26 @@ def test_the_worker_and_the_web_app_have_the_same_tables() -> None:
     worker, web = _tables(_worker_database()), _tables(_migrated_database())
 
     assert web - worker == WEB_ONLY_TABLES
-    assert worker - web == set()
+    assert worker - web == {
+        "items",
+        "collection_resume",
+        "backlog_retention",
+        "collection_coverage_gaps",
+        "daily_notice_reads",
+    }
 
 
 def test_every_shared_table_has_identical_columns() -> None:
     worker, web = _worker_database(), _migrated_database()
 
-    for table in sorted(_tables(worker)):
+    for table in sorted(_tables(worker) & _tables(web)):
         assert _columns(worker, table) == _columns(web, table), f"column mismatch in {table}"
 
 
 def test_every_shared_table_has_identical_indexes_and_foreign_keys() -> None:
     worker, web = _worker_database(), _migrated_database()
 
-    for table in sorted(_tables(worker)):
+    for table in sorted(_tables(worker) & _tables(web)):
         worker_indexes = _indexes(worker, table)
         web_indexes = {
             name: definition

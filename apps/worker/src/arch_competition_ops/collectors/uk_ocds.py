@@ -1,8 +1,4 @@
-"""OCDS release parsing shared by the two UK publishers: Contracts Finder and Find a Tender.
-
-Both services publish OCDS 1.1 releases with the same buyer, value and address shapes, and the
-same UK relevance judgement applies to both, so it lives here once.
-"""
+"""OCDS releases from Contracts Finder and Find a Tender."""
 
 from __future__ import annotations
 
@@ -11,8 +7,18 @@ from collections.abc import Callable, Iterator
 from typing import Any
 from urllib.parse import urlsplit
 
+from arch_competition_ops.collectors.pagination import (
+    bounded_pages,
+    current_pages,
+    next_page,
+    page_items,
+    page_limit,
+    page_position,
+    repeated_page,
+    unfinished_page,
+)
 from arch_competition_ops.normalizers.money import format_money_text
-from arch_competition_ops.normalizers.text import normalize_text
+from arch_competition_ops.run_errors import log_url
 
 logger = logging.getLogger(__name__)
 
@@ -21,48 +27,6 @@ logger = logging.getLogger(__name__)
 OCDS_PAGE_SIZE = 100
 # Runaway guard only: a normal week is ~23 Find a Tender pages and one Contracts Finder page.
 OCDS_MAX_PAGES = 500
-
-UK_RELEVANT_CPV_PREFIXES = (
-    "712",
-    "7142",
-)
-UK_DESIGN_MARKERS = (
-    "architect",
-    "architecture",
-    "architectural",
-    "landscape architecture",
-    "planning",
-    "urban design",
-    "masterplan",
-    "concept design",
-    "detailed design",
-    "design build",
-    "design and build",
-)
-UK_BUILT_MARKERS = (
-    "public realm",
-    "campus",
-    "school",
-    "heritage",
-    "library",
-    "hospital",
-    "housing",
-    "civic",
-    "pavilion",
-    "refurbishment",
-    "extension",
-    "alterations",
-    "car park",
-    "kitchen",
-    "site",
-)
-UK_NEGATIVE_MARKERS = (
-    "digital ai",
-    "skills building",
-    "school uniform",
-    "events management",
-    "training programme",
-)
 
 
 def iter_ocds_releases(
@@ -77,38 +41,34 @@ def iter_ocds_releases(
     """
     host = urlsplit(first_url).netloc
     seen: set[str] = set()
-    url: str | None = first_url
-    while url:
-        if url in seen or urlsplit(url).netloc != host or len(seen) >= OCDS_MAX_PAGES:
+    url: str | None = page_position(first_url)
+    for _ in bounded_pages(range(page_limit(OCDS_MAX_PAGES))):
+        if not url:
+            return
+        if url in seen or urlsplit(url).netloc != host:
+            repeated_page()
             logger.warning(
                 "Stopped OCDS paging after %d pages at %s (repeated, foreign or over cap)",
                 len(seen),
-                url,
+                log_url(url),
             )
             return
         seen.add(url)
         payload = fetch_json(url)
         if not isinstance(payload, dict):
             return
-        for release in payload.get("releases") or []:
+        for release in page_items(payload.get("releases") or []):
             if isinstance(release, dict):
                 yield release
+        if current_pages() and current_pages().rows >= current_pages().items:
+            unfinished_page()
+            return
         links = payload.get("links")
         next_url = links.get("next") if isinstance(links, dict) else None
         url = next_url if isinstance(next_url, str) and next_url.strip() else None
-
-
-def is_relevant_uk_design_notice(title: str, description: str, cpv_codes: list[str]) -> bool:
-    """Rule-based relevance used when no AI triage runs downstream."""
-    if any(code.startswith(UK_RELEVANT_CPV_PREFIXES) for code in cpv_codes):
-        return True
-
-    normalized = normalize_text(f"{title} {description}")
-    if any(marker in normalized for marker in UK_NEGATIVE_MARKERS):
-        return False
-    if not any(marker in normalized for marker in UK_DESIGN_MARKERS):
-        return False
-    return any(marker in normalized for marker in UK_BUILT_MARKERS)
+        next_page(url)
+    if url:
+        unfinished_page()
 
 
 def pick_buyer_name(release: dict) -> str | None:

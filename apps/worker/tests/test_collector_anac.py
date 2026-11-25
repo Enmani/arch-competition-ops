@@ -93,14 +93,22 @@ def test_ai_mode_reads_the_open_groups_and_keeps_design_cpv_contests_and_unknown
         ]
     )
 
-    documents = collect_anac_documents(
-        _source(), limit=2000, include_unclassified=True, fetch_json=fetch
-    )
+    documents = collect_anac_documents(_source(), limit=2000, fetch_json=fetch)
 
-    assert _ids(documents) == ["design", "urban", "unknown", "contest", "eu-contest", "detail"]
+    assert _ids(documents) == [
+        "design",
+        "urban",
+        "works",
+        "unknown",
+        "contest",
+        "eu-contest",
+        "detail",
+        "award",
+        "modification",
+    ]
     assert json.loads(documents[0].payload)["rawNotice"]["idAvviso"] == "design"
     query = requests[0]
-    assert query["codiceScheda"] == ["2,3,4,5a,5b,6"]
+    assert "codiceScheda" not in query
     assert query["dataPubblicazioneStart"] == [
         (clock.today() - timedelta(days=7)).strftime("%d/%m/%Y")
     ]
@@ -116,9 +124,7 @@ def test_pages_with_a_fixed_size_until_the_last_page() -> None:
         [_notice("c0")],
     )
 
-    documents = collect_anac_documents(
-        _source(), limit=2000, include_unclassified=True, fetch_json=fetch
-    )
+    documents = collect_anac_documents(_source(), limit=2000, fetch_json=fetch)
 
     assert len(documents) == 201
     assert [query["page"] for query in requests] == [["0"], ["1"], ["2"]]
@@ -133,7 +139,6 @@ def test_stops_at_the_first_notice_older_than_the_window() -> None:
         _source(),
         limit=2000,
         publication_date_from=_day(3),
-        include_unclassified=True,
         fetch_json=fetch,
     )
 
@@ -151,16 +156,14 @@ def test_page_cap_stops_a_runaway_window_with_a_warning(monkeypatch, caplog) -> 
     )
 
     with caplog.at_level(logging.WARNING, logger=anac.__name__):
-        documents = collect_anac_documents(
-            _source(), limit=2000, include_unclassified=True, fetch_json=fetch
-        )
+        documents = collect_anac_documents(_source(), limit=2000, fetch_json=fetch)
 
-    assert documents == []
+    assert len(documents) == 2 * anac.PAGE_SIZE
     assert len(requests) == 2
     assert "stopped after 2 pages" in caplog.text
 
 
-def test_without_ai_the_whole_feed_is_read_through_the_keyword_gates() -> None:
+def test_collection_preserves_unclassified_source_material() -> None:
     fetch, requests = _pages(
         [
             _notice(
@@ -174,7 +177,7 @@ def test_without_ai_the_whole_feed_is_read_through_the_keyword_gates() -> None:
 
     documents = collect_anac_documents(_source(), limit=20, fetch_json=fetch)
 
-    assert _ids(documents) == ["direct-award"]
+    assert _ids(documents) == ["direct-award", "supplies"]
     assert "codiceScheda" not in requests[0]
 
 
@@ -190,8 +193,6 @@ def test_ai_mode_keeps_design_and_build_works_notices_by_title() -> None:
         ]
     )
 
-    documents = collect_anac_documents(
-        _source(), limit=2000, include_unclassified=True, fetch_json=fetch
-    )
+    documents = collect_anac_documents(_source(), limit=2000, fetch_json=fetch)
 
-    assert _ids(documents) == ["integrato"]
+    assert _ids(documents) == ["integrato", "works"]

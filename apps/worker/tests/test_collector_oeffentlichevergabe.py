@@ -161,10 +161,14 @@ def test_keeps_open_notices_whose_cpv_codes_are_in_scope() -> None:
         }
     )
 
-    documents = _collect(fetch, publication_date_from=_day(1), include_unclassified=True)
+    documents = _collect(fetch, publication_date_from=_day(1))
 
     payloads = {payload["noticeId"]: payload for payload in _payloads(documents)}
     assert set(payloads) == {
+        "ocds-mnwr74-works-only",
+        "ocds-mnwr74-award",
+        "ocds-mnwr74-software",
+        "ocds-mnwr74-planning-only",
         "ocds-mnwr74-main-712",
         "ocds-mnwr74-additional-71",
         "ocds-mnwr74-urban-7993",
@@ -196,10 +200,12 @@ def test_skips_notices_under_an_eu_directive_because_ted_publishes_them() -> Non
         }
     )
 
-    documents = _collect(fetch, publication_date_from=_day(1), include_unclassified=True)
+    documents = _collect(fetch, publication_date_from=_day(1))
 
     notice_ids = {payload["noticeId"] for payload in _payloads(documents)}
     assert notice_ids == {
+        "ocds-mnwr74-eu-classic",
+        "ocds-mnwr74-eu-utilities",
         "ocds-mnwr74-national-vob",
         "ocds-mnwr74-national-other",
         "ocds-mnwr74-no-legal-basis",
@@ -212,7 +218,7 @@ def test_each_document_points_at_its_own_notice_page() -> None:
         {_day(1): [_notice("aaaa-1111", version="01"), _notice("26041676", version="2")]}
     )
 
-    documents = _collect(fetch, publication_date_from=_day(1), include_unclassified=True)
+    documents = _collect(fetch, publication_date_from=_day(1))
 
     urls = sorted(document.source_url for document in documents)
     assert urls == [
@@ -241,9 +247,7 @@ def test_reads_days_newest_first_and_skips_days_without_an_export() -> None:
             return b""
         return fetch(url)
 
-    documents = _collect(
-        fetch_with_empty_day, publication_date_from=_day(4), include_unclassified=True
-    )
+    documents = _collect(fetch_with_empty_day, publication_date_from=_day(4))
 
     assert [payload["noticeId"] for payload in _payloads(documents)] == [
         "ocds-mnwr74-yesterday",
@@ -280,7 +284,7 @@ def test_returns_at_most_limit_newest_documents_and_stops_reading_days() -> None
         }
     )
 
-    documents = _collect(fetch, limit=2, publication_date_from=_day(2), include_unclassified=True)
+    documents = _collect(fetch, limit=2, publication_date_from=_day(2))
 
     assert [payload["noticeId"] for payload in _payloads(documents)] == [
         "ocds-mnwr74-newest",
@@ -306,14 +310,15 @@ def test_one_document_per_procedure_and_a_newer_award_closes_it() -> None:
         }
     )
 
-    documents = _collect(fetch, publication_date_from=_day(2), include_unclassified=True)
+    documents = _collect(fetch, publication_date_from=_day(2))
 
     assert [document.source_url.rsplit("?", 1)[1] for document in documents] == [
-        "noticeId=corrected&noticeVersion=2"
+        "noticeId=corrected&noticeVersion=2",
+        "noticeId=awarded-later&noticeVersion=01",
     ]
 
 
-def test_classified_mode_keeps_only_design_relevant_notices() -> None:
+def test_collection_preserves_unclassified_source_material() -> None:
     fetch, _ = _exports(
         {
             _day(1): [
@@ -326,8 +331,11 @@ def test_classified_mode_keeps_only_design_relevant_notices() -> None:
     documents = _collect(fetch, publication_date_from=_day(1))
 
     payloads = _payloads(documents)
-    assert [payload["noticeId"] for payload in payloads] == ["ocds-mnwr74-architecture"]
-    assert "rawNotice" not in payloads[0]
+    assert [payload["noticeId"] for payload in payloads] == [
+        "ocds-mnwr74-monitoring",
+        "ocds-mnwr74-architecture",
+    ]
+    assert "rawNotice" in payloads[0]
 
 
 def test_generic_listing_parser_reads_the_payload() -> None:
@@ -370,7 +378,7 @@ def test_default_fetch_treats_404_as_a_day_without_export() -> None:
     assert oeffentlichevergabe._default_fetch_bytes(f"{EXPORT_URL}?pubDay=x") == b"PK-zip"
 
 
-def test_ai_mode_keeps_design_and_build_works_notices_and_rule_mode_does_not() -> None:
+def test_design_and_ordinary_works_are_both_collected() -> None:
     fetch, _requested = _exports(
         {
             "2026-05-12": [
@@ -382,6 +390,8 @@ def test_ai_mode_keeps_design_and_build_works_notices_and_rule_mode_does_not() -
         }
     )
 
-    documents = _collect(fetch, limit=50, include_unclassified=True)
-    assert [payload["noticeId"] for payload in _payloads(documents)] == ["ocds-mnwr74-tu"]
-    assert _collect(fetch, limit=50) == []
+    documents = _collect(fetch, limit=50)
+    assert [payload["noticeId"] for payload in _payloads(documents)] == [
+        "ocds-mnwr74-works",
+        "ocds-mnwr74-tu",
+    ]

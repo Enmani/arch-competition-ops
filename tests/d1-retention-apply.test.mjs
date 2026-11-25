@@ -296,8 +296,7 @@ test("--apply runs every file in order, ends by publishing after retention, and 
   assert.equal(calls[0], "0000-syncing.sql");
   assert.match(calls[1], /^0001-competitions\.sql$/);
   assert.match(result.out, /D1 sync complete: \d+ file\(s\) applied\./);
-  assert.match(result.out, /d1_rows_upserted competitions=2/);
-  assert.match(result.out, /d1_remote_competitions before=2 after=3/); // +comp-1, +comp-2, -stale-remote, comp-watched stays
+  assert.match(result.out, /d1_snapshot_rows competitions=2/);
 
   const remote = openRemote(ctx);
   assert.deepEqual(ids(remote), ["comp-1", "comp-2", "comp-watched"]);
@@ -308,6 +307,17 @@ test("--apply runs every file in order, ends by publishing after retention, and 
   );
   remote.close();
   assert.doesNotMatch(result.out + result.err, /It's|DROP TABLE|INSERT INTO/, "no SQL values in the output");
+});
+
+test("a repeated apply reads the singleton and only sends time-dependent retention", (t) => {
+  const ctx = applySetup(t);
+  assert.equal(runMain(ctx, ["--apply"]).code, 0);
+  const before = d1Calls(ctx).length;
+  const again = runMain(ctx, ["--apply"], ctx.env, "out-again");
+  assert.equal(again.code, 0, again.err);
+  assert.deepEqual(d1Calls(ctx).slice(before), ["0090-retention.sql"]);
+  const calls = readFileSync(path.join(ctx.store, "calls.log"), "utf8");
+  assert.doesNotMatch(calls, /COUNT\(\*\) FROM competitions/i);
 });
 
 test("--apply stops at the first failing file and says which one", (t) => {

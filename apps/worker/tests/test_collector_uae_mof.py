@@ -125,9 +125,7 @@ def test_pages_until_the_list_ends_and_every_notice_has_its_own_url() -> None:
     tenders = [_tender(f"{13000 + index}", "14/11/2026") for index in range(20)]
     api = FakeMinistry(tenders)
 
-    documents = collect_uae_mof_documents(
-        _source(), limit=1000, include_unclassified=True, fetch_page=api
-    )
+    documents = collect_uae_mof_documents(_source(), limit=1000, fetch_page=api)
 
     assert len(documents) == 20
     assert api.pages == [1, 2, 3, 4]  # the empty fourth page ends the read
@@ -146,9 +144,7 @@ def test_default_window_is_seven_days_and_stops_at_the_first_older_tender() -> N
     ]
     api = FakeMinistry(tenders, page_size=2)
 
-    documents = collect_uae_mof_documents(
-        _source(), limit=100, include_unclassified=True, fetch_page=api
-    )
+    documents = collect_uae_mof_documents(_source(), limit=100, fetch_page=api)
 
     assert [json.loads(d.payload)["noticeId"] for d in documents] == ["13003", "13002"]
     assert api.pages == [1, 2]  # page 2 holds the first older tender; no page 3 is read
@@ -161,7 +157,6 @@ def test_explicit_window_start_overrides_the_default() -> None:
         _source(),
         limit=100,
         publication_date_from="2026-11-12",
-        include_unclassified=True,
         fetch_page=FakeMinistry(tenders),
     )
 
@@ -179,9 +174,7 @@ def test_page_cap_stops_a_list_that_never_ends_and_logs_a_warning(
         return _fragment([_tender(f"{page}{index}", "14/11/2026") for index in range(9)])
 
     with caplog.at_level(logging.WARNING, logger=uae_mof.logger.name):
-        documents = collect_uae_mof_documents(
-            _source(), limit=10_000, include_unclassified=True, fetch_page=endless
-        )
+        documents = collect_uae_mof_documents(_source(), limit=10_000, fetch_page=endless)
 
     assert calls == [1, 2, 3]
     assert len(documents) == 27
@@ -191,9 +184,7 @@ def test_page_cap_stops_a_list_that_never_ends_and_logs_a_warning(
 def test_limit_stops_the_read_early() -> None:
     api = FakeMinistry([_tender(f"{13000 + index}", "14/11/2026") for index in range(30)])
 
-    documents = collect_uae_mof_documents(
-        _source(), limit=5, include_unclassified=True, fetch_page=api
-    )
+    documents = collect_uae_mof_documents(_source(), limit=5, fetch_page=api)
 
     assert len(documents) == 5
     assert api.pages == [1]
@@ -210,27 +201,20 @@ def test_drops_closed_duplicate_and_linkless_tenders() -> None:
         ]
     )
 
-    documents = collect_uae_mof_documents(
-        _source(), limit=100, include_unclassified=True, fetch_page=api
-    )
+    documents = collect_uae_mof_documents(_source(), limit=100, fetch_page=api)
 
-    assert [json.loads(d.payload)["noticeId"] for d in documents] == ["13005", "13002"]
+    assert [json.loads(d.payload)["noticeId"] for d in documents] == ["13005", "13004", "13002"]
 
 
-def test_ai_mode_keeps_every_open_tender_and_the_gate_applies_otherwise() -> None:
+def test_every_open_notice_is_collected() -> None:
     tenders = [
         _tender("13002", "14/11/2026", title="Architectural design of the ministry annex"),
         _tender("13001", "14/11/2026", title="Supply of gym equipment"),
     ]
 
-    everything = collect_uae_mof_documents(
-        _source(), limit=100, include_unclassified=True, fetch_page=FakeMinistry(tenders)
-    )
-    gated = collect_uae_mof_documents(_source(), limit=100, fetch_page=FakeMinistry(tenders))
+    everything = collect_uae_mof_documents(_source(), limit=100, fetch_page=FakeMinistry(tenders))
 
     assert [json.loads(d.payload)["noticeId"] for d in everything] == ["13002", "13001"]
-    assert [json.loads(d.payload)["noticeId"] for d in gated] == ["13002"]
-    assert "rawNotice" not in json.loads(gated[0].payload)
 
 
 def test_payload_carries_explicit_facts_and_the_notice_link() -> None:
@@ -246,9 +230,7 @@ def test_payload_carries_explicit_facts_and_the_notice_link() -> None:
         ]
     )
 
-    [document] = collect_uae_mof_documents(
-        _source(), limit=5, include_unclassified=True, fetch_page=api
-    )
+    [document] = collect_uae_mof_documents(_source(), limit=5, fetch_page=api)
     payload = json.loads(document.payload)
 
     assert document.source_url == LINK + "13094"
@@ -272,8 +254,6 @@ def test_payload_carries_explicit_facts_and_the_notice_link() -> None:
 def test_summary_is_empty_when_the_description_only_repeats_the_title() -> None:
     api = FakeMinistry([_tender("13001", "14/11/2026")])
 
-    [document] = collect_uae_mof_documents(
-        _source(), limit=5, include_unclassified=True, fetch_page=api
-    )
+    [document] = collect_uae_mof_documents(_source(), limit=5, fetch_page=api)
 
     assert json.loads(document.payload)["summary"] is None

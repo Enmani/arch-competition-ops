@@ -117,7 +117,7 @@ npm run d1:export-data
 ```
 
 The exporter prints the exact `wrangler d1 execute` commands and writes them to `manifest.json`.
-Run the files in the printed order. `0000-syncing.sql` marks the import as in progress. The data files follow, then retention and pruning when requested. `0100-publish.sql` publishes the new version and computes the default total and options for today and tomorrow in UTC using the remote records.
+Run the files in the printed order. `0000-syncing.sql` marks the import as in progress. The data files follow, then retention and pruning when requested. `0100-publish.sql` publishes the visible catalogue and its summary through the next deadline change, using the final remote records.
 
 ```powershell
 npm --workspace apps/web exec -- wrangler d1 execute arch-competition-ops --remote --file ../../artifacts/d1-sync/<UTC-timestamp>/0001-competitions.sql
@@ -297,7 +297,11 @@ in `apps/web/wrangler.jsonc`.
 ### D1 Import Rejects Transactions
 
 `scripts/export-d1-data.mjs` must not emit `BEGIN TRANSACTION`, `COMMIT`, `SAVEPOINT` or `ROLLBACK`.
-D1 imports apply each file separately. The syncing marker keeps readers on the live path until the final file publishes two days of summaries together. An interrupted import leaves the marker in place. The export tests cover retries, file ownership and publication after pruning.
+D1 imports apply each file separately. The syncing marker keeps readers on the live path until the final file publishes the summaries. An interrupted import leaves the marker in place. The export tests cover retries, file ownership and publication after pruning.
+
+### Estimating the D1 allowance
+
+The free allowance is 100,000 row writes and 5 million row reads per day. For normal ingest, estimate logical data writes as new or changed opportunities × up to two rows (facts and assessment), plus changed source or review diagnostics, two marker writes per changed import, and actual retention deletes. For example, 100 new opportunities with decisions add about 200 data rows. Index maintenance, cascading deletes and other users of D1 also count. Check the dashboard for billed totals. Repeating an identical import without anything due for retention writes zero rows. A singleton lookup skips all data files. Web and MCP requests use their existing reads.
 
 ### Multiple Cloudflare Accounts
 
@@ -345,11 +349,13 @@ git push
 `.github/workflows/daily-ingest.yml` runs the daily ingest on a GitHub Actions runner (free for a public repository, 6 hour job limit), so the site updates even when the owner's PC is off. It replaces the Windows scheduled task. Each run:
 
 1. pulls the worker state from the private R2 bucket `arch-competition-state` (`scripts/cloud-state.mjs pull`): `data/competitions.sqlite` (notice ledger, paid-assessment cache, all records) and `data/geocoding-cache.json`;
-2. `cleanup-expired-competitions`, then `ingest-batch --batch-id all_enabled` with AI on, 8 assessments at once, caps of 15 USD a day and 100 USD a month;
+2. `cleanup-expired-competitions`, then `ingest-batch --batch-id all_enabled` with AI on, 8 assessments at once, caps of 5 USD a day and 100 USD a month;
 3. `node scripts/export-d1-data.mjs --apply`: upserts the worker-owned tables into production D1 and deletes expired and excluded records there (`0090-retention.sql`);
 4. pushes the new state as a new generation (`scripts/cloud-state.mjs push`), keeping the newest 14.
 
-The state is the expensive part. Losing it, or starting from an empty database, means paying for every assessment again, so `pull` fails when the bucket has no state (only `push --init` creates the first one), and `pull`/`push` refuse to replace a state with one that has fewer `ai_notice_ledger` rows unless `--force`. Steps 3 and 4 still run when the ingest exits non-zero (some sources failing is normal) and never run when the pull failed; the job is then marked failed so the red run is visible.
+The ingestion step defaults to Anthropic Messages, claude-haiku-5-5 and low effort. The owner has 100 USD in monthly credit, which expires at the end of each month. GitHub Actions repository variables AI_PROVIDER, AI_MODEL and AI_REASONING_EFFORT override those defaults. For OpenAI Responses, select openai, set an OpenAI model and add OPENAI_API_KEY. Only screening and the separate bilingual title step receive the selected model credentials. A title failure leaves collected notices and screening results intact.
+
+The state is the expensive part. Losing it, or starting from an empty database, means paying for every assessment again, so `pull` fails when the bucket has no state (only `push --init` creates the first one), and `pull`/`push` refuse to replace a state with one that has fewer registered items after recorded retention unless `--force`. Before trying the experimental worker, preserve a copy of the baseline SQLite file. Its first startup migrates old queue and ledger rows in one transaction. To return to the baseline, restore that copy with the matching code. Steps 3 and 4 still run when the ingest exits non-zero (some sources failing is normal) and never run when the pull failed; the job is then marked failed so the red run is visible.
 
 ### One-time setup
 
@@ -362,15 +368,14 @@ The state is the expensive part. Losing it, or starting from an empty database, 
    npm --workspace apps/web exec -- wrangler r2 bucket create arch-competition-state
    ```
 
-3. Set the three repository secrets from environment variables, so the values are never typed into the command or echoed (set `$env:OPENAI_API_KEY` the same way as the two above; do not paste a key into a command line that is saved in shell history):
+3. Open the GitHub repository and choose Settings → Secrets and variables → Actions → New repository secret. Name it `ANTHROPIC_API_KEY` and paste the key into the value field. The current key lasts 30 days. Before expiry, create a replacement in the Anthropic account, select the existing GitHub secret and choose Update secret. After the next scheduled ingest succeeds with the replacement, revoke the previous key. Set the two Cloudflare secrets from the environment:
 
    ```powershell
    gh secret set CLOUDFLARE_API_TOKEN  --repo Enmani/arch-competition-ops --body $env:CLOUDFLARE_API_TOKEN
    gh secret set CLOUDFLARE_ACCOUNT_ID --repo Enmani/arch-competition-ops --body $env:CLOUDFLARE_ACCOUNT_ID
-   gh secret set OPENAI_API_KEY        --repo Enmani/arch-competition-ops --body $env:OPENAI_API_KEY
    ```
 
-   These are the only secrets the workflow uses. Clear the variables afterwards (see After Deployment).
+   Clear the variables afterwards (see After Deployment).
 4. Make the local database the first generation. Do it right after the last local ingest, with the Windows task paused, so the ledger and the assessment cache of the cloud start from everything already paid for. The snapshot is taken with SQLite's backup API, so a running ingest does not corrupt it.
 
    ```powershell
@@ -396,7 +401,7 @@ From then on the cloud state is the master copy. To ingest locally again, run `n
 
 ### Reading the results
 
-- Actions tab, workflow "Daily ingest": the run summary shows counts only (batch line from the CLI, failed source ids, ledger/results/cost before and after, D1 rows upserted, remote competition count before and after, pushed generation). Nothing is uploaded as an artifact and no notice titles are logged, because logs of a public repository are world-readable.
+- Actions tab, workflow "Daily ingest": the run summary shows counts only (batch line from the CLI, failed source ids, ledger/results/cost before and after, exported snapshot sizes and whether the sync skipped unchanged data, pushed generation). Nothing is uploaded as an artifact and no notice titles are logged, because logs of a public repository are world-readable.
 - `gh run list --workflow daily-ingest.yml --repo Enmani/arch-competition-ops`, and `gh run view <id> --log` for the full log.
 - A red run with a green "Sync to D1" and "Push state to R2" means only that some sources failed; the data and state were still saved. A red "Pull state from R2" means nothing was changed and nothing was spent: fix the bucket or token and run again. A red "Sync to D1" means the state was pushed but D1 is behind; re-run the workflow (the upserts are idempotent and the next ingest finds nothing new, so it costs nothing).
 - Verify production with `curl.exe -s "https://arch-competition.com/api/opportunities?limit=1"` and load page two from discover after a sync.
@@ -480,3 +485,12 @@ Static assets are capped at 20,000 files per Worker version (25 MiB each) and ev
 ### Imagery terms
 
 Satellite images use Esri World Imagery tiles. The site displays the credit line from the manifest next to the image. For Esri World Imagery it is "Imagery © Esri, Maxar, Earthstar Geographics, and the GIS User Community". The public `services.arcgisonline.com` endpoint is subject to Esri's terms of use; if traffic or commercial use grows, review them or switch `ARCH_SATELLITE_TILE_URL_TEMPLATE` (and `ARCH_PREVIEW_TILE_ATTRIBUTION`) to a licensed provider.
+
+For a collection-only run, select **collect_only** in Daily ingest. It saves notices in the private worker database and pushes that state to R2. The next paid run reads the oldest eligible notices within each source. The log reports new notices, text lengths, known unfinished pages and backlog age per source. Set **publication_date_from** to recover older notices that failed before the queue existed.
+
+Changing the screening requirement, schema, provider, model or effort automatically requeues failed notices with up to three fresh attempts each. These retries share the normal paid limits: 100 reads per source per UTC day by default, USD 5 per run and day, and USD 100 per month. Title translation shares the spending limits. If older text has been cleared, the worker first tries to fetch the notice again.
+Anthropic documents HTTP 402 for billing and may return a generic HTTP 400 for a configured spending limit. The worker also treats HTTP 400 with a billing or credit error type as an account pause. An ordinary `invalid_request_error` counts as a notice error even if its message mentions money. Repeated `http_400` lines are a reason to check the account limit as well as the request. [Anthropic error reference](https://platform.claude.com/docs/en/api/errors)
+
+A source report marked `no_readable_text` identifies a site root or notice URL whose listing and detail contain no readable notice. There is no model charge or model failure. After the first empty read the worker fetches again on later days, twice by default. The third empty read leaves a visible terminal entry; a new notice version or a manual requeue can restart it. BOAMP uses the public notice ID when the detail link is missing; rows without either identifier or link are counted as `missing_notice_url`.
+
+A site block, provider outage or busy lock leaves the notice queued without using an attempt. The report gives its error class and next retry time (one hour at first, doubling to at most 24 hours). A broken page cursor is retried once from the beginning within the existing limits. Repeated pages or a failed restart leave a dated coverage gap in the report.

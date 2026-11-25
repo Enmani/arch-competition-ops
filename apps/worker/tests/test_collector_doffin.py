@@ -85,7 +85,6 @@ def _collect(fake: _FakeDoffin, **kwargs):
         _source(),
         fetch_search_json=fake.search,
         fetch_detail_json=fake.detail,
-        include_unclassified=kwargs.pop("include_unclassified", True),
         **kwargs,
     )
 
@@ -101,9 +100,9 @@ def test_ai_mode_pages_through_the_default_window_with_the_design_scope():
     assert body["numHitsPerPage"] == 100
     assert body["sortBy"] == "PUBLICATION_DATE_DESC"
     assert body["facets"]["publicationDate"] == {"from": _day(7), "to": None}
-    assert body["facets"]["cpvCodesId"]["checkedItems"] == ["71000000", "79930000"]
+    assert body["facets"]["cpvCodesId"]["checkedItems"] == []
     assert "ANNOUNCEMENT_OF_CONCLUSION_OF_CONTRACT" not in body["facets"]["type"]["checkedItems"]
-    assert body["facets"]["type"]["checkedItems"] == doffin.AI_OPEN_NOTICE_TYPES
+    assert body["facets"]["type"]["checkedItems"] == []
     assert body["facets"]["contractNature"]["checkedItems"] == []
     urls = [document.source_url for document in documents]
     assert len(set(urls)) == len(urls)
@@ -148,7 +147,7 @@ def test_paging_stops_when_the_limit_is_reached():
 
     assert len(documents) == 5
     assert len(fake.bodies) == 1
-    assert len(fake.works_bodies) == 1
+    assert not fake.works_bodies
     assert len(fake.detail_urls) == 5
 
 
@@ -176,13 +175,13 @@ def test_ai_scope_keeps_open_design_or_unclassified_notices_and_drops_the_rest()
     documents = _collect(fake, limit=50)
 
     kept = [json.loads(document.payload)["noticeId"] for document in documents]
-    assert kept == ["design", "interior", "unclassified", "pin-cfc"]
+    assert kept == [hit["id"] for hit in hits]
     # Result and closed notices are dropped from the listing, before any detail request.
     fetched = {url.removeprefix(DETAIL_PREFIX) for url in fake.detail_urls}
-    assert fetched == {"design", "interior", "unclassified", "works-only", "pin-cfc"}
+    assert fetched == set(kept)
 
 
-def test_keyword_mode_keeps_its_filters_and_reads_without_a_default_window():
+def test_collection_preserves_unclassified_source_material():
     fake = _FakeDoffin(
         [_hit("plan", heading="Rammeavtale planfagleg rådgjevingsteneste"), _hit("other")],
         {
@@ -195,58 +194,14 @@ def test_keyword_mode_keeps_its_filters_and_reads_without_a_default_window():
         },
     )
 
-    documents = _collect(fake, limit=5, include_unclassified=False)
+    documents = _collect(fake, limit=5)
 
-    assert [json.loads(d.payload)["noticeId"] for d in documents] == ["plan"]
+    assert [json.loads(d.payload)["noticeId"] for d in documents] == ["plan", "other"]
     facets = fake.bodies[0]["facets"]
-    assert facets["publicationDate"]["from"] is None
-    assert facets["status"]["checkedItems"] == ["ACTIVE"]
-    assert facets["contractNature"]["checkedItems"] == ["SERVICES"]
-    assert "rawNotice" not in json.loads(documents[0].payload)
-
-
-def test_ai_mode_adds_design_and_build_works_notices_from_one_works_search():
-    scoped = [_hit("design", published=_day(3)), _hit("also-works", published=_day(2))]
-    works = [
-        _hit(
-            "heer",
-            published=_day(1),
-            heading="26278 Heer barnehage - Ombygging, nytt bygg, totalentreprise",
-        ),
-        _hit("riving", published=_day(2), heading="Riving og miljøsanering av formålsbygg"),
-        _hit(
-            "also-works",
-            published=_day(2),
-            heading="NTNU Campussamling - K206 - Samspillsentreprise",
-        ),
-        _hit("old", published=_day(10), heading="Totalentreprise Dombås helsehus"),
-    ]
-    details = {
-        "heer": {
-            "heading": "26278 Heer barnehage - Ombygging, nytt bygg, totalentreprise",
-            "allCpvCodes": ["45000000", "45214100"],
-        },
-        "also-works": {
-            "heading": "NTNU Campussamling - K206 - Samspillsentreprise",
-            "allCpvCodes": ["45000000", "71000000"],
-        },
-    }
-    fake = _FakeDoffin(scoped, details, works=works)
-
-    documents = _collect(fake, limit=50, publication_date_from=_day(7))
-
-    assert [json.loads(d.payload)["noticeId"] for d in documents] == [
-        "heer",
-        "also-works",
-        "design",
-    ]
-    assert len(fake.works_bodies) == 1
-    works_body = fake.works_bodies[0]
-    assert works_body["facets"]["type"]["checkedItems"] == doffin.AI_OPEN_NOTICE_TYPES
-    assert works_body["facets"]["publicationDate"]["from"] == _day(7)
-    # A works notice that names no design-and-build model never costs a detail request.
-    fetched = [url.removeprefix(DETAIL_PREFIX) for url in fake.detail_urls]
-    assert sorted(fetched) == ["also-works", "design", "heer"]
+    assert facets["publicationDate"]["from"] is not None
+    assert facets["status"]["checkedItems"] == []
+    assert facets["contractNature"]["checkedItems"] == []
+    assert "rawNotice" in json.loads(documents[0].payload)
 
 
 def test_ai_mode_drops_a_plain_works_notice_whose_detail_names_no_design_and_build_model():
@@ -254,4 +209,52 @@ def test_ai_mode_drops_a_plain_works_notice_whose_detail_names_no_design_and_bui
     details = {"plain": {"heading": "Rehabilitering av svømmebasseng", "allCpvCodes": ["45212212"]}}
     fake = _FakeDoffin(hits, details)
 
-    assert _collect(fake, limit=50) == []
+    assert [json.loads(d.payload)["noticeId"] for d in _collect(fake, limit=50)] == ["plain"]
+
+
+def test_forbidden_detail_is_queued_and_can_be_read_without_relisting(tmp_path, monkeypatch):
+    from http_fakes import Reply, make_client
+    from support import REPO_ROOT, write_source_catalog
+
+    from arch_competition_ops.http import HttpStatusError
+    from arch_competition_ops.ingest import ingest_source
+    from arch_competition_ops.screening.inputs import enrich_notice_payload, prepare_input
+    from arch_competition_ops.settings import Settings
+    from arch_competition_ops.storage.backlog import queued
+
+    fake = _FakeDoffin([_hit("library")])
+
+    def blocked(url):
+        raise HttpStatusError("forbidden", url=url, status_code=403)
+
+    documents = collect_doffin_documents(
+        _source(), fetch_search_json=fake.search, fetch_detail_json=blocked
+    )
+    write_source_catalog(tmp_path, "ted_design_notices")
+    settings = Settings(
+        root=tmp_path,
+        ai_enabled=False,
+        ai_fetch_details=False,
+        taxonomy_config=REPO_ROOT / "config/taxonomy.yml",
+    )
+    ingest_source(
+        settings, source_id="ted_design_notices", collected_documents=documents, collect_only=True
+    )
+    [item] = queued(settings.resolve_path(settings.db), "ted_design_notices", 1)
+    notice = item.document
+    http, _, _ = make_client(
+        [Reply(status=403), Reply(body=b"Library renovation deadline extended")]
+    )
+    monkeypatch.setattr("arch_competition_ops.screening.inputs.get_default_client", lambda: http)
+    limits = []
+    assert (
+        enrich_notice_payload(notice.payload, notice.source_url, settings, limitations=limits)
+        == notice.payload
+    )
+    assert "403" in limits[0]
+    payload = enrich_notice_payload(notice.payload, notice.source_url, settings)
+    _, fields, _ = prepare_input(
+        {"source_url": notice.source_url}, settings, source_payload=payload
+    )
+    assert "Library renovation deadline extended" in fields["notice_text"]
+    assert "pendingDetailUrl" not in fields["notice_text"]

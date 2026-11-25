@@ -43,3 +43,40 @@ def _isolated_runtime():
     clock.set_today_provider(None)
     configure_procedure_registry(None)
     reset_schema_cache()
+
+
+@pytest.fixture
+def offline_assessment(monkeypatch):
+    from arch_competition_ops import ingest
+    from arch_competition_ops.screening.models import ScreeningDecision
+    from arch_competition_ops.screening.service import AssessmentOutcome, DocumentAssessment
+
+    def assess(settings, *, source, documents):
+        outcomes = []
+        for url, payload in documents:
+            try:
+                record = ingest.parse_source_payload(source, payload, source_url=url)
+                decision = ScreeningDecision(
+                    decision="needs_review",
+                    relevance_score=0,
+                    evidence=[],
+                    extracted_fields=[],
+                    missing_information=["scope"],
+                    reasons_en=[],
+                    reasons_zh=[],
+                    summary_zh="",
+                    summary_en="",
+                )
+                outcomes.append(
+                    AssessmentOutcome(
+                        assessment=DocumentAssessment(
+                            record, decision, "fixture", settings.ai_model, False, 0
+                        )
+                    )
+                )
+            except ValueError as exc:
+                outcomes.append(AssessmentOutcome(error=exc))
+        return outcomes
+
+    monkeypatch.setenv("ARCH_COMPETITION_OPS_AI_ENABLED", "1")
+    monkeypatch.setattr(ingest, "assess_documents", assess)

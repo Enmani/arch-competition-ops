@@ -20,4 +20,4 @@ sources:
     languages:
       - en
       - ar
-    notes: "Official Tender Board list of open public tenders and auctions (about 460 open, about 45 a week) with a public English detail page per tender that carries CPV codes. The collector keeps CPV 71 and 7993, tenders without a CPV code, and design-and-build works, and reads the list through the page's own JSON page methods. No robots.txt; the terms of use only bar republishing the content. Tender documents sit behind the eTendering login."
+    notes: "Official Tender Board list of open public tenders and auctions (about 460 open, about 45 a week) with a public English detail page per tender that carries CPV codes. The collector reads the list through the page's own JSON page methods. No robots.txt; the terms of use only bar republishing the content. Tender documents sit behind the eTendering login."

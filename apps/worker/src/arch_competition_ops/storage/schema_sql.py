@@ -109,21 +109,51 @@ CREATE TABLE IF NOT EXISTS ai_screening_results (
 );
 CREATE INDEX IF NOT EXISTS idx_ai_screening_results_decision ON ai_screening_results (decision);
 
--- Local worker ledger of notices already screened, so an unchanged notice is never triaged,
--- fetched or assessed twice. A row means: this source listed exactly this content
--- (content_hash) and it was decided under exactly these screening criteria (criteria_hash).
--- Changed content (a corrigendum, a moved deadline) or changed criteria produce a new key and
--- are screened again. Not exported to D1.
-CREATE TABLE IF NOT EXISTS ai_notice_ledger (
+-- Worker-only collection state; D1 only serves published facts and decisions.
+CREATE TABLE IF NOT EXISTS items (
     source_id TEXT NOT NULL,
-    content_hash TEXT NOT NULL,
-    criteria_hash TEXT NOT NULL,
-    outcome TEXT NOT NULL,
     source_url TEXT NOT NULL,
-    recorded_at TEXT NOT NULL,
-    PRIMARY KEY (source_id, content_hash, criteria_hash)
+    payload TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'queued',
+    first_seen TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    criteria_hash TEXT,
+    expires_on TEXT,
+    queued_at TEXT,
+    retry_at TEXT,
+    transient_count INTEGER NOT NULL DEFAULT 0,
+    empty_reads INTEGER NOT NULL DEFAULT 0,
+    terminal_at TEXT,
+    request_id TEXT,
+    PRIMARY KEY(source_id, content_hash)
 );
-CREATE INDEX IF NOT EXISTS idx_ai_notice_ledger_recorded_at ON ai_notice_ledger (recorded_at);
+CREATE INDEX IF NOT EXISTS idx_backlog_queue ON items(status, first_seen);
+CREATE TABLE IF NOT EXISTS daily_notice_reads (
+    request_id TEXT PRIMARY KEY,
+    source_id TEXT NOT NULL,
+    day TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_daily_notice_reads ON daily_notice_reads(day,source_id);
+CREATE TABLE IF NOT EXISTS backlog_retention (
+    id INTEGER PRIMARY KEY CHECK (id=1),
+    removed INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS collection_coverage_gaps (
+    source_id TEXT NOT NULL,
+    date_from TEXT NOT NULL,
+    date_through TEXT NOT NULL,
+    PRIMARY KEY(source_id, date_from, date_through)
+);
+CREATE TABLE IF NOT EXISTS collection_resume (
+    source_id TEXT PRIMARY KEY,
+    date_from TEXT NOT NULL,
+    read_limit INTEGER NOT NULL,
+    listing_hash TEXT,
+    date_to TEXT,
+    cursor TEXT NOT NULL DEFAULT ''
+);
 
 CREATE TABLE IF NOT EXISTS source_runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

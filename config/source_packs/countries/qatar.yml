@@ -21,7 +21,7 @@ sources:
       - qatar
     languages:
       - ar
-    notes: "Official Qatari state procurement site (Ministry of Finance): about 230 tenders open for bids from ministries and state bodies, public list and per-tender pages, no login. Suppliers-and-service-providers tenders are kept (consultancy has no sector of its own); contracting tenders only when design-and-build. The server sends its TLS certificate without the intermediate and resets TLS 1.2 handshakes from current OpenSSL, so the collector uses its own client with certificate verification on, the one missing DigiCert intermediate added, and TLS 1.3. robots.txt allows everything; the terms of use forbid republishing the site content without consent."
+    notes: "Official Qatari state procurement site (Ministry of Finance): about 230 tenders open for bids from ministries and state bodies, public list and per-tender pages, no login. The collector reads tenders in every listed category. The server sends its TLS certificate without the intermediate and resets TLS 1.2 handshakes from current OpenSSL, so the collector uses its own client with certificate verification on, the one missing DigiCert intermediate added, and TLS 1.3. robots.txt allows everything; the terms of use forbid republishing the site content without consent."
   - source_id: qa_ashghal_open_tenders
     name: Ashghal (Public Works Authority) Open Tenders
     kind: official_procurement
@@ -38,4 +38,4 @@ sources:
       - qatar
     languages:
       - en
-    notes: "Official Public Works Authority list of open tenders, expressions of interest and prequalifications, in English (about 36 open tenders, mostly roads and infrastructure plus consultancy and design-and-build). The category column is empty, so every open row is kept in AI mode. The EOI and prequalification lists were empty on 2026-11-15 and their row layout is unconfirmed. Documents sit in the Oracle e-tendering system behind a supplier login."
+    notes: "Official Public Works Authority list of open tenders, expressions of interest and prequalifications, in English (about 36 open tenders, mostly roads and infrastructure plus consultancy and design-and-build). The category column is empty, so every listed row is collected. The EOI and prequalification lists were empty on 2026-11-15 and their row layout is unconfirmed. Documents sit in the Oracle e-tendering system behind a supplier login."

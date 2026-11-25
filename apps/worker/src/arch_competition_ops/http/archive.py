@@ -20,6 +20,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from arch_competition_ops.run_errors import error_class, log_url
+
 logger = logging.getLogger(__name__)
 
 # Serialises the read-modify-write of metadata files between threads of this process.
@@ -108,5 +110,5 @@ def archive_response(
             _atomic_write(meta_path, json.dumps(metadata, ensure_ascii=False, indent=2).encode())
         return content_path
     except (OSError, ValueError) as exc:
-        logger.warning("Failed to archive response for %s into %s: %s", url, archive_dir, exc)
+        logger.warning("Failed to archive response for %s: %s", log_url(url), error_class(exc))
         return None

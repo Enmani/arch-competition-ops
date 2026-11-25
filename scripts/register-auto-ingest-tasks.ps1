@@ -16,7 +16,7 @@
     refused on a machine, retry with -LogonType Interactive and accept the logged-on limit.
 
     One task runs the all_enabled batch once a day. The ingest skips notices it has already
-    screened (ai_notice_ledger), so a daily run pays only for new or changed notices; a second
+    screened (worker items registry), so a daily run pays only for new or changed notices; a second
     run per day would find almost nothing new. The Python CLI takes a batch-level lock, so an
     overlapping run (for example a manual one) waits for or yields to the one in progress.
     Tasks registered by an older version of this script (the official_daytime x2 and

@@ -1,23 +1,4 @@
-"""Qatar: Ashghal (Public Works Authority) open tenders (``www.ashghal.gov.qa``).
-
-Shape verified live on 2026-11-15, without a login. The site has no ``robots.txt`` (it redirects to
-a not-found page). Ashghal tenders are also listed on the Ministry of Finance site
-(``collectors.monaqasat``) with a one-line subject; this site has the fuller list, in English.
-
-* ``/en/Tenders/pages/erPTenders.aspx`` is a server-rendered SharePoint page with one grid of the
-  open tenders (36 on the day, no paging), a grid of closed ones below it, and rows of tender
-  number, type (``ITC``, ``GTC``, ``STC``), title, issuing date, closing date and category. The
-  category column was empty on every row; the title is shortened.
-* ``/en/Tenders/Pages/ERPTenderDetailes.aspx?TenderID=<id>&Status=Open`` is the public page of one
-  tender, with the full title, project id, bond and document fees. The scope of work is in a
-  project-brief PDF behind a link.
-* ``/en/Tenders/pages/PreqShowAll.aspx?Status=Open&Type=EOI`` and ``...&Type=PQ`` list open
-  expressions of interest and prequalifications for consultants and contractors. Both were empty on
-  the day, so their row layout is unconfirmed; the same link pattern is read from them and a row
-  that does not match is skipped.
-* The category column is empty, so AI mode keeps every open tender and leaves the judgment to the
-  triage model. Tender documents sit in the Oracle e-tendering system behind a supplier login.
-"""
+"""Qatar: Ashghal (Public Works Authority) open tenders (``www.ashghal.gov.qa``)."""
 
 from __future__ import annotations
 
@@ -29,8 +10,7 @@ from datetime import date, datetime
 from html import unescape
 from urllib import parse
 
-from arch_competition_ops import clock
-from arch_competition_ops.collectors.base import CollectedSourceDocument
+from arch_competition_ops.collectors.base import CollectedSourceDocument, deferred_detail
 from arch_competition_ops.collectors.common import DEFAULT_HEADERS
 from arch_competition_ops.collectors.mideast_common import (
     build_paced_client,
@@ -38,9 +18,10 @@ from arch_competition_ops.collectors.mideast_common import (
     page_text,
     window_start,
 )
-from arch_competition_ops.collectors.relevance import is_design_relevant
+from arch_competition_ops.collectors.pagination import current_pages, snapshot_items, snapshot_pages
 from arch_competition_ops.http import HttpError
 from arch_competition_ops.models import SourceDefinition
+from arch_competition_ops.run_errors import error_class
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +73,7 @@ def _parse_rows(page: str, kind: str) -> list[dict]:
         query = parse.parse_qs(parse.urlsplit(path).query)
         rows.append(
             {
+                "listingText": block,
                 "tenderNumber": cells[0],
                 "tenderType": cells[1] or None,
                 "title": cells[2],
@@ -126,15 +108,13 @@ def _detail(page: str) -> dict[str, str]:
     }
 
 
-def _build_document(
-    row: dict, detail: dict[str, str] | None, *, include_unclassified: bool
-) -> CollectedSourceDocument:
+def _build_document(row: dict, detail: dict[str, str] | None) -> CollectedSourceDocument:
     full_title = (detail or {}).get("title")
     payload = {
         "title": full_title or row["title"],
         "buyer": "Public Works Authority (Ashghal)",
         "noticeId": row["tenderNumber"],
-        "deadline": row["closing"].isoformat(),
+        "deadline": row["closing"].isoformat() if row["closing"] else None,
         "summary": (detail or {}).get("block") or None,
         "officialUrl": row["url"],
         "publishedAt": row["published"].isoformat(),
@@ -144,14 +124,8 @@ def _build_document(
         "location": "Qatar",
         "evidenceLevel": "official_notice",
         "evidenceNote": EVIDENCE_NOTE,
-        **(
-            {
-                "rawNotice": {k: str(v) if isinstance(v, date) else v for k, v in row.items()},
-                "rawNoticeHtml": (detail or {}).get("block") or "",
-            }
-            if include_unclassified
-            else {}
-        ),
+        "rawNotice": row["listingText"],
+        "rawNoticeHtml": (detail or {}).get("block") or "",
     }
     return CollectedSourceDocument(
         source_url=row["url"], payload=json.dumps(payload, ensure_ascii=False)
@@ -164,37 +138,47 @@ def collect_ashghal_documents(
     limit: int = 20,
     publication_date_from: str | None = None,
     fetch_text: Callable[[str], str] | None = None,
-    include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
-    """Open Ashghal tenders, expressions of interest and prequalifications, newest first.
-
-    A row counts when it was issued on or after ``publication_date_from`` and has not closed. AI
-    mode keeps all of them; without it the title must pass the shared design relevance gate.
-    """
+    """Collect public notices in the requested publication window."""
+    if limit <= 0:
+        return []
     start = window_start(publication_date_from)
-    today = clock.today()
     get = fetch_text or _default_fetch_text
-    rows: list[dict] = []
-    seen: set[str] = set()
-    for kind, url in LISTS:
-        for row in _parse_rows(get(url), kind):
-            published, closing = row["published"], row["closing"]
-            if published is None or published < start or closing is None or closing < today:
-                continue
-            if row["url"] in seen:
-                continue
-            if not include_unclassified and not is_design_relevant(row["title"]):
-                continue
-            seen.add(row["url"])
-            rows.append(row)
-    rows.sort(key=lambda row: (row["published"], row["tenderNumber"]), reverse=True)
+    sources = {url: kind for kind, url in LISTS}
+
+    def listing(url):
+        return [
+            row
+            for row in _parse_rows(get(url), sources[url])
+            if row["published"] and row["published"] >= start
+        ]
+
+    def candidates():
+        if current_pages():
+            for url in snapshot_pages(sources):
+                yield from snapshot_items(listing(url), limit, lambda row: row["url"])
+        else:
+            rows = [row for url in sources for row in listing(url)]
+            rows.sort(key=lambda row: (row["published"], row["tenderNumber"]), reverse=True)
+            yield from rows
 
     documents = []
-    for row in rows[: max(limit, 0)]:
+    seen = set()
+    for row in candidates():
+        if row["url"] in seen:
+            continue
+        seen.add(row["url"])
         detail = None
         try:
             detail = _detail(get(row["url"]))
         except HttpError as exc:  # the list row alone is still a valid record
-            logger.warning("Ashghal tender %s detail not read: %s", row["tenderNumber"], exc)
-        documents.append(_build_document(row, detail, include_unclassified=include_unclassified))
+            if exc.status_code in {403, 429}:
+                documents.append(deferred_detail(exc, row["url"], row["listingText"]))
+                if not current_pages() and len(documents) >= limit:
+                    break
+                continue
+            logger.warning("Ashghal detail not read: %s", error_class(exc))
+        documents.append(_build_document(row, detail))
+        if not current_pages() and len(documents) >= limit:
+            break
     return documents

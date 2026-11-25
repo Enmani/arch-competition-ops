@@ -32,30 +32,32 @@ from typing import Any
 from urllib import parse
 
 from arch_competition_ops import clock
-from arch_competition_ops.collectors.base import CollectedSourceDocument
+from arch_competition_ops.collectors.base import CollectedSourceDocument, deferred_detail
 from arch_competition_ops.collectors.common import DEFAULT_HEADERS, build_url
-from arch_competition_ops.collectors.design_scope import is_design_and_build
 from arch_competition_ops.collectors.mideast_common import (
     PortalChallengeError,
     build_paced_client,
     clean_text,
-    has_arabic_design_marker,
     page_text,
     raise_if_challenged,
     window_start,
 )
+from arch_competition_ops.collectors.pagination import (
+    numbered_pages,
+    page_items,
+    page_limit,
+    repeated_page,
+    unfinished_page,
+)
 from arch_competition_ops.http import HttpError, HttpStatusError
 from arch_competition_ops.models import SourceDefinition
+from arch_competition_ops.run_errors import error_class, log_url
 
 logger = logging.getLogger(__name__)
 
 LIST_URL = "https://tenders.etimad.sa/Tender/AllSupplierTendersForVisitorAsync"
 NOTICE_URL = "https://tenders.etimad.sa/Tender/DetailsForVisitor"
 ANNOUNCEMENT_URL = "https://tenders.etimad.sa/Tender/DetailsTenderAnnouncement"
-CONSULTING_ACTIVITY = 16
-CONTRACTING_ACTIVITY = 2
-# Sub-activities of consulting professions that name engineering design or supervision.
-DESIGN_SUB_ACTIVITIES = frozenset({1604, 1610, 1611})
 ANNOUNCEMENT_TENDER_TYPE = 15
 MAX_PAGES_PER_SCOPE = 40
 EVIDENCE_NOTE = "Official Saudi tender from the Etimad visitor list (tenders.etimad.sa)."
@@ -94,11 +96,11 @@ def _publish_bucket(start: date) -> int:
     return 1
 
 
-def _page_url(activity: int, bucket: int, page: int) -> str:
+def _page_url(activity: int | None, bucket: int, page: int) -> str:
     return build_url(
         LIST_URL,
         {
-            "TenderActivityId": activity,
+            **({"TenderActivityId": activity} if activity is not None else {}),
             "PublishDateId": bucket,
             "Sort": "SubmitionDate",
             "SortDirection": "DESC",
@@ -135,31 +137,20 @@ def _detail_summary(html: str) -> str:
     return text[start:end].strip()
 
 
-def _in_scope(row: dict[str, Any], *, consulting: bool, include_unclassified: bool) -> bool:
-    title = str(row.get("tenderName") or "")
-    if not consulting:
-        # Contracting is read only for integrated design-and-build contracts.
-        return is_design_and_build(title)
-    if include_unclassified:
-        return True
-    return row.get("tenderActivityId") in DESIGN_SUB_ACTIVITIES or has_arabic_design_marker(title)
-
-
 def _build_document(
     row: dict[str, Any],
     *,
     notice_url: str,
     published: date,
-    deadline: date,
+    deadline: date | None,
     detail_text: str | None,
-    include_unclassified: bool,
 ) -> CollectedSourceDocument:
     payload = {
         "title": clean_text(str(row.get("tenderName") or "")),
         "buyer": clean_text(str(row.get("agencyName") or "")) or None,
         "noticeId": str(row.get("referenceNumber") or row.get("tenderId") or ""),
         "tenderNumber": row.get("tenderNumber"),
-        "deadline": deadline.isoformat(),
+        "deadline": deadline.isoformat() if deadline else None,
         "summary": detail_text or None,
         "officialUrl": notice_url,
         "publishedAt": published.isoformat(),
@@ -172,7 +163,8 @@ def _build_document(
         # The detail page is server-rendered but heavy; the collector reads it once, so
         # enrichment must not fetch it again with the shared client's bot-style User-Agent
         # (which this portal answers with a CAPTCHA).
-        **({"rawNotice": row, "rawNoticeHtml": detail_text or ""} if include_unclassified else {}),
+        "rawNotice": row,
+        "rawNoticeHtml": detail_text or "",
     }
     return CollectedSourceDocument(
         source_url=notice_url, payload=json.dumps(payload, ensure_ascii=False)
@@ -180,7 +172,7 @@ def _build_document(
 
 
 def _walk_scope(
-    activity: int,
+    activity: int | None,
     *,
     start: date,
     fetch_json: Callable[[str], Any],
@@ -188,24 +180,29 @@ def _walk_scope(
     """Rows of one main activity, newest first, until the window, the end or the page cap."""
     bucket = _publish_bucket(start)
     seen: set[Any] = set()
-    for page in range(1, MAX_PAGES_PER_SCOPE + 1):
+    for page in numbered_pages(range(1, page_limit(MAX_PAGES_PER_SCOPE) + 1)):
         try:
             response = fetch_json(_page_url(activity, bucket, page))
         except HttpStatusError as exc:
             # A page past the end answers HTTP 400; page one failing is a real error.
             if page == 1 or exc.status_code != 400:
                 raise
-            logger.info("Etimad activity %s ended at page %s (%s)", activity, page, exc)
+            logger.info(
+                "Etimad activity %s ended at page %s (%s)", activity, page, error_class(exc)
+            )
             return
         rows = response.get("data") if isinstance(response, dict) else None
         fresh = [r for r in rows or [] if isinstance(r, dict) and r.get("tenderId") not in seen]
         if not fresh:
+            if rows:
+                repeated_page()
             return
         seen.update(r.get("tenderId") for r in fresh)
-        yield from fresh
+        yield from page_items(fresh)
         published = [d for d in (_iso_day(r.get("submitionDate")) for r in fresh) if d]
         if published and max(published) < start:
             return
+    unfinished_page()
     logger.warning(
         "Etimad activity %s hit the %s-page cap; older tenders in the window were not read",
         activity,
@@ -220,31 +217,21 @@ def collect_etimad_documents(
     publication_date_from: str | None = None,
     fetch_json: Callable[[str], Any] | None = None,
     fetch_text: Callable[[str], str] | None = None,
-    include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
-    """Open Etimad tenders of the consulting and contracting activities, newest first.
-
-    AI mode keeps every open consulting tender in the window (the triage model judges relevance)
-    and, from contracting, only design-and-build contracts. Without it a design sub-activity or an
-    Arabic design word in the title is required.
-    """
+    """Collect public notices in the requested publication window."""
     start = window_start(publication_date_from)
-    today = clock.today()
     get_json = fetch_json or _default_fetch_json
     get_text = fetch_text or _default_fetch_text
     candidates: list[tuple[date, date, str, dict[str, Any]]] = []
     seen_ids: set[Any] = set()
-    for activity in (CONSULTING_ACTIVITY, CONTRACTING_ACTIVITY):
-        consulting = activity == CONSULTING_ACTIVITY
+    for activity in (None,):
         for row in _walk_scope(activity, start=start, fetch_json=get_json):
             published = _iso_day(row.get("submitionDate"))
             deadline = _iso_day(row.get("lastOfferPresentationDate"))
             notice_url = _notice_url(row)
             if published is None or published < start or notice_url is None:
                 continue
-            if deadline is None or deadline < today or row.get("tenderId") in seen_ids:
-                continue
-            if not _in_scope(row, consulting=consulting, include_unclassified=include_unclassified):
+            if row.get("tenderId") in seen_ids:
                 continue
             seen_ids.add(row.get("tenderId"))
             candidates.append((published, deadline, notice_url, row))
@@ -253,13 +240,19 @@ def collect_etimad_documents(
     documents: list[CollectedSourceDocument] = []
     for published, deadline, notice_url, row in candidates[: max(limit, 0)]:
         detail_text = None
-        if include_unclassified:
-            try:
-                detail_text = _detail_summary(get_text(notice_url))
-            except PortalChallengeError:
-                raise
-            except HttpError as exc:  # a missing detail page must not drop the notice
-                logger.warning("Etimad detail page %s not read: %s", notice_url, exc)
+        try:
+            detail_text = _detail_summary(get_text(notice_url))
+        except PortalChallengeError:
+            raise
+        except HttpError as exc:  # a missing detail page must not drop the notice
+            if exc.status_code in {403, 429}:
+                documents.append(deferred_detail(exc, notice_url, row))
+                if len(documents) >= limit:
+                    return documents
+                continue
+            logger.warning(
+                "Etimad detail page %s not read: %s", log_url(notice_url), error_class(exc)
+            )
         documents.append(
             _build_document(
                 row,
@@ -267,7 +260,6 @@ def collect_etimad_documents(
                 published=published,
                 deadline=deadline,
                 detail_text=detail_text,
-                include_unclassified=include_unclassified,
             )
         )
     return documents

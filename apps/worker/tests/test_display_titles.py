@@ -139,7 +139,13 @@ LONG_TITLE = (
 def title_workspace(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     write_minimal_config(tmp_path, "sources: []")
-    return Settings(root=tmp_path, _env_file=None, openai_api_key="test-secret")
+    return Settings(
+        root=tmp_path,
+        ai_provider="openai",
+        ai_model="gpt-6-luna",
+        _env_file=None,
+        openai_api_key="test-secret",
+    )
 
 
 def _record(title: str, **overrides) -> CompetitionRecord:
@@ -263,7 +269,7 @@ def test_ai_stage_gives_every_title_both_languages_in_one_batched_request(title_
     long_row = _row(title_workspace, long_id)
     assert long_row["display_title_en"] == "Haus der Kinder daycare: refurbishment and extension"
     assert long_row["display_title_zh"].startswith("Haus der Kinder 幼儿园")
-    assert long_row["display_title_source"] == ai_source_token(title_workspace.ai_model)
+    assert long_row["display_title_source"] == ai_source_token("gpt-6-luna")
     assert long_row["title"] == LONG_TITLE
     short_row = _row(title_workspace, short_id)
     assert short_row["display_title_zh"] == "Taihape 看台修复"
@@ -290,7 +296,7 @@ def test_rejected_ai_titles_fall_back_and_are_not_retried(title_workspace):
     assert row["display_title"] == clean_title(LONG_TITLE)
     assert row["display_title_en"] is None  # invented "12": English falls back to the rules
     assert row["display_title_zh"] == "幼儿园改扩建"
-    assert row["display_title_source"] == ai_source_token(title_workspace.ai_model)
+    assert row["display_title_source"] == ai_source_token("gpt-6-luna")
     # The model's answer is final for this title: no paid retry on the next run.
     assert polish_titles(title_workspace, use_ai=True, client=_client(calls, payload)).batches == 0
     assert len(calls) == 1
@@ -377,3 +383,34 @@ def test_chinese_titles_get_a_space_between_scripts():
         == "Ohourere 水处理厂电气升级（第 2 阶段）"
     )
     assert space_cjk_latin("Haus der Kinder 幼儿园") == "Haus der Kinder 幼儿园"
+
+
+def test_default_provider_translates_titles_with_isolated_prompt(title_workspace, monkeypatch):
+    from httpx import HTTPTransport
+    from test_anthropic_screening import reply
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "fixture-only")
+    settings = Settings(root=title_workspace.root, _env_file=None)
+    (record,) = _store(settings, "Library renovation")
+    calls = []
+
+    def send(self, request, **kwargs):
+        calls.append(json.loads(request.content))
+        text = json.dumps(
+            {"items": [{"id": 0, "title_en": "Library renovation", "title_zh": "图书馆改造"}]}
+        )
+        return reply(
+            content=[{"type": "thinking"}, {"type": "text", "text": text}],
+            usage={"input_tokens": 300, "output_tokens": 25},
+        )
+
+    monkeypatch.setattr(HTTPTransport, "handle_request", send)
+    result = polish_titles(settings, use_ai=True)
+    assert result.condensed == 1 and result.cost_usd > 0
+    assert _row(settings, record)["display_title_zh"] == "图书馆改造"
+    assert calls[0]["model"] == settings.ai_model
+    assert json.loads(calls[0]["messages"][0]["content"]) == {
+        "titles": [{"id": 0, "title": "Library renovation"}]
+    }
+    assert calls[0]["output_config"]["format"]["type"] == "json_schema"
+    assert polish_titles(settings, use_ai=True).batches == 0

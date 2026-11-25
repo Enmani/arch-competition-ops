@@ -12,21 +12,17 @@ export function prepareApply(env, repoRoot) {
   return wrangler;
 }
 
-/** `SELECT COUNT(*)` on the remote database, or null when it cannot be read (informational only). */
-function remoteCompetitionCount(wrangler, env, repoRoot) {
-  const result = runWrangler(
-    wrangler,
-    ["d1", "execute", D1_DATABASE_NAME, "--remote", "--json", "--command", 'SELECT COUNT(*) AS n FROM "competitions"'],
-    { env, repoRoot },
-  );
-  if (!result.ok) {
-    return null;
-  }
+/** One primary-key read. Older schemas and unavailable metadata use the normal fenced sync. */
+function alreadyPublished(wrangler, env, repoRoot, manifest) {
+  if (manifest.prune) return false;
+  const reply = runWrangler(wrangler,
+    ["d1", "execute", D1_DATABASE_NAME, "--remote", "--json", "--command", manifest.unchangedCheck],
+    { env, repoRoot });
+  if (!reply.ok) return false;
   try {
-    const count = JSON.parse(result.stdout)?.[0]?.results?.[0]?.n;
-    return Number.isInteger(count) ? count : null;
+    return JSON.parse(reply.stdout)?.[0]?.results?.[0]?.unchanged === 1;
   } catch {
-    return null;
+    return false;
   }
 }
 
@@ -36,7 +32,11 @@ function remoteCompetitionCount(wrangler, env, repoRoot) {
  * output is never echoed, a failure prints one short, secret-masked line.
  */
 export function applyExport({ wrangler, env, repoRoot, outputDir, files, manifest, log }) {
-  const before = remoteCompetitionCount(wrangler, env, repoRoot);
+  if (alreadyPublished(wrangler, env, repoRoot, manifest)) {
+    // Anonymous-usage cleanup and records that reached retention age are time dependent.
+    files = files.filter(file => file.name === "0090-retention.sql");
+    log("Published snapshot unchanged. No opportunity upserts or publication writes.");
+  }
   let applied = 0;
   for (const file of files) {
     const result = runWrangler(
@@ -53,10 +53,8 @@ export function applyExport({ wrangler, env, repoRoot, outputDir, files, manifes
     applied += 1;
     log(`applied ${file.name} (${file.statements} statement(s))`);
   }
-  const after = remoteCompetitionCount(wrangler, env, repoRoot);
   log(`D1 sync complete: ${applied} file(s) applied.`);
   for (const [table, { rows }] of Object.entries(manifest.tables)) {
-    log(`d1_rows_upserted ${table}=${rows}`);
+    log(`d1_snapshot_rows ${table}=${rows}`);
   }
-  log(`d1_remote_competitions before=${before ?? "n/a"} after=${after ?? "n/a"}`);
 }

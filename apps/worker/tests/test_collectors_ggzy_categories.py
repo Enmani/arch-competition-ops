@@ -8,7 +8,7 @@ from support import build_source as _build_source
 from arch_competition_ops.collectors.ggzy import collect_ggzy_documents
 
 
-def test_collect_ggzy_documents_excludes_water_engineering_notice_from_original_category() -> None:
+def test_collect_ggzy_documents_collects_water_engineering_notice_from_original_category() -> None:
     source = _build_source(
         "ggzy_public_notices",
         name="National Public Resources Trading Platform",
@@ -89,10 +89,10 @@ def test_collect_ggzy_documents_excludes_water_engineering_notice_from_original_
         today=date(2026, 5, 9),
     )
 
-    assert documents == []
+    assert len(documents) == 1
 
 
-def test_collect_ggzy_documents_excludes_water_ecology_notice_without_original_category_probe() -> (
+def test_collect_ggzy_documents_collects_water_ecology_notice_without_original_category_probe() -> (
     None
 ):
     source = _build_source(
@@ -153,7 +153,7 @@ def test_collect_ggzy_documents_excludes_water_ecology_notice_without_original_c
         today=date(2026, 5, 9),
     )
 
-    assert documents == []
+    assert len(documents) == 1
 
 
 def test_collect_ggzy_documents_keeps_unknown_building_type_with_positive_official_category_and_building_discipline() -> (
@@ -245,7 +245,7 @@ def test_collect_ggzy_documents_keeps_unknown_building_type_with_positive_offici
     assert payload["deadline"] == "2026-06-06"
 
 
-def test_collect_ggzy_documents_excludes_municipal_design_notice_from_official_category_even_with_design_scope() -> (
+def test_collect_ggzy_documents_collects_municipal_design_notice_from_official_category_even_with_design_scope() -> (
     None
 ):
     source = _build_source(
@@ -326,4 +326,4 @@ def test_collect_ggzy_documents_excludes_municipal_design_notice_from_official_c
         today=date(2026, 5, 9),
     )
 
-    assert documents == []
+    assert len(documents) == 1

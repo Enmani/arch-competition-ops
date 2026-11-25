@@ -100,7 +100,7 @@ def test_collect_municipal_buyer_profile_documents_expands_berlin_rss_into_detai
         fetch_text=lambda url: responses[url],
     )
 
-    assert len(documents) == 2
+    assert len(documents) == 3
     assert documents[0].source_url.endswith("tenderId/203860")
     assert documents[1].source_url.endswith("tenderId/205148")
 
@@ -180,7 +180,7 @@ def test_collect_municipal_buyer_profile_documents_expands_frankfurt_nettender_l
         fetch_text=lambda url: {
             source.base_url: listing,
             detail_url: detail_html,
-        }[url],
+        }.get(url, "<p>Original notice</p>"),
         post_text=lambda url, data: {
             (data_provider_url, "54321-NetTender-frankfurt-001"): (
                 "PublicationControllerServlet?function=Detail&TOID=54321-NetTender-frankfurt-001"
@@ -193,10 +193,8 @@ def test_collect_municipal_buyer_profile_documents_expands_frankfurt_nettender_l
         }[(url, data["OID"])],
     )
 
-    assert len(documents) == 1
-    assert documents[0].source_url == detail_url
-
-    payload = json.loads(documents[0].payload)
+    assert len(documents) == 2
+    payload = json.loads(next(d.payload for d in documents if d.source_url == detail_url))
     assert payload["title"] == "Ingenieurleistungen Freianlagen Schulcampus (66-2026-00024)"
     assert payload["authority"] == "Amt 66 - Amt für Straßenbau und Erschließung"
     assert payload["publishedAt"] == "2026-04-16"
@@ -267,7 +265,7 @@ def test_collect_municipal_buyer_profile_documents_expands_stuttgart_nettender_l
         fetch_text=lambda url: {
             source.base_url: listing,
             detail_url: detail_html,
-        }[url],
+        }.get(url, "<p>Original notice</p>"),
         post_text=lambda url, data: {
             (data_provider_url, "54321-NetTender-stuttgart-001"): (
                 "PublicationControllerServlet?function=Detail&TOID=54321-NetTender-stuttgart-001"
@@ -280,10 +278,8 @@ def test_collect_municipal_buyer_profile_documents_expands_stuttgart_nettender_l
         }[(url, data["OID"])],
     )
 
-    assert len(documents) == 1
-    assert documents[0].source_url == detail_url
-
-    payload = json.loads(documents[0].payload)
+    assert len(documents) == 2
+    payload = json.loads(next(d.payload for d in documents if d.source_url == detail_url))
     assert payload["title"] == "Ingenieurleistungen Stadtbahnhaltestelle Möhringen (2026-039-WS-Ö)"
     assert payload["authority"] == "Dienstleistungszentrum"
     assert payload["publishedAt"] == "2026-04-14"
@@ -358,13 +354,11 @@ def test_collect_municipal_buyer_profile_documents_expands_hamburg_listing() -> 
         fetch_text=lambda url: {
             source.base_url: listing,
             detail_url: detail_html,
-        }[url],
+        }.get(url, "<p>Original notice</p>"),
     )
 
-    assert len(documents) == 1
-    assert documents[0].source_url == detail_url
-
-    payload = json.loads(documents[0].payload)
+    assert len(documents) == 2
+    payload = json.loads(next(d.payload for d in documents if d.source_url == detail_url))
     assert (
         payload["title"]
         == "Julius-Ludowieg Straße - Projektsteuerung in Anlehnung an §§ 2+3 AHO Heft Nr. 9"

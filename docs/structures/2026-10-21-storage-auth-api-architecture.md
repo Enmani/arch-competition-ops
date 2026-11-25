@@ -3,7 +3,7 @@ title: Storage, Auth And API Architecture
 vision_doc: vision.md
 goal_doc: docs/goals/2026-04-19-future-direction.md
 status: done
-updated_at: 2026-11-22
+updated_at: 2026-11-24
 related_docs:
   - docs/AI_CONSTRAINTS.md
   - docs/structures/2026-04-22-workspace-follow-up-architecture.md
@@ -211,7 +211,7 @@ The exact aggregate deduplicates stored option values during one scan. The read 
 
 ### 13. Publishing the default discover summary
 
-The sync sets a marker before the first import and publishes a new version after retention and optional pruning. Its last file computes the current and next UTC days from the final remote data, including records retained for a watchlist. The two daily summaries share the active version and a format number in a single row. An absent, expired or incompatible summary uses the exact live aggregate. During an import or after an interrupted import, requests read the live data in a single transaction and existing browser continuations expire. See the [deploy runbook](../../CLOUDFLARE_DEPLOY_RUNBOOK.md) for the migration and sync order.
+A content signature covers the worker export. Another covers visible opportunities and their displayed fields. A matching export needs one indexed marker lookup. Time-dependent retention can still delete rows. Changed imports acquire the marker and publish only after all files finish. A diagnostics-only change preserves the public version. The summary remains valid until the next deadline changes the visible set, and a second payload covers that change day. A missing or incompatible summary and an interrupted import use the existing live read. The website reads the summary and page in the same batch. MCP keeps its existing list query. See the [deploy runbook](../../CLOUDFLARE_DEPLOY_RUNBOOK.md).
 
 ## Extension Points
 
@@ -229,3 +229,8 @@ The sync sets a marker before the first import and publishes a new version after
 
 - `docs/plans/2026-04-19-07-saved-search-and-watchlists-plan.md`
 - `docs/plans/2026-04-30-cloudflare-workers-d1-deployment-plan.md`
+
+The collection queue, retry times, page positions and coverage gaps live only in worker SQLite. Web, MCP and D1 export continue to read published records. A missing or low qualification score is eligible for publication.
+
+
+The experimental worker stores discovery, retry state and completion in `items`. It joins the receipt by request ID for the judgment and usage. Local migration preserves existing queue rows and imports historical ledger-only notices. Historical web migration 0008 still defines the unused legacy ledger on the web side. Neither registry is published. Public reads and the changed-only export retain their existing contracts.

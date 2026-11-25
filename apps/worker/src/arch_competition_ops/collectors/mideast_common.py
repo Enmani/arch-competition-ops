@@ -32,23 +32,6 @@ _CHALLENGE_MARKERS = (
     "HUMAN_VERIFICATION_REQUIRED",
 )
 
-# Arabic design words. Used only outside AI mode, where a collector needs a keyword gate because
-# the shared Latin/CJK relevance markers cannot read Arabic.
-ARABIC_DESIGN_MARKERS = (
-    "تصميم",
-    "تصاميم",
-    "استشار",
-    "هندسي",
-    "معماري",
-    "عمراني",
-    "تخطيط",
-    "مخطط",
-    "اشراف",
-    "إشراف",
-    "مسابقة",
-    "تأهيل شركات",
-)
-
 
 class PortalChallengeError(RuntimeError):
     """The portal answered with a bot-protection challenge. Never retried or solved."""
@@ -68,11 +51,6 @@ def window_start(publication_date_from: str | None) -> date:
     if publication_date_from:
         return date.fromisoformat(publication_date_from[:10])
     return clock.today() - timedelta(days=DEFAULT_LOOKBACK_DAYS)
-
-
-def has_arabic_design_marker(*chunks: str | None) -> bool:
-    text = " ".join(chunk for chunk in chunks if chunk)
-    return any(marker in text for marker in ARABIC_DESIGN_MARKERS)
 
 
 def parse_dmy(value: str | None) -> date | None:

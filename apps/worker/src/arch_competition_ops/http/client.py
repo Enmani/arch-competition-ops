@@ -32,6 +32,7 @@ from arch_competition_ops.http.errors import (
 )
 from arch_competition_ops.http.guards import Resolver, default_resolver, validate_url
 from arch_competition_ops.http.ratelimit import HostRateLimiter
+from arch_competition_ops.run_errors import error_class, log_url
 
 logger = logging.getLogger(__name__)
 
@@ -250,10 +251,10 @@ class HttpClient:
             logger.warning(
                 "HTTP %s %s attempt %d/%d failed (%s); retrying in %.2fs",
                 method,
-                url,
+                log_url(url),
                 attempt,
                 max_attempts,
-                failure,
+                error_class(failure),
                 delay,
             )
             self._sleep(delay)
@@ -404,7 +405,7 @@ class HttpClient:
                 json_body = None
                 for name in _BODY_HEADERS:
                     send_headers.pop(name, None)
-            logger.debug("Following redirect %s -> %s", current_url, next_url)
+            logger.debug("Following redirect %s -> %s", log_url(current_url), log_url(next_url))
             current_url = next_url
         raise AssertionError(
             "unreachable: redirect loop always returns or raises"

@@ -305,3 +305,24 @@ def test_batch_upsert_is_all_or_nothing(db_path) -> None:
         upsert_competitions(db_path, [good, bad])
 
     assert _count(db_path) == 0
+
+
+def test_identical_metadata_repairs_preserve_source_revision(db_path):
+    from arch_competition_ops.storage.competitions import (
+        update_competition_geocode_fields,
+        update_competition_jurisdiction,
+        update_competition_source_url,
+    )
+
+    record = _record(jurisdiction="Italy")
+    key = upsert_competition(db_path, record)
+    row = _row(db_path, key)
+    geo = {
+        name: row[name]
+        for name in ("location_label", "geo_lat", "geo_lng", "geo_source", "geo_confidence")
+    }
+    update_competition_geocode_fields(db_path, competition_id=key, **geo)
+    update_competition_jurisdiction(db_path, competition_id=key, jurisdiction="Italy")
+    update_competition_source_url(db_path, competition_id=key, source_url=row["source_url"])
+    assert not update_competition_status(db_path, competition_id=key, status=row["status"])
+    assert _row(db_path, key)["updated_at"] == row["updated_at"]

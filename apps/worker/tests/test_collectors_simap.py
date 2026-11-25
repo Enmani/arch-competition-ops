@@ -288,35 +288,23 @@ def test_simap_ai_mode_scopes_searches_server_side_and_pages_the_window() -> Non
         query = parse_qs(urlsplit(url).query)
         searches.append(query)
         assert query["newestPublicationFrom"] == [window_start]
-        assert query["newestPubTypes"] == ["tender", "competition", "study_contract"]
-        if "project_competition" in query["projectSubTypes"]:
-            # Design contests are read whatever their CPV code.
-            assert "cpvCodes" not in query
-            assert "service" not in query["projectSubTypes"]
-            return {"projects": [_project("contest", in_window, "project_competition")]}
-        assert query["projectSubTypes"] == ["construction", "service", "supply"]
-        if query["cpvCodes"] == ["45000000"]:
-            # The design-and-build pass: only titles naming the model are kept.
-            return {"projects": [_project("works", in_window, "construction")]}
-        assert query["cpvCodes"] == ["71000000", "79930000"]
+        assert "cpvCodes" not in query and "projectSubTypes" not in query
         if "lastItem" not in query:
             page = [_project("a", in_window), _project("contest", in_window)]
             return {"projects": page, "pagination": {"lastItem": f"{in_window}|2"}}
         assert query["lastItem"] == [f"{in_window}|2"]
         return {"projects": [_project("b", in_window)], "pagination": {"lastItem": None}}
 
-    documents = collect_simap_documents(
-        _simap_source(), limit=50, include_unclassified=True, fetch_json=fetch_json
-    )
+    documents = collect_simap_documents(_simap_source(), limit=50, fetch_json=fetch_json)
 
     assert [json.loads(d.payload)["title"] for d in documents] == [
-        "Notice contest",
         "Notice a",
+        "Notice contest",
         "Notice b",
     ]
-    assert len(searches) == 4
-    payload = json.loads(documents[1].payload)
-    assert documents[1].source_url.endswith("/project/a/publication-details/a-pub")
+    assert len(searches) == 2
+    payload = json.loads(documents[0].payload)
+    assert documents[0].source_url.endswith("/project/a/publication-details/a-pub")
     assert payload["rawNotice"]["listing"]["id"] == "a"
     assert payload["rawNotice"]["detail"] == {"project-info": {"title": {"en": "Notice a"}}}
 
@@ -339,7 +327,6 @@ def test_simap_stops_at_the_window_end_and_at_the_limit() -> None:
         _simap_source(),
         limit=50,
         publication_date_from="2026-05-01",
-        include_unclassified=True,
         fetch_json=fetch_json,
     )
     assert [json.loads(d.payload)["title"] for d in documents] == ["Notice new"]
@@ -349,7 +336,6 @@ def test_simap_stops_at_the_window_end_and_at_the_limit() -> None:
         _simap_source(),
         limit=1,
         publication_date_from="2026-04-01",
-        include_unclassified=True,
         fetch_json=fetch_json,
     )
     assert len(documents) == 1
@@ -373,15 +359,13 @@ def test_simap_paging_stops_at_the_page_cap_with_a_warning(monkeypatch, caplog) 
         }
 
     with caplog.at_level("WARNING", logger=simap.__name__):
-        documents = simap.collect_simap_documents(
-            _simap_source(), limit=50, include_unclassified=True, fetch_json=fetch_json
-        )
+        documents = simap.collect_simap_documents(_simap_source(), limit=50, fetch_json=fetch_json)
 
     assert len(documents) == 3
     assert "simap paging stopped after 3 pages" in caplog.text
 
 
-def test_simap_classic_mode_keeps_competition_search_and_window() -> None:
+def test_simap_collection_keeps_awards_and_contests_in_window() -> None:
     from urllib.parse import parse_qs, urlsplit
 
     from arch_competition_ops.collectors.simap import collect_simap_documents
@@ -390,10 +374,7 @@ def test_simap_classic_mode_keeps_competition_search_and_window() -> None:
         if "publication-details" in url:
             return {"project-info": {"title": {"en": "Museum project competition"}}}
         query = parse_qs(urlsplit(url).query)
-        assert query["projectSubTypes"] == [
-            "project_competition",
-            "overall_performance_competition",
-        ]
+        assert "projectSubTypes" not in query
         assert query["newestPublicationFrom"] == ["2026-05-06"]
         assert "cpvCodes" not in query and "newestPubTypes" not in query
         award = {**_project("award", "2026-05-12", "project_competition"), "pubType": "award"}
@@ -401,48 +382,4 @@ def test_simap_classic_mode_keeps_competition_search_and_window() -> None:
         return {"projects": [award, contest]}
 
     documents = collect_simap_documents(_simap_source(), fetch_json=fetch_json)
-    assert [d.source_url.rsplit("/", 1)[-1] for d in documents] == ["c-pub"]
-
-
-def test_simap_ai_mode_adds_design_and_build_works_orders_by_title() -> None:
-    from datetime import timedelta
-    from urllib.parse import parse_qs, urlsplit
-
-    from arch_competition_ops import clock
-    from arch_competition_ops.collectors.simap import collect_simap_documents
-
-    today = clock.today()
-    details: list[str] = []
-
-    def project(project_id: str, days_ago: int, title: dict) -> dict:
-        published = (today - timedelta(days=days_ago)).isoformat()
-        return {**_project(project_id, published, "construction"), "title": title}
-
-    def fetch_json(url: str) -> dict:
-        if "publication-details" in url:
-            details.append(url.split("/project/")[1].split("/")[0])
-            return _detail(url)
-        query = parse_qs(urlsplit(url).query)
-        if "project_competition" in query["projectSubTypes"]:
-            return {"projects": []}
-        if query["cpvCodes"] == ["45000000"]:
-            return {
-                "projects": [
-                    project("werkhof", 1, {"de": "Gesamtleistungssubmission Neubau Werkhof"}),
-                    project("bkp", 1, {"de": "BKP 211 Baumeisterarbeiten", "fr": "CFC 211"}),
-                    project("tu", 3, {"de": None, "fr": "Appel d'offres en entreprise totale"}),
-                ]
-            }
-        return {"projects": [project("design", 2, {"de": "Architekturleistungen Schulhaus"})]}
-
-    documents = collect_simap_documents(
-        _simap_source(), limit=50, include_unclassified=True, fetch_json=fetch_json
-    )
-
-    assert [d.source_url.split("/project/")[1].split("/")[0] for d in documents] == [
-        "werkhof",
-        "design",
-        "tu",
-    ]
-    # A plain works order never costs a detail request.
-    assert "bkp" not in details
+    assert [d.source_url.rsplit("/", 1)[-1] for d in documents] == ["award-pub", "c-pub"]

@@ -10,6 +10,7 @@ from arch_competition_ops.bootstrap import initialize_database
 from arch_competition_ops.collectors.common import fetch_json_get
 from arch_competition_ops.extractors.anac import resolve_anac_record_status
 from arch_competition_ops.http import HttpError
+from arch_competition_ops.run_errors import error_class
 from arch_competition_ops.settings import Settings
 from arch_competition_ops.storage import (
     list_source_records,
@@ -33,7 +34,7 @@ def fetch_notice_detail(official_notice_id: str) -> dict[str, Any] | None:
             headers={"Accept": "application/json", "Referer": f"{PUBLIC_BASE_URL}/"},
         )
     except (HttpError, ValueError) as exc:
-        logger.warning("ANAC notice detail %s unavailable: %s", official_notice_id, exc)
+        logger.warning("ANAC notice detail unavailable: %s", error_class(exc))
         return None
     return payload if isinstance(payload, dict) else None
 

@@ -4,7 +4,7 @@ Goal: write a short operator-facing brief for one opportunity.
 
 Sections:
 
-1. why it matches or misses active filters
+1. why it matches or misses the screening requirements
 2. authority, procedure, and implementation route
 3. hard qualification constraints
 4. timeline

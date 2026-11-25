@@ -30,12 +30,13 @@ from collections.abc import Callable
 from datetime import date
 from urllib import parse
 
-from arch_competition_ops import clock
 from arch_competition_ops.collectors.base import CollectedSourceDocument
 from arch_competition_ops.collectors.common import build_url, fetch_text_get
-from arch_competition_ops.collectors.relevance import (
-    has_built_environment_context,
-    is_design_relevant,
+from arch_competition_ops.collectors.pagination import (
+    numbered_pages,
+    page_items,
+    page_limit,
+    unfinished_page,
 )
 from arch_competition_ops.models import SourceDefinition
 from arch_competition_ops.normalizers.text import strip_html
@@ -46,9 +47,6 @@ ISDB_SITE_URL = "https://www.isdb.org"
 ISDB_TENDERS_URL = "https://www.isdb.org/project-procurement/tenders"
 # Far above the three pages of the live list; a runaway listing stops here with a warning.
 MAX_PAGES = 10
-# Awards close participation. Everything else (invitations, prequalifications, general
-# procurement notices that announce a coming call, other consultancies) is kept.
-EXCLUDED_TYPE_SLUGS = frozenset({"contract-award"})
 _MONTHS = {
     name: number
     for number, name in enumerate(
@@ -118,6 +116,7 @@ def parse_tender_list(page: str) -> list[dict[str, str | None]]:
             continue
         tenders.append(
             {
+                "listingText": match.group(0),
                 "path": about.group(1),
                 "nodeId": node_id.group(1),
                 "title": _clean(title.group(1)),
@@ -131,26 +130,13 @@ def parse_tender_list(page: str) -> list[dict[str, str | None]]:
     return tenders
 
 
-def _is_open_notice(tender: dict[str, str | None], today: date) -> bool:
-    if tender["status"] != "active" or tender["typeSlug"] in EXCLUDED_TYPE_SLUGS:
-        return False
-    close_date = tender["closeDate"]
-    return close_date is None or date.fromisoformat(close_date) >= today
-
-
 def _submission_deadline(tender: dict[str, str | None]) -> str | None:
     # A general procurement notice announces a coming call: its close date is when the notice
     # lapses (years ahead in the live list), not a submission deadline.
     return None if tender["typeSlug"] == "gpn" else tender["closeDate"]
 
 
-def _is_design_notice(title: str) -> bool:
-    return is_design_relevant(title) and has_built_environment_context(title)
-
-
-def _build_document(
-    tender: dict[str, str | None], *, include_unclassified: bool
-) -> CollectedSourceDocument:
+def _build_document(tender: dict[str, str | None]) -> CollectedSourceDocument:
     page_url = parse.urljoin(ISDB_SITE_URL, str(tender["path"]))
     payload = {
         "title": tender["title"],
@@ -166,7 +152,7 @@ def _build_document(
         "evidenceNote": "Official Islamic Development Bank project procurement notice.",
         # The notice page is server rendered with the issue date and documents, so
         # ``rawNoticeHtml`` is left out and AI enrichment reads the page itself.
-        **({"rawNotice": tender} if include_unclassified else {}),
+        "rawNotice": tender["listingText"],
     }
     return CollectedSourceDocument(
         source_url=page_url, payload=json.dumps(payload, ensure_ascii=False)
@@ -179,35 +165,27 @@ def collect_isdb_documents(
     limit: int = 20,
     publication_date_from: str | None = None,
     fetch_text: FetchText | None = None,
-    include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
-    """Open IsDB tenders that are not contract awards, in the site's closing-date order.
-
-    ``publication_date_from`` is accepted for the common collector signature and ignored: the
-    list has no publication date (see the module docstring). With ``include_unclassified`` every
-    open notice is kept and the triage and assessment models judge relevance; otherwise a title
-    keyword gate applies.
-    """
+    """Collect public notices in the requested publication window."""
     fetch = fetch_text or fetch_text_get
-    today = clock.today()
+
     documents: list[CollectedSourceDocument] = []
     seen: set[str] = set()
 
-    for page_index in range(MAX_PAGES):
+    for page_index in numbered_pages(range(page_limit(MAX_PAGES))):
         page = fetch(build_url(ISDB_TENDERS_URL, {"status": "active", "page": page_index}))
         tenders = parse_tender_list(page)
         if not tenders:
             return documents
-        for tender in tenders:
+        for tender in page_items(tenders):
             path = str(tender["path"])
-            if path in seen or not _is_open_notice(tender, today):
+            if path in seen:
                 continue
             seen.add(path)
-            if not include_unclassified and not _is_design_notice(str(tender["title"])):
-                continue
-            documents.append(_build_document(tender, include_unclassified=include_unclassified))
+            documents.append(_build_document(tender))
             if len(documents) >= limit:
                 return documents
 
+    unfinished_page()
     logger.warning("IsDB paging stopped after %d pages; later tenders were not read", MAX_PAGES)
     return documents

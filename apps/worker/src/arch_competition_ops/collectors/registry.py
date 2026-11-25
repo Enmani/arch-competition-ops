@@ -87,13 +87,8 @@ def collect_source_documents(
     limit: int = 20,
     publication_date_from: str | None = None,
     archive_dir: Path | None = None,
-    include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
-    """Run the collector family declared by ``source.collector``.
-
-    ``archive_dir`` is passed only to families that keep raw responses as evidence (they declare
-    an ``archive_dir`` keyword); the others never see it.
-    """
+    """Collect public notices in the requested publication window."""
     collector = COLLECTORS.get(source.collector)
     if collector is None:
         raise UnknownCollectorError(
@@ -107,6 +102,4 @@ def collect_source_documents(
     }
     if archive_dir is not None and "archive_dir" in inspect.signature(collector).parameters:
         options["archive_dir"] = archive_dir
-    if "include_unclassified" in inspect.signature(collector).parameters:
-        options["include_unclassified"] = include_unclassified
     return collector(source, **options)

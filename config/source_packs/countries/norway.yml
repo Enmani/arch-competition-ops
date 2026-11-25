@@ -20,4 +20,4 @@ sources:
     languages:
       - "no"
       - en
-    notes: Official Doffin public search and detail APIs. In AI mode the collector reads the whole window of open notices in the design scope of collectors/design_scope.py (CPV 71*/7993*, plus design-and-build works notices).
+    notes: Official Doffin public search and detail APIs. The collector reads the publication window without category restrictions.

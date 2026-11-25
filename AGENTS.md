@@ -1,7 +1,7 @@
 ---
 title: Arch Competition Ops for Codex
 status: done
-updated_at: 2026-10-30
+updated_at: 2026-11-24
 related_docs:
   - docs/AI_CONSTRAINTS.md
   - docs/AGENTS.md
@@ -23,7 +23,6 @@ This repository is a competition-intelligence monorepo. Agents should favor evid
 
 - `vision.md`: product vision and top-level direction
 - `config/sources.yml`: canonical source registry
-- `config/filters.yml`: user targeting preferences
 - `config/skills/screen-architecture-opportunities/SKILL.md`: shared AI screening judgment
 - `config/taxonomy.yml`: allowed labels and controlled vocabulary
 - `data/competitions.sqlite`: canonical structured opportunity records
@@ -36,7 +35,8 @@ This repository is a competition-intelligence monorepo. Agents should favor evid
 - `docs/changelog/**`: dated closeout trace for governed changes
 - `apps/worker/src/arch_competition_ops/*`: ingestion and normalization logic
 - `apps/web/src/*`: website and API surface
-- `apps/web/migrations/*.sql`: the only database schema authority (the worker's `storage/schema.py` mirrors it)
+- `apps/web/migrations/*.sql`: the shared database schema authority (the worker's `storage/schema.py` mirrors it)
+- Worker-only collection state lives in SQLite. The D1 migrations and export omit the backlog and interrupted collection windows.
 - `packages/storage/src/*`: the one storage implementation for the web app (D1 binding and better-sqlite3)
 - `packages/core/src/*`: shared vocabularies, zod API contracts, fee rule and logger
 - `docs/DATA_CONTRACT.md`: data layers and the truth rules stored records follow
@@ -57,11 +57,12 @@ This repository is a competition-intelligence monorepo. Agents should favor evid
 10. All new product UI copy must follow the repository i18n contract and ship in both `zh` and `en`.
 11. Do not let `docs/changelog/**` get ahead of canonical docs; if a round changes roadmap, goal, structure, plan, or governance truth, update the owning doc in the same round and use changelog only as the dated trace.
 12. Keep the web app on port `3400` unless the user explicitly changes the repo standard.
-13. Soft rules are user preferences and screening judgment (`config/filters.yml`, the screening skill); the user may rewrite them at any time, so never hard-code them. Authentication, quotas, billing and permissions are hard rules enforced in code, never in prompts or config prose.
+13. The editable screening skill owns model judgment. Map unambiguous structured source facts before asking the model for remaining fields. Conflicting dates require reading the notice. Human search preferences stay in web filters. Authentication, quotas, billing and permissions are enforced in code.
 14. Group pipeline failures by one failure class and fix the class, not each source with its own patch.
 15. Mark official fields and AI screening conclusions as separate in every output (web, API, MCP). Wording on these surfaces, including MCP tool descriptions, stays neutral and plain with no filler; `official_url`, `source_url` and `evidence_note` are never dropped for brevity.
 16. The MCP entry exposes read-only tools only, and every tool is annotated read-only. Writes (saved searches, watchlists, review) stay in the web app behind login.
 17. When a new standard replaces an old one, rewrite the owning text in place instead of stacking patches.
+18. Replaying unchanged notices must use no paid reads and write no opportunity or publication rows in D1. The private worker items table owns raw notice versions, their queue state and the link to each finished judgment. Keep operational timestamps and attempts out of published data.
 
 ## Routing
 

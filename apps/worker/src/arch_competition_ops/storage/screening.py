@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 from arch_competition_ops import clock
-from arch_competition_ops.models import CompetitionRecord
 from arch_competition_ops.storage.competitions import upsert_in_connection
 from arch_competition_ops.storage.connection import connect, write_transaction
 from arch_competition_ops.storage.schema import ensure_schema
@@ -18,6 +18,10 @@ from arch_competition_ops.storage.schema import ensure_schema
 
 class ScreeningBudgetExceeded(RuntimeError):
     pass
+
+
+class SourceDailyLimitReached(ScreeningBudgetExceeded):
+    """Continue reading other sources with allowance remaining."""
 
 
 def load_screening_candidates(
@@ -47,12 +51,18 @@ def load_screening_candidates(
         ]
 
 
+def request_hash(input_json):
+    return hashlib.sha256(input_json.encode()).hexdigest()
+
+
 def find_cached_screening(db_path: Path, source_url: str, model: str, input_json: str):
     with connect(db_path) as connection:
         return connection.execute(
             "SELECT * FROM ai_screening_runs WHERE source_url = ? AND model = ? "
-            "AND input_json = ? AND status = 'completed' ORDER BY started_at DESC LIMIT 1",
-            (source_url, model, input_json),
+            "AND status = 'completed' AND (input_json=? OR "
+            "json_extract(CASE WHEN json_valid(input_json) THEN input_json END,'$.retry_of')=?) "
+            "ORDER BY started_at DESC LIMIT 1",
+            (source_url, model, input_json, request_hash(input_json)),
         ).fetchone()
 
 
@@ -65,31 +75,42 @@ def reserve_screening(
     input_json: str,
     reserve_usd: float,
     budget_usd: float,
-    daily_budget_usd: float = 1,
+    daily_budget_usd: float = 5,
+    run_since: str | None = None,
+    source_id: str | None = None,
+    source_daily_limit: int | None = None,
 ) -> str:
     now = clock.now_utc()
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
     day_start = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
     request_id = str(uuid4())
     with write_transaction(db_path) as connection:
-        used = connection.execute(
-            "SELECT COALESCE(SUM(cost_usd), 0) FROM ai_screening_runs WHERE started_at >= ?",
-            (month_start,),
-        ).fetchone()[0]
-        if used + reserve_usd > budget_usd:
-            raise ScreeningBudgetExceeded(
-                f"AI monthly budget reached: ${used:.4f} used/reserved, "
-                f"${reserve_usd:.4f} needed, ${budget_usd:.2f} limit"
-            )
-        used_today = connection.execute(
-            "SELECT COALESCE(SUM(cost_usd), 0) FROM ai_screening_runs WHERE started_at >= ?",
-            (day_start,),
-        ).fetchone()[0]
-        if used_today + reserve_usd > daily_budget_usd:
-            raise ScreeningBudgetExceeded(
-                f"AI daily budget reached: ${used_today:.4f} used/reserved, "
-                f"${daily_budget_usd:.2f} limit"
-            )
+        day = now.date().isoformat()
+        if source_id:
+            connection.execute("DELETE FROM daily_notice_reads WHERE day < ?", (day,))
+        if source_daily_limit and source_id:
+            reads = connection.execute(
+                "SELECT count(*) FROM daily_notice_reads WHERE day=? AND source_id=?",
+                (day, source_id),
+            ).fetchone()[0]
+            if reads >= source_daily_limit:
+                raise SourceDailyLimitReached(f"Daily notice limit reached for {source_id}")
+        windows = [
+            ("monthly budget", month_start, budget_usd),
+            ("daily budget", day_start, daily_budget_usd),
+        ]
+        if run_since and run_since < day_start:
+            windows.append(("reading run", run_since, daily_budget_usd))
+        for label, start, limit in windows:
+            used = connection.execute(
+                "SELECT coalesce(sum(cost_usd),0) FROM ai_screening_runs WHERE started_at>=?",
+                (start,),
+            ).fetchone()[0]
+            if used + reserve_usd > limit:
+                raise ScreeningBudgetExceeded(
+                    f"AI {label} reached: ${used:.4f} used/reserved, "
+                    f"${reserve_usd:.4f} needed, ${limit:.2f} limit"
+                )
         connection.execute(
             "INSERT INTO ai_screening_runs "
             "(id, competition_id, source_url, model, input_json, status, cost_usd, started_at) "
@@ -104,6 +125,11 @@ def reserve_screening(
                 now.isoformat(),
             ),
         )
+        if source_id:
+            connection.execute(
+                "INSERT INTO daily_notice_reads(request_id,source_id,day) VALUES(?,?,?)",
+                (request_id, source_id, day),
+            )
     return request_id
 
 
@@ -121,6 +147,8 @@ def finish_screening(
 ) -> None:
     # Unknown network outcomes keep their reservation, including across process restarts.
     with write_transaction(db_path) as connection:
+        if error_code in {"http_429", "insufficient_quota", "http_401", "http_402", "http_403"}:
+            connection.execute("DELETE FROM daily_notice_reads WHERE request_id=?", (request_id,))
         connection.execute(
             "UPDATE ai_screening_runs SET status = ?, result_json = ?, error_code = ?, "
             "response_id = ?, input_tokens = ?, output_tokens = ?, "
@@ -181,6 +209,24 @@ def shrink_old_screening_runs(db_path: Path, *, started_before: date) -> int:
     """
     ensure_schema(db_path)
     with write_transaction(db_path) as connection:
+        # Legacy queue rows without a terminal timestamp use their first discovery.
+        stamp = "COALESCE(terminal_at,first_seen)"
+        connection.execute(
+            f"UPDATE items SET payload='' WHERE status IN ('done','failed',"
+            "'aged_out','expired_unread','no_readable_text') AND payload!='' "
+            f"AND {stamp} < ?",
+            (started_before.isoformat(),),
+        )
+        removed = connection.execute(
+            f"DELETE FROM items WHERE status='done' AND {stamp} < ?",
+            ((started_before - timedelta(days=400 - 45)).isoformat(),),
+        ).rowcount
+        if removed:
+            connection.execute(
+                "INSERT INTO backlog_retention VALUES(1,?) ON CONFLICT(id) "
+                "DO UPDATE SET removed=removed+excluded.removed",
+                (removed,),
+            )
         cursor = connection.execute(
             "UPDATE ai_screening_runs SET input_json = '', result_json = NULL "
             "WHERE started_at < ? AND (input_json != '' OR result_json IS NOT NULL)",
@@ -231,7 +277,11 @@ def _publish_in_connection(
         "VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(competition_id) DO UPDATE SET "
         "source_updated_at=excluded.source_updated_at, model=excluded.model, "
         "decision=excluded.decision, relevance_score=excluded.relevance_score, "
-        "result_json=excluded.result_json, updated_at=excluded.updated_at",
+        "result_json=excluded.result_json, updated_at=excluded.updated_at "
+        "WHERE source_updated_at IS NOT excluded.source_updated_at OR decision IS NOT "
+        "excluded.decision "
+        "OR relevance_score IS NOT excluded.relevance_score OR result_json IS NOT "
+        "excluded.result_json",
         (
             competition_id,
             source_updated_at,
@@ -249,29 +299,57 @@ def publish_screening(db_path: Path, **publication: Any) -> None:
         _publish_in_connection(connection, **publication)
 
 
-def upsert_screened_competitions(
-    db_path: Path,
-    records: list[CompetitionRecord],
-    publications: list[dict[str, Any]],
-) -> list[str]:
-    """Publish source facts and their exact revision's assessment in one transaction."""
+def _previously_published(connection, identity):
+    source_id, notice_id, url = identity
+    if notice_id:
+        matches = connection.execute(
+            "SELECT id,updated_at FROM competitions "
+            "WHERE source_id=? AND official_notice_id=? LIMIT 2",
+            (source_id, notice_id),
+        ).fetchall()
+        if matches:
+            return matches[0] if len(matches) == 1 else None
+    if url:
+        matches = connection.execute(
+            "SELECT id,updated_at,official_notice_id FROM competitions "
+            "WHERE source_id=? AND source_url=? LIMIT 2",
+            (source_id, url),
+        ).fetchall()
+        if len(matches) == 1 and (not notice_id or not matches[0]["official_notice_id"]):
+            return matches[0]
+    return None
+
+
+def upsert_screened_competitions(db_path: Path, assessments, receipts, criteria) -> list[str]:
+    """Publish decisions in notice order. An exclusion can update an existing record only."""
     ensure_schema(db_path)
     ids: list[str] = []
     with write_transaction(db_path) as connection:
         now_iso = clock.now_utc().isoformat()
-        for record, publication in zip(records, publications, strict=True):
-            competition_id = upsert_in_connection(connection, record, now_iso=now_iso)
-            stored = connection.execute(
-                "SELECT updated_at FROM competitions WHERE id = ?",
-                (competition_id,),
-            ).fetchone()
+        for record, identity, publication in assessments:
+            if record is None:
+                stored = _previously_published(connection, identity)
+                if stored is None:
+                    continue
+                competition_id = stored["id"]
+            else:
+                competition_id = upsert_in_connection(connection, record, now_iso=now_iso)
+                ids.append(competition_id)
+                stored = connection.execute(
+                    "SELECT updated_at FROM competitions WHERE id = ?", (competition_id,)
+                ).fetchone()
             _publish_in_connection(
                 connection,
                 competition_id=competition_id,
                 source_updated_at=stored["updated_at"],
                 **publication,
             )
-            ids.append(competition_id)
+        connection.executemany(
+            "UPDATE items SET status='done',attempts=attempts+1,last_error=NULL,retry_at=NULL,"
+            "transient_count=0,terminal_at=?,criteria_hash=?,request_id=? "
+            "WHERE rowid=? AND status='queued'",
+            [(now_iso, criteria, request, row) for row, request in receipts],
+        )
     return ids
 
 
@@ -290,7 +368,13 @@ def latest_screening_notice_text(db_path: Path, competition_id: str) -> str:
         return ""
     try:
         request = json.loads(row["input_json"])
-        notice = json.loads(request["input"])["evidence_fields"]["notice_text"]
+        wire = request.get("request", request)
+        content = wire["input"] if "input" in wire else wire["messages"][-1]["content"]
+        # The final section is verbatim. Its length also works if the source contains our labels.
+        if "notice_text_chars" in request:
+            length = request["notice_text_chars"]
+            return content[-length:] if length else ""
+        notice = json.loads(content)["evidence_fields"]["notice_text"]
     except (ValueError, KeyError, TypeError):
         return ""
     return notice if isinstance(notice, str) else ""

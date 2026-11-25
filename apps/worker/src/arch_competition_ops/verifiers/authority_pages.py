@@ -20,6 +20,7 @@ from urllib.parse import urlsplit
 from arch_competition_ops.browser import render_page
 from arch_competition_ops.http import HttpError, get_default_client
 from arch_competition_ops.normalizers.text import normalize_text, strip_html
+from arch_competition_ops.run_errors import error_class, log_url
 from arch_competition_ops.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -191,7 +192,7 @@ def _extract_sitemap_urls(robots_text: str, domain: str) -> list[str]:
     same_site = [url for url in declared if _is_same_site(url, domain)]
     for url in declared:
         if url not in same_site:
-            logger.warning("Ignoring off-site sitemap %s declared by %s", url, domain)
+            logger.warning("Ignoring off-site sitemap %s declared by %s", log_url(url), domain)
     return same_site or [f"https://{domain}/sitemap.xml"]
 
 
@@ -227,7 +228,7 @@ def _domain_sitemap_urls(domain: str) -> list[str]:
     try:
         robots_text = _fetch_text_cached(f"https://{domain}/robots.txt")
     except HttpError as exc:
-        logger.info("No robots.txt for %s: %s", domain, exc)
+        logger.info("No robots.txt for %s: %s", domain, error_class(exc))
         robots_text = ""
 
     urls: list[str] = []
@@ -235,7 +236,7 @@ def _domain_sitemap_urls(domain: str) -> list[str]:
         try:
             urls.extend(_collect_sitemap_target_urls(sitemap_url, domain))
         except HttpError as exc:
-            logger.info("Sitemap %s unavailable: %s", sitemap_url, exc)
+            logger.info("Sitemap %s unavailable: %s", log_url(sitemap_url), error_class(exc))
             continue
 
     deduped = list(dict.fromkeys(urls))
@@ -324,12 +325,16 @@ def browser_candidate(
             timeout_ms=20000,
         )
     except Exception as exc:  # noqa: BLE001 - the headless browser can fail in many ways
-        logger.info("Browser fallback failed for %s: %s", candidate_url, exc)
+        logger.info("Browser fallback failed for %s: %s", log_url(candidate_url), error_class(exc))
         return None
 
     final_url = browser_page.final_url or candidate_url
     if not _is_on_any_domain(final_url, domains):
-        logger.warning("Browser fallback for %s ended off-site at %s", candidate_url, final_url)
+        logger.warning(
+            "Browser fallback for %s ended off-site at %s",
+            log_url(candidate_url),
+            log_url(final_url),
+        )
         return None
 
     match = match_page(browser_page.html, title_tokens)
@@ -369,7 +374,9 @@ def best_official_candidate(
         try:
             html = _fetch_text_cached(candidate_url)
         except HttpError as exc:
-            logger.info("Candidate page %s unavailable: %s", candidate_url, exc)
+            logger.info(
+                "Candidate page %s unavailable: %s", log_url(candidate_url), error_class(exc)
+            )
             fallback = browser_candidate(
                 candidate_url=candidate_url,
                 title_tokens=title_tokens,

@@ -111,21 +111,16 @@ def test_ai_mode_scopes_to_design_cpv_contests_and_notices_without_cpv() -> None
         ]
     )
 
-    documents = collect_boamp_documents(
-        _source(), limit=2000, include_unclassified=True, fetch_json=fetch
-    )
+    documents = collect_boamp_documents(_source(), limit=2000, fetch_json=fetch)
 
-    assert _ids(documents) == ["1", "2", "5", "6"]
+    assert _ids(documents) == [str(i) for i in range(1, 9)]
     payloads = [json.loads(document.payload) for document in documents]
     assert payloads[0]["cpv"] == ["45000000", "71240000"]
-    assert payloads[2]["cpv"] == []
+    assert payloads[4]["cpv"] == []
     assert payloads[0]["rawNotice"]["idweb"] == "1"
     assert documents[0].source_url == "https://www.boamp.fr/pages/avis/?q=idweb:1"
     where = requests[0]["where"][0]
     assert f"dateparution >= date'{_day(7)}'" in where
-    assert "nature in ('APPEL_OFFRE', 'RECTIFICATIF')" in where
-    assert "sousnature = 'MISE_EN_CONCURRENCE'" in where
-    assert "etat != 'ANNULATION'" in where
     assert requests[0]["order_by"] == ["dateparution desc, idweb desc"]
 
 
@@ -133,9 +128,7 @@ def test_pages_through_the_window_with_fixed_pages_until_the_api_runs_out() -> N
     full_page = [_notice(f"a{index}") for index in range(100)]
     fetch, requests = _pages(full_page, [_notice("b0"), _notice("b1")])
 
-    documents = collect_boamp_documents(
-        _source(), limit=2000, include_unclassified=True, fetch_json=fetch
-    )
+    documents = collect_boamp_documents(_source(), limit=2000, fetch_json=fetch)
 
     assert len(documents) == 102
     assert [query["offset"] for query in requests] == [["0"], ["100"]]
@@ -150,7 +143,6 @@ def test_stops_at_the_first_notice_older_than_the_window() -> None:
         _source(),
         limit=2000,
         publication_date_from=_day(3),
-        include_unclassified=True,
         fetch_json=fetch,
     )
 
@@ -161,9 +153,7 @@ def test_stops_at_the_first_notice_older_than_the_window() -> None:
 def test_stops_when_limit_documents_are_kept() -> None:
     fetch, requests = _pages([_notice(f"a{index}") for index in range(100)])
 
-    documents = collect_boamp_documents(
-        _source(), limit=3, include_unclassified=True, fetch_json=fetch
-    )
+    documents = collect_boamp_documents(_source(), limit=3, fetch_json=fetch)
 
     assert _ids(documents) == ["a0", "a1", "a2"]
     assert len(requests) == 1
@@ -175,16 +165,14 @@ def test_page_cap_stops_a_runaway_window_with_a_warning(monkeypatch, caplog) -> 
     fetch, requests = _pages(*[out_of_scope] * 5)
 
     with caplog.at_level(logging.WARNING, logger=boamp.__name__):
-        documents = collect_boamp_documents(
-            _source(), limit=2000, include_unclassified=True, fetch_json=fetch
-        )
+        documents = collect_boamp_documents(_source(), limit=2000, fetch_json=fetch)
 
-    assert documents == []
+    assert len(documents) == 3 * boamp.PAGE_SIZE
     assert len(requests) == 3
     assert "stopped after 3 pages" in caplog.text
 
 
-def test_without_ai_the_keyword_gates_still_decide_and_results_are_dropped() -> None:
+def test_collection_preserves_unclassified_source_material() -> None:
     title = "Mission de maîtrise d'oeuvre pour la réhabilitation d'une école"
     fetch, _requests = _pages(
         [
@@ -196,7 +184,7 @@ def test_without_ai_the_keyword_gates_still_decide_and_results_are_dropped() -> 
 
     documents = collect_boamp_documents(_source(), limit=20, fetch_json=fetch)
 
-    assert _ids(documents) == ["1"]
+    assert _ids(documents) == ["1", "2", "3"]
 
 
 def test_ai_mode_keeps_design_and_build_works_notices_by_title() -> None:
@@ -211,8 +199,19 @@ def test_ai_mode_keeps_design_and_build_works_notices_by_title() -> None:
         ]
     )
 
-    documents = collect_boamp_documents(
-        _source(), limit=2000, include_unclassified=True, fetch_json=fetch
-    )
+    documents = collect_boamp_documents(_source(), limit=2000, fetch_json=fetch)
 
-    assert _ids(documents) == ["dnb"]
+    assert _ids(documents) == ["dnb", "works"]
+
+
+def test_missing_or_root_url_uses_the_public_notice_identifier():
+    items = [_notice("26-11"), _notice("26-12"), _notice("26-13")]
+    del items[0]["url_avis"]
+    items[1]["url_avis"] = "https://www.boamp.fr/"
+    items[2].update(url_avis=None, idweb=None, id=None)
+    fetch, _ = _pages(items)
+    documents = collect_boamp_documents(_source(), fetch_json=fetch)
+    assert [d.source_url for d in documents] == [
+        "https://www.boamp.fr/pages/avis/?q=idweb:26-11",
+        "https://www.boamp.fr/pages/avis/?q=idweb:26-12",
+    ]

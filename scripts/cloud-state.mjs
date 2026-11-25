@@ -8,7 +8,7 @@
 // data/geocoding-cache.json. Losing it, or starting from an empty database, means paying for
 // every assessment again, so:
 //   - `pull` fails loudly when the bucket holds no state; only `push --init` creates the first one.
-//   - `pull` and `push` refuse to replace newer-looking state (more ai_notice_ledger rows) with older
+//   - `pull` and `push` refuse to replace newer-looking state (more registered notices) with older
 //     state unless --force.
 // Objects: state/<UTC timestamp>/competitions.sqlite.gz, state/<UTC timestamp>/geocoding-cache.json.gz
 // and the small pointer latest.json (written last, so a half-finished push never becomes "latest").
@@ -49,7 +49,7 @@ export const KEEP_GENERATIONS = 14;
 export const POINTER_KEY = "latest.json";
 const DB_FILE = "competitions.sqlite";
 const GEOCODE_FILE = "geocoding-cache.json";
-const COUNTED_TABLES = ["competitions", "ai_notice_ledger", "ai_screening_results", "ai_screening_runs"];
+const COUNTED_TABLES = ["competitions", "items", "ai_screening_results", "ai_screening_runs"];
 const KEY_PATTERN = /^state\/[0-9A-Za-z-]+\/[0-9A-Za-z._-]+$/;
 const BUCKET_PATTERN = /^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/;
 const MISSING_OBJECT_PATTERN = /does not exist|not found|NoSuchKey|10007/i;
@@ -66,7 +66,7 @@ export const USAGE = `Usage: node scripts/cloud-state.mjs <pull|push|stats> [opt
 
 Options:
   --init               push only: create the very first generation (refused when state exists).
-  --force              skip the "fewer ai_notice_ledger rows" refusal (and --init on existing state).
+  --force              skip the "fewer registered notices" refusal (and --init on existing state).
   --generation <id>    pull only: restore an older generation listed in latest.json.
   --bucket <name>      R2 bucket (default ${DEFAULT_BUCKET}, or ${BUCKET_ENV_VAR}).
 `;
@@ -126,6 +126,12 @@ export function readCounts(dbPath) {
         ? Number(database.prepare(`SELECT COUNT(*) AS n FROM "${table}"`).get().n)
         : 0;
     }
+    if (!tableExists(database, "items")) {
+      const old = ["notice_backlog", "ai_notice_ledger"].filter(name => tableExists(database, name));
+      counts.items = Math.max(0, ...old.map(name => database.prepare('SELECT count(*) AS n FROM ' + name).get().n));
+    }
+    counts.backlog_removed = tableExists(database, "backlog_retention")
+      ? Number(database.prepare("SELECT removed FROM backlog_retention WHERE id=1").get()?.removed ?? 0) : 0;
     return counts;
   } finally {
     database.close();
@@ -201,13 +207,17 @@ function assertKey(key) {
   }
 }
 
+function itemCount(counts) {
+  return (counts.items ?? Math.max(counts.ai_notice_ledger ?? 0, counts.notice_backlog ?? 0)) + (counts.backlog_removed ?? 0);
+}
+
 function validatePointer(pointer) {
   if (!pointer || pointer.version !== 1 || typeof pointer.generation !== "string") {
     throw new StateError("latest.json has an unexpected format");
   }
   pointer.history ??= [];
-  if (!Number.isInteger(pointer.counts?.ai_notice_ledger)) {
-    throw new StateError("latest.json has no ai_notice_ledger count");
+  if (!Number.isInteger(pointer.counts?.items ?? pointer.counts?.ai_notice_ledger)) {
+    throw new StateError("latest.json has no notice count");
   }
   for (const entry of [pointer, ...(pointer.history ?? [])]) {
     assertKey(entry.db?.key);
@@ -253,11 +263,8 @@ async function push({ context, dbPath, options, now }) {
   await snapshotDatabase(dbPath, snapshotPath);
   assertIntegrity(snapshotPath, "snapshot");
   const counts = readCounts(snapshotPath);
-  if (pointer !== null && !options.force && counts.ai_notice_ledger < pointer.counts.ai_notice_ledger) {
-    throw new StateError(
-      `Refusing to push: local ai_notice_ledger has ${counts.ai_notice_ledger} rows, ` +
-        `the stored state has ${pointer.counts.ai_notice_ledger}. Use --force only if that is intended.`,
-    );
+  if (pointer && !options.force && itemCount(counts) < itemCount(pointer.counts)) {
+    throw new StateError("Refusing to push: items have been lost outside recorded retention.");
   }
 
   // A generation id never repeats: bump by a second until it is unused.
@@ -340,14 +347,14 @@ async function pull({ context, dbPath, options }) {
   if (existsSync(dbPath) && !options.force) {
     let localLedger;
     try {
-      localLedger = readCounts(dbPath).ai_notice_ledger;
+      localLedger = itemCount(readCounts(dbPath));
     } catch {
       throw new StateError("The local database is unreadable; use --force to replace it");
     }
-    if (localLedger > counts.ai_notice_ledger) {
+    if (localLedger > itemCount(counts)) {
       throw new StateError(
-        `Refusing to overwrite: the local ai_notice_ledger has ${localLedger} rows, ` +
-          `the pulled generation ${entry.generation} has ${counts.ai_notice_ledger}. Use --force to replace it.`,
+        `Refusing to overwrite: the local registry has ${localLedger} rows, ` +
+          `the pulled generation ${entry.generation} has ${itemCount(counts)}. Use --force to replace it.`,
       );
     }
   }

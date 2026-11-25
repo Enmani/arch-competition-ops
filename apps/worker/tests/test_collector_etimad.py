@@ -71,18 +71,22 @@ class FakePortal:
     def __call__(self, url: str) -> dict:
         self.urls.append(url)
         query = dict(parse.parse_qsl(parse.urlsplit(url).query))
-        rows = self.rows_by_activity.get(int(query["TenderActivityId"]), [])
+        rows = (
+            self.rows_by_activity[int(query["TenderActivityId"])]
+            if "TenderActivityId" in query
+            else [r for group in self.rows_by_activity.values() for r in group]
+        )
         page = int(query["PageNumber"])
         chunk = rows[(page - 1) * self.page_size : page * self.page_size]
         if page > 1 and not chunk:
             raise HttpStatusError("Unexpected HTTP status 400", url=url, status_code=400)
         return {"data": chunk, "totalCount": len(rows)}
 
-    def pages_of(self, activity: int) -> list[int]:
+    def pages_of(self, activity=None) -> list[int]:
         pages = []
         for url in self.urls:
             query = dict(parse.parse_qsl(parse.urlsplit(url).query))
-            if int(query["TenderActivityId"]) == activity:
+            if query.get("TenderActivityId") == activity:
                 pages.append(int(query["PageNumber"]))
         return pages
 
@@ -107,7 +111,6 @@ def _collect(portal, **kwargs):
         details.append(url)
         return DETAIL
 
-    kwargs.setdefault("include_unclassified", True)
     kwargs.setdefault("limit", 1000)
     documents = collect_etimad_documents(
         _source(), fetch_json=portal, fetch_text=fetch_text, **kwargs
@@ -125,10 +128,10 @@ def test_reads_consulting_then_contracting_for_the_last_week() -> None:
     _collect(portal)
 
     first = dict(parse.parse_qsl(parse.urlsplit(portal.urls[0]).query))
-    assert first["TenderActivityId"] == "16"
+    assert "TenderActivityId" not in first
     assert first["PublishDateId"] == "3"
     assert (first["Sort"], first["SortDirection"]) == ("SubmitionDate", "DESC")
-    assert portal.pages_of(2)[0] == 1
+    assert portal.pages_of()[0] == 1
 
 
 def test_wider_windows_pick_the_wider_server_bucket() -> None:
@@ -147,7 +150,7 @@ def test_pages_until_a_page_has_nothing_new_or_the_server_ends() -> None:
 
     assert len(documents) == 59
     # Pages 1 to 3 hold the rows; page 4 is past the end (HTTP 400) and ends the walk quietly.
-    assert portal.pages_of(16) == [1, 2, 3, 4]
+    assert portal.pages_of() == [1, 2, 3, 4]
 
 
 def test_a_failing_first_page_is_an_error() -> None:
@@ -167,7 +170,7 @@ def test_stops_on_the_first_page_that_is_entirely_older_than_the_window() -> Non
     documents, _ = _collect(portal)
 
     assert len(documents) == 24
-    assert portal.pages_of(16) == [1, 2]
+    assert portal.pages_of() == [1, 2]
 
 
 def test_page_cap_stops_a_runaway_listing_with_a_warning(caplog) -> None:
@@ -183,7 +186,7 @@ def test_page_cap_stops_a_runaway_listing_with_a_warning(caplog) -> None:
     with caplog.at_level(logging.WARNING, logger=etimad.logger.name):
         documents, _ = _collect(portal)
 
-    assert portal.pages_of(16) == list(range(1, etimad.MAX_PAGES_PER_SCOPE + 1))
+    assert portal.pages_of() == list(range(1, etimad.MAX_PAGES_PER_SCOPE + 1))
     assert len(documents) == 24 * etimad.MAX_PAGES_PER_SCOPE
     assert "page cap" in caplog.text
 
@@ -204,7 +207,7 @@ def test_drops_closed_new_system_and_duplicate_tenders() -> None:
 
     documents, _ = _collect(portal)
 
-    assert [json.loads(d.payload)["noticeId"] for d in documents] == ["261139001"]
+    assert [json.loads(d.payload)["noticeId"] for d in documents] == ["261139001", "261139002"]
 
 
 def test_ai_mode_keeps_unclassified_consulting_rows_but_only_design_and_build_works() -> None:
@@ -227,10 +230,11 @@ def test_ai_mode_keeps_unclassified_consulting_rows_but_only_design_and_build_wo
         "T-1",
         "T-2",
         "T-3",
+        "T-4",
     ]
 
 
-def test_plain_mode_needs_a_design_sub_activity_or_an_arabic_design_word() -> None:
+def test_collection_preserves_unclassified_source_material() -> None:
     portal = FakePortal(
         {
             16: [
@@ -242,11 +246,11 @@ def test_plain_mode_needs_a_design_sub_activity_or_an_arabic_design_word() -> No
         }
     )
 
-    documents, details = _collect(portal, include_unclassified=False)
+    documents, details = _collect(portal)
 
-    assert sorted(json.loads(d.payload)["tenderNumber"] for d in documents) == ["T-2", "T-3"]
-    assert details == []
-    assert "rawNotice" not in json.loads(documents[0].payload)
+    assert sorted(json.loads(d.payload)["tenderNumber"] for d in documents) == ["T-1", "T-2", "T-3"]
+    assert len(details) == 3
+    assert "rawNotice" in json.loads(documents[0].payload)
 
 
 def test_every_notice_has_its_own_address_with_the_portal_id_kept_as_written() -> None:
@@ -311,9 +315,7 @@ def test_a_detail_page_that_fails_keeps_the_notice_with_an_empty_raw_html() -> N
     def broken(url: str) -> str:
         raise HttpStatusError("Unexpected HTTP status 500", url=url, status_code=500)
 
-    [document] = collect_etimad_documents(
-        _source(), fetch_json=portal, fetch_text=broken, include_unclassified=True
-    )
+    [document] = collect_etimad_documents(_source(), fetch_json=portal, fetch_text=broken)
 
     assert json.loads(document.payload)["rawNoticeHtml"] == ""
 
@@ -330,6 +332,4 @@ def test_a_bot_challenge_is_a_hard_stop() -> None:
 
     portal = FakePortal({16: [_row(1, "2026-11-14")], 2: []})
     with pytest.raises(PortalChallengeError):
-        collect_etimad_documents(
-            _source(), fetch_json=portal, fetch_text=challenged, include_unclassified=True
-        )
+        collect_etimad_documents(_source(), fetch_json=portal, fetch_text=challenged)

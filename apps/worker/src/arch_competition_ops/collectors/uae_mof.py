@@ -1,24 +1,4 @@
-"""UAE federal tenders: the Ministry of Finance "Current Business Opportunities" list.
-
-The Ministry of Finance (``mof.gov.ae``) publishes every open RFQ of the federal entities that
-buy through the federal Digital Procurement Platform on one public WordPress page. No login is
-needed and ``mof.gov.ae/robots.txt`` allows everything. Shape verified live on 2026-11-15:
-
-* The page loads its table through ``POST /wp-admin/admin-ajax.php`` with the form fields
-  ``action=mof_dpp_fetch``, ``language``, ``page``, ``search``, ``ministry``, ``order`` and
-  ``order_by`` (``open-date``, ``close-date``, ``ministry`` or ``rfq``). The answer is an HTML
-  fragment of nine tenders per page (about 60 open tenders, seven pages); a page past the end is
-  empty.
-* Each tender is a ``mof-dpp-list__item`` block: title, RFQ number, entity, an expandable
-  description (the title again when there is none), ``Open Date`` and ``Close Date``
-  (``dd/mm/yyyy h:mm:ss AM``) and a link to the tender's own page on the federal platform
-  (``procurement.gov.ae/page.aspx/en/bpm/process_manage_extranet/<rfq>``).
-* There is no category. Titles are in English or Arabic.
-
-``procurement.gov.ae/robots.txt`` disallows everything and its pages are script-rendered behind a
-browser check, so the collector never fetches them: the link is only the notice's address
-(``rawNoticeHtml`` is ``""`` in AI mode so enrichment does not fetch it either).
-"""
+"""UAE federal tenders: the Ministry of Finance "Current Business Opportunities" list."""
 
 from __future__ import annotations
 
@@ -32,8 +12,12 @@ from html import unescape
 from arch_competition_ops import clock
 from arch_competition_ops.collectors.base import CollectedSourceDocument
 from arch_competition_ops.collectors.common import fetch_text_post
-from arch_competition_ops.collectors.design_scope import is_design_and_build
-from arch_competition_ops.collectors.relevance import is_design_relevant
+from arch_competition_ops.collectors.pagination import (
+    numbered_pages,
+    page_items,
+    page_limit,
+    unfinished_page,
+)
 from arch_competition_ops.models import SourceDefinition
 from arch_competition_ops.normalizers.text import strip_html
 
@@ -130,7 +114,6 @@ def _build_document(
     title: str,
     published: date,
     deadline: date | None,
-    include_unclassified: bool,
 ) -> CollectedSourceDocument:
     description = item["description"]
     entity = _ENTITY_CODE_SUFFIX.sub("", item["entity"] or "").strip() or None
@@ -148,7 +131,8 @@ def _build_document(
         "location": "United Arab Emirates",
         "evidenceLevel": "official_notice",
         "evidenceNote": EVIDENCE_NOTE,
-        **({"rawNotice": item, "rawNoticeHtml": ""} if include_unclassified else {}),
+        "rawNotice": item,
+        "rawNoticeHtml": "",
     }
     return CollectedSourceDocument(source_url=link, payload=json.dumps(payload, ensure_ascii=False))
 
@@ -159,27 +143,20 @@ def collect_uae_mof_documents(
     limit: int = 20,
     publication_date_from: str | None = None,
     fetch_page: FetchPage | None = None,
-    include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
-    """Open federal tenders opened since ``publication_date_from``, newest first, at most ``limit``.
-
-    The list is read newest-opened first and ends at the first tender opened before the window.
-    Tenders whose close date has passed are dropped. The list has no category, so AI mode keeps
-    every open tender for the triage model; otherwise the free-text design gate applies.
-    """
+    """Collect public notices in the requested publication window."""
     read_page = fetch_page or _default_fetch_page
     window_start = _window_start(publication_date_from)
-    today = clock.today()
     documents: list[CollectedSourceDocument] = []
     if limit <= 0:
         return documents
     seen: set[str] = set()
 
-    for page in range(1, MAX_PAGES + 1):
+    for page in numbered_pages(range(1, page_limit(MAX_PAGES) + 1)):
         items = _parse_items(read_page(page))
         if not items:
             return documents
-        for item in items:
+        for item in page_items(items):
             published = _parse_date(item["opened"])
             if published is None:
                 continue
@@ -190,12 +167,6 @@ def collect_uae_mof_documents(
                 continue
             seen.add(rfq)
             deadline = _parse_date(item["closes"])
-            if deadline is not None and deadline < today:
-                continue
-            if not include_unclassified and not (
-                is_design_relevant(title, item["description"]) or is_design_and_build(title)
-            ):
-                continue
             documents.append(
                 _build_document(
                     item,
@@ -203,10 +174,10 @@ def collect_uae_mof_documents(
                     title=title,
                     published=published,
                     deadline=deadline,
-                    include_unclassified=include_unclassified,
                 )
             )
             if len(documents) >= limit:
                 return documents
+    unfinished_page()
     logger.warning("UAE MoF open tender list not fully read: stopped at the %d-page cap", MAX_PAGES)
     return documents

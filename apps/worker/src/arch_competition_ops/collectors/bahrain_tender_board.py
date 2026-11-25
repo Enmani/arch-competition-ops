@@ -1,21 +1,4 @@
-"""Bahrain: the Tender Board published tenders (``www.tenderboard.gov.bh``).
-
-Shape verified live on 2026-11-15, without a login. The site has no ``robots.txt`` (it answers the
-home page) and its terms of use only bar republishing the site's contents without permission.
-
-* The "Published Tenders" page fills its list from two ASP.NET page methods that take JSON:
-  ``/Templates/TenderBoardWebService.aspx/GetCurrentPublicTenderPageCount`` (answers ``{"d": n}``
-  pages) and ``.../GetCurrentPublicTenderByPage`` (answers ``{"d": "<html rows>"}``, 10 tenders a
-  page, newest publication first with the default sort). About 500 tenders are open at a time,
-  from every ministry and many state companies.
-* A row has the tender number, the subject, a pre-qualification marker, the purchasing authority,
-  and the publication, purchase-before and closing dates.
-* ``/TenderDetails/?id=<id>`` is the public page of one tender, in English, with the
-  ``Classification/CPV Codes`` the list lacks and the description. It is read for every tender in
-  the window, because the CPV code decides the scope.
-* Scope: a CPV code under ``71`` or ``7993``; a tender with no CPV code at all (unknown is not out
-  of scope); and, in AI mode, a design-and-build contract. Other CPV codes are dropped.
-"""
+"""Bahrain: the Tender Board published tenders (``www.tenderboard.gov.bh``)."""
 
 from __future__ import annotations
 
@@ -28,19 +11,24 @@ from html import unescape
 from typing import Any
 from urllib import parse
 
-from arch_competition_ops import clock
-from arch_competition_ops.collectors.base import CollectedSourceDocument
+from arch_competition_ops.collectors.base import CollectedSourceDocument, deferred_detail
 from arch_competition_ops.collectors.common import DEFAULT_HEADERS
-from arch_competition_ops.collectors.design_scope import has_design_cpv, is_design_and_build
 from arch_competition_ops.collectors.mideast_common import (
     build_paced_client,
     clean_text,
     page_text,
     window_start,
 )
-from arch_competition_ops.collectors.relevance import is_design_relevant
+from arch_competition_ops.collectors.pagination import (
+    current_pages,
+    numbered_pages,
+    page_items,
+    page_limit,
+    repeated_page,
+)
 from arch_competition_ops.http import HttpError
 from arch_competition_ops.models import SourceDefinition
+from arch_competition_ops.run_errors import error_class
 
 logger = logging.getLogger(__name__)
 
@@ -131,6 +119,7 @@ def _parse_rows(fragment: str) -> list[dict[str, Any]]:
         tender_id = parse.parse_qs(parse.urlsplit(path).query)["id"][0]
         rows.append(
             {
+                "listingText": block,
                 "tenderId": tender_id,
                 # The page's own address, as the list writes it (``%2f`` slashes, ``+`` spaces).
                 "url": SITE + path,
@@ -161,28 +150,14 @@ def _parse_detail(page: str) -> dict[str, Any]:
     }
 
 
-def _in_scope(row: dict[str, Any], detail: dict[str, Any] | None, *, ai: bool) -> bool:
-    title, description = row["title"], (detail or {}).get("description")
-    cpv = (detail or {}).get("cpv") or []
-    if has_design_cpv(cpv):
-        return True
-    if ai:
-        # No CPV code (or no detail page): unknown is kept. A works or services CPV code is
-        # dropped unless the contract is design-and-build.
-        return not cpv or is_design_and_build(title, description)
-    return bool(cpv) and is_design_relevant(title, description, cpv_codes=cpv)
-
-
-def _build_document(
-    row: dict[str, Any], detail: dict[str, Any] | None, *, ai: bool
-) -> CollectedSourceDocument:
+def _build_document(row: dict[str, Any], detail: dict[str, Any] | None) -> CollectedSourceDocument:
     url = row["url"]
     payload = {
         "title": row["title"],
         "buyer": row["authority"],
         "noticeId": row["tenderId"],
         "tenderNumber": row["tenderNumber"],
-        "deadline": row["closing"].isoformat(),
+        "deadline": row["closing"].isoformat() if row["closing"] else None,
         "summary": (detail or {}).get("description") or None,
         "officialUrl": url,
         "cpv": (detail or {}).get("cpv") or [],
@@ -193,16 +168,9 @@ def _build_document(
         "evidenceLevel": "official_notice",
         "evidenceNote": EVIDENCE_NOTE,
         # The detail page is read here and the list row is kept as the raw notice.
-        **(
-            {
-                "rawNotice": {
-                    **{k: str(v) if isinstance(v, date) else v for k, v in row.items()},
-                    "detail": detail,
-                },
-                "rawNoticeHtml": (detail or {}).get("description") or "",
-            }
-            if ai
-            else {}
+        "rawNotice": row["listingText"],
+        "rawNoticeHtml": "\n".join(
+            filter(None, [(detail or {}).get("description"), (detail or {}).get("cpvText")])
         ),
     }
     return CollectedSourceDocument(source_url=url, payload=json.dumps(payload, ensure_ascii=False))
@@ -215,45 +183,43 @@ def collect_bahrain_tender_board_documents(
     publication_date_from: str | None = None,
     post_json: Callable[[str, dict[str, str]], Any] | None = None,
     fetch_text: Callable[[str], str] | None = None,
-    include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
-    """Open Bahraini tenders published since ``publication_date_from`` that are in the CPV scope.
-
-    The list is read page by page (newest first) until a page holds nothing in the window. The
-    detail page of each tender in the window is read for its CPV codes.
-    """
+    """Collect public notices in the requested publication window."""
     start = window_start(publication_date_from)
-    today = clock.today()
     post = post_json or _default_post_json
     get = fetch_text or _default_fetch_text
     pages = post("GetCurrentPublicTenderPageCount", _query(-1)).get("d") or 0
-    if pages > MAX_PAGES:
-        logger.warning(
-            "Bahrain Tender Board lists %s pages; only the first %s are read", pages, MAX_PAGES
-        )
+    if not current_pages() and int(pages) > MAX_PAGES:
+        logger.warning("Bahrain lists %s pages; only the first %s are read", pages, MAX_PAGES)
     documents: list[CollectedSourceDocument] = []
     seen: set[str] = set()
-    for page in range(1, min(int(pages), MAX_PAGES) + 1):
+    for page in numbered_pages(range(1, page_limit(MAX_PAGES) + 1), last=int(pages)):
         if len(documents) >= limit:
             break
         rows = _parse_rows(post("GetCurrentPublicTenderByPage", _query(page)).get("d") or "")
         fresh = [row for row in rows if row["tenderId"] not in seen]
         if not fresh:
+            if rows:
+                repeated_page()
             break
         seen.update(row["tenderId"] for row in fresh)
-        for row in fresh:
-            published, closing = row["published"], row["closing"]
-            if published is None or published < start or closing is None or closing < today:
+        for row in page_items(fresh):
+            published = row["published"]
+            if published is None or published < start:
                 continue
             detail = None
             try:
                 detail = _parse_detail(get(row["url"]))
-            except HttpError as exc:  # unknown scope is kept in AI mode only
-                logger.warning("Bahrain tender %s detail not read: %s", row["tenderId"], exc)
-            if _in_scope(row, detail, ai=include_unclassified):
-                documents.append(_build_document(row, detail, ai=include_unclassified))
-                if len(documents) >= limit:
-                    break
+            except HttpError as exc:
+                if exc.status_code in {403, 429}:
+                    documents.append(deferred_detail(exc, row["url"], row["listingText"]))
+                    if len(documents) >= limit:
+                        return documents
+                    continue
+                logger.warning("Bahrain detail not read: %s", error_class(exc))
+            documents.append(_build_document(row, detail))
+            if len(documents) >= limit:
+                break
         dated = [row["published"] for row in fresh if row["published"]]
         if dated and max(dated) < start:
             break

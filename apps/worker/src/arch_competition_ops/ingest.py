@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 from collections import Counter
 from dataclasses import dataclass, field
+from datetime import timedelta
 
 from arch_competition_ops import clock
 from arch_competition_ops.bootstrap import initialize_database
@@ -26,7 +27,8 @@ from arch_competition_ops.card_previews import (
 )
 from arch_competition_ops.collectors import collect_source_documents
 from arch_competition_ops.collectors.base import CollectedSourceDocument
-from arch_competition_ops.config_loader import load_source_catalog, load_targeting_preferences
+from arch_competition_ops.config_loader import load_source_catalog
+from arch_competition_ops.discovery import collect_window
 from arch_competition_ops.extractors import parse_source_payload
 from arch_competition_ops.geocoding import NominatimGeocoder, enrich_record_geocode
 from arch_competition_ops.models import CompetitionRecord, SourceDefinition
@@ -36,26 +38,29 @@ from arch_competition_ops.normalizers.competition import (
     configure_procedure_registry,
 )
 from arch_competition_ops.review_queue import refresh_review_queue
+from arch_competition_ops.run_errors import error_class, log_url, provider_code
+from arch_competition_ops.screening.client import ScreeningError, ScreeningPaused
+from arch_competition_ops.screening.extraction import NoticeValidationError
 from arch_competition_ops.screening.fingerprints import (
-    notice_content_hash,
     screening_criteria_hash,
 )
+from arch_competition_ops.screening.readability import NoReadableText
 from arch_competition_ops.screening.service import DocumentAssessment, assess_documents
-from arch_competition_ops.screening.triage import triage_documents
+from arch_competition_ops.screening.source_evidence import exclusion_identity
 from arch_competition_ops.settings import Settings
 from arch_competition_ops.storage import (
+    backlog,
     competition_is_stale_expired,
     dedup_key_for,
     find_duplicate_records,
     record_source_run,
-    upsert_competitions,
 )
-from arch_competition_ops.storage.notice_ledger import find_screened, record_screened
+from arch_competition_ops.storage.connection import connect
 from arch_competition_ops.storage.screening import (
     ScreeningBudgetExceeded,
+    SourceDailyLimitReached,
     upsert_screened_competitions,
 )
-from arch_competition_ops.targeting import load_targeting_filter
 from arch_competition_ops.titles.rewrite import BATCH_SIZE as TITLE_BATCH_SIZE
 from arch_competition_ops.titles.service import polish_titles
 from arch_competition_ops.verifiers import verify_record
@@ -74,10 +79,12 @@ class SourceDisabledError(ValueError):
 class IngestError(RuntimeError):
     """The run failed as a whole (collector or database write); ``__cause__`` has the detail."""
 
-    def __init__(self, source_id: str, stage: str, cause: BaseException) -> None:
+    def __init__(self, source_id: str, stage: str, cause: BaseException, details: str = "") -> None:
         self.source_id = source_id
         self.stage = stage
-        super().__init__(f"Ingest of '{source_id}' failed during {stage}: {cause}")
+        super().__init__(
+            f"Ingest of '{source_id}' failed during {stage}: {error_class(cause)}{details}"
+        )
 
 
 @dataclass(frozen=True)
@@ -98,9 +105,10 @@ class IngestResult:
     failures: list[DocumentFailure] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     preview: CardPreviewPrewarmResult | None = None
+    batch_paused: bool = False
     deferred: int = 0
     # Listed notices skipped because the same content was already screened under the same
-    # criteria (see storage/notice_ledger.py).
+    # criteria (see storage/backlog.py).
     already_screened: int = 0
 
     @property
@@ -157,13 +165,17 @@ def ingest_source(
     source_id: str,
     limit: int = 20,
     publication_date_from: str | None = None,
+    collect_only: bool = False,
+    queued_row_ids: list[int] | None = None,
     collected_documents: list[CollectedSourceDocument] | None = None,
 ) -> IngestResult:
+    if settings._reading_run_since is None:
+        settings = settings.model_copy()
+        settings._reading_run_since = clock.now_utc().isoformat()
     configure_procedure_registry(settings.root)
     source = _find_enabled_source(settings, source_id)
     db_path = initialize_database(settings)
     retention_days = settings.expired_competition_retention_days
-    targeting = load_targeting_filter(settings)
     geocoder = NominatimGeocoder(cache_path=settings.resolve_path(settings.geocode_cache))
     started_at = clock.now_utc().isoformat()
     result = IngestResult(source_id=source.source_id, status="failed")
@@ -187,82 +199,104 @@ def ingest_source(
         )
         _refresh_queue(db_path, result)
 
-    try:
-        documents = (
-            collected_documents
-            if collected_documents is not None
-            else collect_source_documents(
-                source,
-                # With triage, read the whole publication window: the ledger drops what was
-                # already screened, so only new or changed notices cost anything.
-                limit=(
-                    settings.ai_candidate_cap
-                    if settings.ai_enabled and settings.ai_triage_enabled
-                    else limit
-                ),
-                publication_date_from=publication_date_from,
-                archive_dir=settings.resolve_path(settings.html_archive_dir),
-                include_unclassified=settings.ai_enabled,
-            )
-        )
-    except Exception as exc:
-        record_run("failed", last_error=str(exc))
-        raise IngestError(source.source_id, "collection", exc) from exc
-    result.document_count = len(documents)
-    content_hashes: dict[int, str] = {}
-    criteria_hash = ""
-    if settings.ai_enabled:
-        criteria_hash = screening_criteria_hash(
-            settings, load_targeting_preferences(settings).model_dump(mode="json")
-        )
-        content_hashes = {id(d): notice_content_hash(d.payload) for d in documents}
-        seen = find_screened(
+    criteria_hash = screening_criteria_hash(settings) if settings.ai_enabled else None
+    if queued_row_ids is None:
+        collection_limit = settings.ai_candidate_cap
+        start, end, cursor = backlog.collection_window(
             db_path,
-            source_id=source.source_id,
-            criteria_hash=criteria_hash,
-            content_hashes=content_hashes.values(),
+            source_id,
+            publication_date_from
+            or (clock.today() - timedelta(days=settings.discovery_window_days - 1)).isoformat(),
+            collection_limit,
+            settings.discovery_window_days,
+            source.collector
+            in {
+                "ted_search_api",
+                "boamp_opendatasoft",
+                "ggzy_public_notices",
+                "joneps_tender_invitations",
+                "contracts_finder_ocds",
+                "find_a_tender_ocds",
+                "oeffentlichevergabe_ocds",
+            },
+            criteria_hash,
         )
-        fresh = [d for d in documents if content_hashes[id(d)] not in seen]
-        # The same listing can appear twice in one window (pages shifting during paging).
-        fresh = list({content_hashes[id(d)]: d for d in reversed(fresh)}.values())[::-1]
-        result.already_screened = len(documents) - len(fresh)
-        documents = fresh
-        if result.already_screened:
-            result.notes.append(
-                f"Already screened with unchanged content and criteria: {result.already_screened}"
+
+        def collect(items):
+            if collected_documents is not None:
+                return collected_documents
+            return collect_source_documents(
+                source,
+                limit=items,
+                publication_date_from=start,
+                archive_dir=settings.resolve_path(settings.html_archive_dir),
             )
 
-    def ledger_entries(items: list[CollectedSourceDocument]) -> list[tuple[str, str]]:
-        return [(content_hashes[id(d)], d.source_url) for d in items]
-
-    if settings.ai_enabled and settings.ai_triage_enabled:
         try:
-            triage = triage_documents(settings, documents, limit=limit)
-            documents = triage.documents
-            result.filtered_out += triage.excluded
-            result.deferred += triage.deferred
-            record_screened(
-                db_path,
-                source_id=source.source_id,
-                criteria_hash=criteria_hash,
-                outcome="triage_excluded",
-                entries=ledger_entries(triage.excluded_documents),
+            discovered, pages, recovery = collect_window(
+                db_path, source_id, settings, end, cursor, collect
             )
-            result.notes.append(
-                f"AI candidate triage: excluded={triage.excluded}, deferred={triage.deferred}, "
-                f"cached={triage.cached}, estimated_cost_usd={triage.cost_usd:.6f}"
+            result.notes.extend(recovery)
+        except Exception as exc:
+            record_run("failed", last_error=error_class(exc))
+            with connect(db_path) as cx:
+                _, stats = backlog.queue_stats(cx, source_id)
+            raise IngestError(source_id, "collection", exc, f" ({stats})") from exc
+        discovered = discovered[:collection_limit]
+        result.document_count = len(discovered)
+        result.already_screened, count, stats, result.skipped_expired = backlog.enqueue(
+            db_path,
+            source_id,
+            discovered,
+            criteria_hash,
+            unfinished=pages.unfinished
+            or (
+                not pages.complete
+                and len(discovered) >= collection_limit
+                and source.collector != "ted_search_api"
+            ),
+            cap=collection_limit,
+            cursor=pages.cursor,
+            repeated=pages.repeated,
+            end=end,
+            age_days=settings.unread_max_age_days,
+        )
+        if pages.missing_notice_url:
+            stats += f" missing_notice_url={pages.missing_notice_url}"
+        if pages.unfinished or len(discovered) >= collection_limit:
+            stats += (
+                f" discovery_limit source={source_id} pages={pages.used}"
+                f" items={collection_limit} resume_from={start}"
             )
-        except (ValueError, OSError, RuntimeError) as exc:
-            # A failed preliminary decision cannot justify discarding a candidate.
-            documents = documents[:limit]
-            result.notes.append(f"AI candidate triage unavailable; candidates retained: {exc}")
+        if end and end < clock.today().isoformat():
+            stats += f" discovery_window_through={end} backfill_pending=1"
+        result.notes.append(stats)
+        if collect_only or not settings.ai_enabled:
+            result.deferred = count
+            result.status = "success" if discovered or count else "empty"
+            record_run(result.status, last_error=None)
+            return result
+    if queued_row_ids is not None:
+        with connect(db_path) as cx:
+            backlog.retire_unread(cx, source_id, settings.unread_max_age_days)
+            cx.commit()
+    pending = backlog.queued(db_path, source_id, limit, queued_row_ids)
+    documents = [item.document for item in pending]
+    if queued_row_ids is not None:
+        result.document_count = len(documents)
+    else:
+        result.deferred = max(0, count - len(documents))
 
     records: list[CompetitionRecord] = []
-    assessments: list[DocumentAssessment | None] = []
+    assessments: list[DocumentAssessment] = []
+    exclusions = {}
     # Documents whose paid assessment finished, including those then dropped as expired; they
     # enter the ledger only once the records are durably written.
-    screened: list[CollectedSourceDocument] = []
+    screened: list[tuple[int, str]] = []
     last_error: str | None = None
+    # Consecutive provider 400s: three in a row point at the account or request shape, not at the
+    # notices, so they are deferred (not counted against a notice) and the batch pauses.
+    bad_request_streak = 0
     # The paid assessments run first, concurrently and in input order; everything after them
     # (parse, verify, geocode, store) stays sequential. Geocoding is paced at one request a second.
     outcomes = (
@@ -278,36 +312,37 @@ def ingest_source(
         for position, document in enumerate(documents):
             stage = "parse"
             try:
-                assessment = None
-                if settings.ai_enabled:
-                    stage = "ai_extract_and_screen"
-                    outcome = outcomes[position]
-                    if outcome.error is not None:
-                        raise outcome.error
-                    assessment = outcome.assessment
-                    record = assessment.record
-                    # Retain stable upstream identity when the source adapter provides it.
-                    try:
-                        parsed = parse_source_payload(
-                            source,
-                            document.payload,
-                            source_url=document.source_url,
-                        )
-                        if parsed.official_notice_id:
-                            record.official_notice_id = parsed.official_notice_id
-                        record.cpv_codes = parsed.cpv_codes
-                    except (ValueError, KeyError, TypeError):
-                        pass  # AI has already produced a validated record from raw source text.
-                else:
-                    record = parse_source_payload(
+                stage = "ai_extract_and_screen"
+                outcome = outcomes[position]
+                if outcome.error is not None:
+                    raise outcome.error
+                assessment = outcome.assessment
+                bad_request_streak = 0
+                record = assessment.record
+                if record is None:
+                    exclusions[assessment.request_id] = exclusion_identity(
+                        source, document.payload, document.source_url
+                    )
+                    result.filtered_out += 1
+                    assessments.append(assessment)
+                    screened.append((pending[position].row_id, assessment.request_id))
+                    continue
+                # Retain stable upstream identity when the source adapter provides it.
+                try:
+                    parsed = parse_source_payload(
                         source,
                         document.payload,
                         source_url=document.source_url,
                     )
+                    if parsed.official_notice_id:
+                        record.official_notice_id = parsed.official_notice_id
+                    record.cpv_codes = parsed.cpv_codes
+                except (ValueError, KeyError, TypeError):
+                    pass  # AI has already produced a validated record from raw source text.
                 if competition_is_stale_expired(record, retention_days=retention_days):
                     result.skipped_expired += 1
                     if assessment is not None:
-                        screened.append(document)
+                        screened.append((pending[position].row_id, assessment.request_id))
                     continue
                 stage = "verify"
                 record = verify_record(
@@ -320,69 +355,100 @@ def ingest_source(
                 if competition_is_stale_expired(record, retention_days=retention_days):
                     result.skipped_expired += 1
                     if assessment is not None:
-                        screened.append(document)
-                    continue
-                if (
-                    not settings.ai_enabled
-                    and (keyword := targeting.excluded_by(record)) is not None
-                ):
-                    logger.info("Skipping %r: negative keyword %r", record.title, keyword)
-                    result.filtered_out += 1
+                        screened.append((pending[position].row_id, assessment.request_id))
                     continue
                 # Verification can add evidence (official URL, brief), so the evidence-derived
                 # scores are recomputed from the final record.
                 record.extraction_confidence = compute_extraction_confidence(record)
                 record.qualification_score = compute_qualification_score(record)
-                if not settings.ai_enabled:
-                    targeting.apply_bonus(record)
                 stage = "geocode"
                 record = enrich_record_geocode(
                     record,
                     cache_path=settings.resolve_path(settings.geocode_cache),
                     geocoder=geocoder,
                 )
-            except ScreeningBudgetExceeded as exc:
+            except NoReadableText as exc:
+                status = backlog.record_unreadable(
+                    db_path,
+                    pending[position].row_id,
+                    exc.url_class,
+                    settings.ai_notice_max_attempts,
+                )
+                result.notes.append(
+                    f"no_readable_text[{source_id}/{exc.url_class}] "
+                    f"{log_url(document.source_url)} {status}"
+                )
+                result.deferred += int(status == "queued")
+                continue
+            except (ScreeningBudgetExceeded, ScreeningPaused) as exc:
                 # Budget deferral is not a content rejection. Keep later sources collectable.
                 result.deferred += len(documents) - position
-                result.notes.append(str(exc))
+                if isinstance(exc, ScreeningPaused):
+                    code = provider_code(exc)
+                    retry = backlog.defer(db_path, pending[position].row_id, code, criteria_hash)
+                    result.notes.append(f"deferred[{source_id}/{code}] retry_at={retry}")
+                else:
+                    result.notes.append(str(exc))
+                result.batch_paused = not isinstance(exc, SourceDailyLimitReached)
                 break
-            except Exception as exc:  # noqa: BLE001 - one bad document must not sink the run
-                logger.warning("Skipping document %s at %s: %s", document.source_url, stage, exc)
-                result.failures.append(DocumentFailure(document.source_url, stage, str(exc)))
-                last_error = str(exc)
+            except Exception as exc:  # noqa: BLE001 - one notice cannot interrupt independent work
+                code = provider_code(exc) if isinstance(exc, ScreeningError) else error_class(exc)
+                url = log_url(document.source_url)
+                logger.warning("Notice %s at %s: %s", url, stage, code)
+                bad_request_streak = bad_request_streak + 1 if code == "http_400" else 0
+                result.failures.append(DocumentFailure(url, stage, code))
+                specific = (
+                    code
+                    in {
+                        "invalid_schema",
+                        "missing_text",
+                        "incomplete_response",
+                        "max_tokens",
+                        "refusal",
+                        "http_413",
+                        "timeout",
+                    }
+                    or isinstance(exc, NoticeValidationError)
+                    or (stage in {"parse", "verify"} and isinstance(exc, ValueError | KeyError))
+                )
+                if specific:
+                    status = backlog.record_failure(
+                        db_path,
+                        pending[position].row_id,
+                        code,
+                        criteria=criteria_hash,
+                        limit=settings.ai_notice_max_attempts,
+                    )
+                    if status == "failed":
+                        result.notes.append(f"failed[{source_id}/{code}]=1")
+                else:
+                    retry = backlog.defer(db_path, pending[position].row_id, code, criteria_hash)
+                    result.notes.append(f"deferred[{source_id}/{code}] retry_at={retry}")
+                    result.deferred += 1
+                    if bad_request_streak >= 3:
+                        result.deferred += len(documents) - position - 1
+                        result.notes.append(f"paused[{source_id}/http_400] repeated bad requests")
+                        result.batch_paused = True
+                        break
+                last_error = code
                 continue
+            assessment.record = record
             records.append(record)
             assessments.append(assessment)
             if assessment is not None:
-                screened.append(document)
+                screened.append((pending[position].row_id, assessment.request_id))
     finally:
         geocoder.flush()
 
     try:
-        if settings.ai_enabled:
-            publications = [
-                {
-                    "request_id": a.request_id,
-                    "model": a.model,
-                    "decision": a.decision.decision,
-                    "relevance_score": a.decision.relevance_score,
-                    "result_json": a.decision.model_dump_json(),
-                }
-                for a in assessments
-                if a is not None
-            ]
-            result.ingested_ids = upsert_screened_competitions(db_path, records, publications)
-            record_screened(
-                db_path,
-                source_id=source.source_id,
-                criteria_hash=criteria_hash,
-                outcome="assessed",
-                entries=ledger_entries(screened),
-            )
-        else:
-            result.ingested_ids = upsert_competitions(db_path, records)
+        result.ingested_ids = upsert_screened_competitions(
+            db_path,
+            ((a.record, exclusions.get(a.request_id), a.publication()) for a in assessments),
+            screened,
+            criteria_hash,
+        )
     except Exception as exc:
-        record_run("failed", last_error=str(exc))
+        record_run("failed", last_error=error_class(exc))
         raise IngestError(source.source_id, "database write", exc) from exc
 
     result.status = _run_status(
@@ -396,25 +462,25 @@ def ingest_source(
         duplicates=_summarize_duplicate_pressure(db_path, [dedup_key_for(r) for r in records]),
     )
 
+    if assessments:
+        result.notes.append(
+            f"AI {settings.ai_model}/{settings.ai_reasoning_effort}: "
+            f"assessed={len(assessments)}, "
+            f"cached={sum(bool(a.cached) for a in assessments)}, "
+            f"estimated_cost_usd={sum(a.cost_usd for a in assessments):.6f}"
+        )
     if result.ingested_ids:
-        if settings.ai_enabled:
-            result.notes.append(
-                f"AI {settings.ai_model}/{settings.ai_reasoning_effort}: "
-                f"assessed={len(assessments)}, "
-                f"cached={sum(bool(a and a.cached) for a in assessments)}, "
-                f"estimated_cost_usd={sum(a.cost_usd for a in assessments if a):.6f}"
-            )
         try:
             titles = polish_titles(
                 settings,
                 competition_ids=result.ingested_ids,
-                use_ai=settings.ai_enabled,
+                use_ai=False,
                 # Enough batches for every new record: each title is translated once.
                 max_batches=max(1, -(-len(result.ingested_ids) // TITLE_BATCH_SIZE)),
             )
             result.notes.extend(f"display titles: {error}" for error in titles.errors)
         except Exception as exc:  # noqa: BLE001  derived metadata: never fail the ingest
-            result.notes.append(f"display titles failed: {exc}")
+            result.notes.append(f"display titles failed: {error_class(exc)}")
         result.preview = prewarm_opportunity_card_previews(
             settings, competition_ids=result.ingested_ids
         )
@@ -428,5 +494,5 @@ def _refresh_queue(db_path, result: IngestResult) -> None:
     try:
         refresh_review_queue(db_path)
     except Exception as exc:  # noqa: BLE001 - derived data; never fails an ingest
-        logger.warning("Review queue refresh failed: %s", exc)
-        result.notes.append(f"review queue refresh failed: {exc}")
+        logger.warning("Review queue refresh failed: %s", error_class(exc))
+        result.notes.append(f"review queue refresh failed: {error_class(exc)}")

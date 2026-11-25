@@ -1,4 +1,4 @@
-"""Official SDK boundary; one request, fixed OpenAI endpoint, no automatic paid retries."""
+"""Shared screening results and backoff, and the OpenAI SDK client."""
 
 from __future__ import annotations
 
@@ -6,19 +6,22 @@ import math
 import random
 import time
 from collections.abc import Callable
-from typing import TypeVar
+from dataclasses import dataclass
 
-from openai import APIStatusError, OpenAI
+from openai import OpenAI
+from pydantic import BaseModel, ValidationError
 
 from arch_competition_ops.settings import Settings
 
-T = TypeVar("T")
-
-# Rate-limit answers (HTTP 429) generate nothing and cost nothing, so they are the one outcome
-# retried automatically. Every other failure keeps its single reservation and ends the request.
-RATE_LIMIT_RETRIES = 3
+# Both transports cap retries. Anthropic also retries server errors with budget held for each.
+MAX_PROVIDER_RETRIES = 3
 RATE_LIMIT_BASE_DELAY_SECONDS = 2.0
 RATE_LIMIT_MAX_DELAY_SECONDS = 60.0
+
+
+def billable_attempt_limit(provider):
+    # Retried Anthropic 5xx responses have unknown cost. Rate-limit rejections are unbilled.
+    return MAX_PROVIDER_RETRIES + 1 if provider == "anthropic" else 1
 
 
 class ScreeningError(RuntimeError):
@@ -27,6 +30,10 @@ class ScreeningError(RuntimeError):
     def __init__(self, message: str, *, cost_usd: float = 0):
         super().__init__(message)
         self.cost_usd = cost_usd
+
+
+class ScreeningPaused(ScreeningError):
+    """No further requests can start in this batch."""
 
 
 def create_client(settings: Settings) -> OpenAI:
@@ -41,10 +48,10 @@ def create_client(settings: Settings) -> OpenAI:
     )
 
 
-def _rate_limit_delay(exc: APIStatusError, attempt: int) -> float:
+def retry_delay(retry_after: str, attempt: int) -> float:
     """Honour a numeric ``Retry-After`` (capped); otherwise exponential backoff with jitter."""
     try:
-        advised = float(exc.response.headers.get("retry-after", ""))
+        advised = float(retry_after)
     except ValueError:
         advised = math.nan
     if math.isfinite(advised) and advised >= 0:
@@ -53,25 +60,49 @@ def _rate_limit_delay(exc: APIStatusError, attempt: int) -> float:
     return min(backoff, RATE_LIMIT_MAX_DELAY_SECONDS)
 
 
-def call_with_rate_limit_retry(
-    call: Callable[[], T], *, sleep: Callable[[float], None] | None = None
-) -> T:
-    """Run one provider call, retrying only HTTP 429 up to ``RATE_LIMIT_RETRIES`` times.
+@dataclass
+class ProviderResult:
+    decision: BaseModel | None = None
+    error_class: str | None = None
+    response_id: str | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    cache_read_tokens: int = 0
+    validation_error: str = ""
+    retry_after: str = ""
+    uncertain_retries: int = 0
+    rejected: bool = False
+    pause: bool = False
 
-    The caller keeps its single cost reservation across attempts. Other 4xx, 5xx and connection
-    errors propagate on the first attempt, as does a 429 that is still returned after the last
-    retry. ``insufficient_quota`` is a 429 too, but waiting a minute does not refill a quota.
-    """
-    wait = sleep or time.sleep
-    for attempt in range(RATE_LIMIT_RETRIES + 1):
+    def cost(self, model, per_attempt):
+        used = per_attempt
+        if self.rejected:
+            used = 0
+        elif self.input_tokens is not None and self.output_tokens is not None:
+            used = model.cost(self.input_tokens, self.output_tokens, self.cache_read_tokens)
+        return used + self.uncertain_retries * per_attempt
+
+    def parse_decision(self, text: str, output_type: type[BaseModel]) -> None:
         try:
-            return call()
-        except APIStatusError as exc:
-            if (
-                exc.status_code != 429
-                or attempt == RATE_LIMIT_RETRIES
-                or getattr(exc, "code", None) == "insufficient_quota"
-            ):
-                raise
-            wait(_rate_limit_delay(exc, attempt))
-    raise AssertionError("unreachable")  # the loop either returns or raises
+            self.decision = output_type.model_validate_json(text)
+        except ValidationError as exc:
+            self.validation_error = ", ".join(
+                dict.fromkeys(
+                    f"{e['loc'][0]}: {e['type']}"
+                    if e["loc"] and e["loc"][0] in output_type.model_fields
+                    else e["type"]
+                    for e in exc.errors(include_input=False)
+                )
+            )[:256]
+            self.error_class = "invalid_schema"
+
+
+def read_with_retries(
+    send: Callable[[], ProviderResult], *, provider: str, sleep=None
+) -> ProviderResult:
+    for attempt in range(MAX_PROVIDER_RETRIES + 1):
+        result = send()
+        if result.error_class != "http_429" or attempt == MAX_PROVIDER_RETRIES:
+            return result
+        (sleep or time.sleep)(retry_delay(result.retry_after, attempt))
+    raise AssertionError("unreachable")

@@ -199,7 +199,6 @@ def test_second_writer_waits_for_the_first_instead_of_failing_immediately(tmp_pa
 
 def test_run_doctor_initializes_source_diagnostics_schema(tmp_path) -> None:
     write_source_catalog(tmp_path)
-    (tmp_path / "config" / "filters.yml").write_text("targeting: {}\n", encoding="utf-8")
     (tmp_path / "config" / "taxonomy.yml").write_text(
         "\n".join(
             f"{key}: []"

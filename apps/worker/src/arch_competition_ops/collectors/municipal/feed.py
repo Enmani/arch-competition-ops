@@ -6,8 +6,9 @@ import json
 import re
 import xml.etree.ElementTree as ET
 
-from arch_competition_ops.collectors.base import CollectedSourceDocument
-from arch_competition_ops.collectors.municipal.relevance import is_relevant_municipal_notice
+from arch_competition_ops.collectors.base import CollectedSourceDocument, deferred_detail
+from arch_competition_ops.collectors.pagination import current_pages, snapshot_items
+from arch_competition_ops.http import HttpError
 from arch_competition_ops.models import SourceDefinition
 from arch_competition_ops.normalizers.dates import parse_date_string
 from arch_competition_ops.normalizers.text import strip_html
@@ -51,7 +52,6 @@ def collect_feed_documents(
     limit: int,
     publication_date_from: str | None,
     fetch_text: callable,
-    include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
     root = ET.fromstring(feed_payload)
     channel = root.find("channel")
@@ -59,7 +59,9 @@ def collect_feed_documents(
         return []
 
     documents: list[CollectedSourceDocument] = []
-    for item in channel.findall("item"):
+    for item in snapshot_items(
+        channel.findall("item"), len(channel), lambda item: item.findtext("link") or ""
+    ):
         title = (item.findtext("title") or "").strip()
         link = (item.findtext("link") or "").strip()
         description = item.findtext("description") or ""
@@ -70,12 +72,9 @@ def collect_feed_documents(
             continue
         if publication_date_from and published_at and published_at < publication_date_from:
             continue
-        if not include_unclassified and (
-            not is_relevant_municipal_notice(title, parsed_description["summary"])
-        ):
-            continue
 
         payload: dict[str, object] = {
+            "rawNoticeHtml": ET.tostring(item, encoding="unicode"),
             "title": title,
             "summary": parsed_description["summary"],
             "procedureType": parsed_description["procedureType"] or None,
@@ -88,11 +87,19 @@ def collect_feed_documents(
 
         try:
             detail_html = fetch_text(link)
+        except HttpError as exc:
+            if exc.status_code in {403, 429}:
+                documents.append(deferred_detail(exc, link, ET.tostring(item, encoding="unicode")))
+                if not current_pages() and len(documents) >= limit:
+                    break
+                continue
+            detail_html = ""
         except Exception:  # noqa: BLE001
             detail_html = ""
 
         if detail_html:
             payload["detailHtml"] = detail_html
+            payload["rawNoticeHtml"] += detail_html
 
         documents.append(
             CollectedSourceDocument(
@@ -100,7 +107,7 @@ def collect_feed_documents(
                 payload=json.dumps(payload, ensure_ascii=False),
             )
         )
-        if len(documents) >= limit:
+        if not current_pages() and len(documents) >= limit:
             break
 
     return documents

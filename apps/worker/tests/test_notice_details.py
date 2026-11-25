@@ -1,4 +1,4 @@
-from arch_competition_ops.screening.models import ScreeningDecision, validate_evidence
+from arch_competition_ops.screening.models import ScreeningAnswer, validate_evidence
 
 
 def test_program_labels_are_not_notice_evidence_but_original_categories_and_text_survive():
@@ -18,7 +18,7 @@ def test_program_labels_are_not_notice_evidence_but_original_categories_and_text
     value, _ = json.JSONDecoder().raw_decode(cleaned)
     assert "opportunityType" not in value and "projectTypes" not in value
     assert value["category"] == "Goods"
-    assert value["summary"] == "Industrial refrigerators"
+    assert "summary" not in value  # an adapter summary has no original-source provenance
     assert cleaned.endswith("<p>Original detail</p>")
 
 
@@ -72,7 +72,8 @@ def test_concurrent_source_reservations_share_one_budget(tmp_path):
 
 def test_participation_excerpts_preserve_source_clauses_and_reject_invention():
     source = "报名：11月3日。保证金人民币2万元。联合体可以参加。"
-    decision = ScreeningDecision(
+    decision = ScreeningAnswer(
+        title_quote="",
         decision="recommend",
         relevance_score=80,
         summary_zh="项目",
@@ -81,36 +82,27 @@ def test_participation_excerpts_preserve_source_clauses_and_reject_invention():
         reasons_en=[],
         missing_information=[],
         extracted_fields=[],
-        evidence=[{"field": "notice_text", "quote": source}],
+        evidence=[source],
         notice_details=[
             {
                 "category": "timeline",
-                "text": "报名：11月3日。",
-                "quote": source,
-                "evidence_field": "notice_text",
+                "quote": "报名：11月3日。",
             },
             {
                 "category": "commercial",
-                "text": "保证金人民币2万元。",
-                "quote": source,
-                "evidence_field": "notice_text",
+                "quote": "保证金人民币2万元。",
             },
             {
                 "category": "eligibility",
-                "text": "联合体不可以参加。",
-                "quote": source,
-                "evidence_field": "notice_text",
+                "quote": "联合体不可以参加。",
             },
             {
                 "category": "scope",
-                "text": "Guess",
                 "quote": "Guess",
-                "evidence_field": "preferences",
             },
         ],
     )
-    warnings = validate_evidence(decision, {"notice_text": source, "preferences": "Guess"})
+    decision = validate_evidence(decision, {"notice_text": source, "preferences": "Guess"})
     assert [d.text for d in decision.notice_details] == ["报名：11月3日。", "保证金人民币2万元。"]
-    assert len(warnings) == 2
+    assert len(decision.missing_information) == 2
     assert decision.decision == "recommend"
-    assert all(warning in decision.missing_information for warning in warnings)

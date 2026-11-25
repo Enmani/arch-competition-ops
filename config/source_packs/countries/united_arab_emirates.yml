@@ -25,7 +25,7 @@ sources:
     languages:
       - en
       - ar
-    notes: Official public tender list of the Abu Dhabi Government Procurement Gate (about 100 open RFQs and RFIs of Abu Dhabi government entities such as DMT, ADPIC, DCT and the Department of Health). Collector reads the open list through the gate's own no-login JSON endpoints and each tender's detail for its UNSPSC category and opening date; product categories are dropped, works-only tenders stay only when they are design-and-build, and tenders without a category stay. Tender documents sit behind the supplier login.
+    notes: Official public tender list of the Abu Dhabi Government Procurement Gate (about 100 open RFQs and RFIs of Abu Dhabi government entities such as DMT, ADPIC, DCT and the Department of Health). Collector reads the open list through the gate's own no-login JSON endpoints and each tender's detail for its UNSPSC category and opening date. Tender documents sit behind the supplier login.
   - source_id: uae_mof_federal_tenders
     name: UAE Ministry of Finance Federal Tenders
     kind: official_procurement

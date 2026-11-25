@@ -40,10 +40,12 @@ from arch_competition_ops.maintenance import (
 )
 from arch_competition_ops.normalizers.competition import configure_procedure_registry
 from arch_competition_ops.postprocess.registry import POSTPROCESS_TASKS
+from arch_competition_ops.run_errors import error_class
 from arch_competition_ops.screening import commands as screening_commands
 from arch_competition_ops.screening.client import ScreeningError
 from arch_competition_ops.settings import Settings
 from arch_competition_ops.storage import list_competitions
+from arch_competition_ops.storage.backlog import requeue_failed, terminal_notices
 from arch_competition_ops.titles import commands as title_commands
 
 EXIT_FAILURE = 1
@@ -131,6 +133,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ingest_parser.add_argument("--source-id", required=True)
     ingest_parser.add_argument("--limit", type=int, default=20)
+    retry = subparsers.add_parser("requeue-failed", help="Retry failed notices from one source")
+    retry.add_argument("--source-id", required=True)
+    selected = retry.add_mutually_exclusive_group()
+    selected.add_argument("--url")
+    selected.add_argument("--version")
+    report = subparsers.add_parser("backlog-report", help="List terminal notices from one source")
+    report.add_argument("--source-id", required=True)
+    ingest_parser.add_argument("--collect-only", action="store_true")
     ingest_parser.add_argument("--publication-date-from")
 
     batch_parser = subparsers.add_parser(
@@ -140,6 +150,7 @@ def build_parser() -> argparse.ArgumentParser:
     batch_parser.add_argument("--batch-id")
     batch_parser.add_argument("--config-path", default=str(DEFAULT_AUTOMATION_CONFIG_PATH))
     batch_parser.add_argument("--limit-per-source", type=int)
+    batch_parser.add_argument("--collect-only", action="store_true")
     batch_parser.add_argument("--publication-date-from")
     batch_parser.add_argument("--json", action="store_true")
     batch_parser.add_argument("--fail-fast", action="store_true")
@@ -186,10 +197,17 @@ def _handle_ingest_source(settings: Settings, args: argparse.Namespace) -> int:
         settings,
         source_id=args.source_id,
         limit=args.limit,
+        collect_only=args.collect_only,
         publication_date_from=args.publication_date_from,
     )
     _print_ingest_result(result)
     return EXIT_FAILURE if result.has_failures else 0
+
+
+def _handle_backlog_report(settings, args):
+    for row in terminal_notices(initialize_database(settings), args.source_id):
+        _safe_print(json.dumps({"source_id": args.source_id, **row}, ensure_ascii=False))
+    return 0
 
 
 def _print_batch_result(result: AutomationBatchResult) -> None:
@@ -197,6 +215,8 @@ def _print_batch_result(result: AutomationBatchResult) -> None:
         f"Batch {result.batch_id} :: sources={result.total_sources} :: "
         f"ingested={result.total_ingested} :: failures={len(result.failed)}"
     )
+    if result.paid_reading_paused:
+        _safe_print("paid_reading_paused=true")
     for run in result.succeeded:
         marker = "PARTIAL" if run.failure_count else "OK"
         _safe_print(
@@ -237,6 +257,7 @@ def _handle_ingest_batch(settings: Settings, args: argparse.Namespace) -> int:
         batch_id=args.batch_id,
         config_path=config_path,
         limit_per_source=args.limit_per_source,
+        collect_only=args.collect_only,
         publication_date_from=args.publication_date_from,
         continue_on_error=not args.fail_fast,
     )
@@ -411,6 +432,14 @@ def _handler_for(args: argparse.Namespace) -> Callable[[Settings, argparse.Names
         "cleanup-expired-competitions": _handle_cleanup,
         "show-sources": _handle_show_sources,
         "show-country-coverage": _handle_show_country_coverage,
+        "backlog-report": _handle_backlog_report,
+        "requeue-failed": lambda settings, a: (
+            _safe_print(
+                "Requeued "
+                + str(requeue_failed(initialize_database(settings), a.source_id, a.url, a.version))
+            )
+            or 0
+        ),
         "ingest-source": _handle_ingest_source,
         "ingest-batch": _handle_ingest_batch,
         "ingest-lock-status": _handle_ingest_lock_status,
@@ -457,7 +486,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         _safe_print(f"error: {exc}")
         return EXIT_FAILURE
     except (HttpError, requests.RequestException, OSError) as exc:
-        _safe_print(f"error: network or file access failed: {exc}")
+        _safe_print(f"error: network or file access failed: {error_class(exc)}")
         return EXIT_FAILURE
     except ValueError as exc:
         _safe_print(f"error: {exc}")

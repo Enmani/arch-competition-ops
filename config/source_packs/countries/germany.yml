@@ -34,4 +34,4 @@ sources:
       - germany
     languages:
       - de
-    notes: Germany's national notice data service. Daily OCDS exports (ocds.zip joined with ocds2.zip) cover every German platform, including below-EU-threshold notices. The collector keeps open contract notices with CPV 71* or 7993* and skips notices issued under an EU directive, which TED already publishes.
+    notes: Germany's national notice data service. Daily OCDS exports (ocds.zip joined with ocds2.zip) cover every German platform, including below-EU-threshold notices. The collector reads the daily exports without a procurement-code filter.

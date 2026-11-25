@@ -82,8 +82,7 @@ def test_collect_ggzy_documents_keeps_building_and_interior_design_notices_only(
         return json.dumps(list_payload, ensure_ascii=False)
 
     def fake_fetch_detail(url: str) -> str:
-        assert "keep-001" in url
-        return detail_html
+        return detail_html if "keep-001" in url else "<p>Road works</p>"
 
     documents = collect_ggzy_documents(
         source,
@@ -94,8 +93,8 @@ def test_collect_ggzy_documents_keeps_building_and_interior_design_notices_only(
         today=date(2026, 5, 8),
     )
 
-    assert len(documents) == 1
-    document = documents[0]
+    assert len(documents) == len(list_payload["data"]["records"])
+    document = next(d for d in documents if "keep-001" in d.source_url)
     assert document.source_url.endswith("/html/b/520000/0101/20260507/keep-001.html")
 
     payload = json.loads(document.payload)
@@ -116,7 +115,7 @@ def test_collect_ggzy_documents_keeps_building_and_interior_design_notices_only(
     assert "室内设计" in payload["summary"]
 
 
-def test_collect_ggzy_documents_excludes_hard_negative_domain_notices_after_detail_validation() -> (
+def test_collect_ggzy_documents_collects_hard_negative_domain_notices_after_detail_validation() -> (
     None
 ):
     source = _build_source(
@@ -178,10 +177,10 @@ def test_collect_ggzy_documents_excludes_hard_negative_domain_notices_after_deta
         today=date(2026, 5, 8),
     )
 
-    assert documents == []
+    assert len(documents) == 1
 
 
-def test_collect_ggzy_documents_excludes_soft_negative_rural_notices_without_strong_built_signals() -> (
+def test_collect_ggzy_documents_collects_soft_negative_rural_notices_without_strong_built_signals() -> (
     None
 ):
     source = _build_source(
@@ -243,10 +242,10 @@ def test_collect_ggzy_documents_excludes_soft_negative_rural_notices_without_str
         today=date(2026, 5, 8),
     )
 
-    assert documents == []
+    assert len(documents) == 1
 
 
-def test_collect_ggzy_documents_excludes_tourism_mining_notices_without_primary_building_focus() -> (
+def test_collect_ggzy_documents_collects_tourism_mining_notices_without_primary_building_focus() -> (
     None
 ):
     source = _build_source(
@@ -308,4 +307,4 @@ def test_collect_ggzy_documents_excludes_tourism_mining_notices_without_primary_
         today=date(2026, 5, 8),
     )
 
-    assert documents == []
+    assert len(documents) == 1

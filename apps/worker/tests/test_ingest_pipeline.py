@@ -22,6 +22,8 @@ from arch_competition_ops.models import CompetitionRecord
 from arch_competition_ops.settings import Settings
 from arch_competition_ops.storage import list_competitions, upsert_competition
 
+pytestmark = pytest.mark.usefixtures("offline_assessment")
+
 
 def _days_from_today(days: int) -> str:
     return (clock.today() + timedelta(days=days)).isoformat()
@@ -215,7 +217,9 @@ def test_ingest_source_records_source_health_with_parse_failures_and_duplicate_p
 
     def fake_parse(_source, payload: str, *, source_url: str) -> CompetitionRecord:
         if json.loads(payload)["case"] == "bad":
-            raise ValueError("parser exploded on bad payload")
+            from arch_competition_ops.screening.extraction import NoticeValidationError
+
+            raise NoticeValidationError("parser exploded on bad payload")
         return CompetitionRecord(
             title="Municipal Waterfront Design Competition",
             organizer="Comune Demo Nord",
@@ -235,7 +239,9 @@ def test_ingest_source_records_source_health_with_parse_failures_and_duplicate_p
 
     assert exit_code == 1
     output = capsys.readouterr().out
-    assert "[WARN] parse failed for https://ted.europa.eu/en/notice/3/html" in output
+    assert (
+        "[WARN] ai_extract_and_screen failed for https://ted.europa.eu/en/notice/3/html" in output
+    )
     with _db(workspace) as connection:
         assert connection.execute("SELECT COUNT(*) FROM competitions").fetchone()[0] == 2
         run_row = connection.execute(
@@ -249,7 +255,7 @@ def test_ingest_source_records_source_health_with_parse_failures_and_duplicate_p
     assert (run_row["document_count"], run_row["upserted_count"]) == (3, 2)
     assert run_row["parse_failure_count"] == 1
     assert (run_row["duplicate_group_count"], run_row["max_duplicate_group_size"]) == (1, 2)
-    assert "parser exploded" in run_row["last_error"]
+    assert run_row["last_error"] == "NoticeValidationError"
     assert health_row["last_status"] == "completed_with_failures"
     assert health_row["last_success_at"] is not None
 
@@ -265,7 +271,7 @@ def test_partial_failures_come_back_as_a_result_not_an_exception(workspace, monk
     assert result.status == "completed_with_failures"
     assert len(result.ingested_ids) == 1
     assert [(failure.source_url, failure.stage) for failure in result.failures] == [
-        ("https://ted.europa.eu/bad", "parse")
+        ("https://ted.europa.eu/bad", "ai_extract_and_screen")
     ]
 
 
@@ -352,12 +358,12 @@ def test_network_failure_gives_a_friendly_error_not_a_traceback(
     captured = capsys.readouterr()
     assert exit_code == 1
     assert "error: Ingest of 'ted_design_notices' failed during collection" in captured.out
-    assert "connection reset" in captured.out
+    assert "HttpTransportError" in captured.out and "connection reset" not in captured.out
     assert "Traceback" not in captured.out + captured.err
     with _db(workspace) as connection:
         run_row = connection.execute("SELECT status, last_error FROM source_runs").fetchone()
     assert run_row["status"] == "failed"
-    assert "connection reset" in run_row["last_error"]
+    assert run_row["last_error"] == "HttpTransportError"
 
 
 def test_collection_error_keeps_the_original_exception_as_cause(workspace, monkeypatch) -> None:
@@ -375,7 +381,7 @@ def test_collection_error_keeps_the_original_exception_as_cause(workspace, monke
 
 def test_one_ingest_is_one_transaction(workspace, monkeypatch) -> None:
     _use_documents(monkeypatch, [_ted_document("A-1"), _ted_document("B-2")])
-    import arch_competition_ops.storage.competitions as repository
+    import arch_competition_ops.storage.screening as repository
 
     real_upsert = repository.upsert_in_connection
     calls = {"count": 0}
@@ -410,44 +416,6 @@ def test_expired_notices_are_counted_and_skipped(workspace, monkeypatch) -> None
     assert len(result.ingested_ids) == 1
     assert result.skipped_expired == 1
     assert result.status == "success"
-
-
-def test_negative_keywords_from_filters_yml_exclude_records(workspace, monkeypatch) -> None:
-    (workspace / "config" / "filters.yml").write_text(
-        "targeting:\n  negative_keywords:\n    - ideas competition\n", encoding="utf-8"
-    )
-    _use_documents(
-        monkeypatch,
-        [
-            _ted_document("KEEP-1"),
-            _ted_document("DROP-1", title="Ideas competition for a new civic square"),
-        ],
-    )
-
-    result = ingest_source(Settings(root=workspace), source_id="ted_design_notices", limit=2)
-
-    assert len(result.ingested_ids) == 1
-    assert result.filtered_out == 1
-
-
-def test_positive_keywords_add_a_small_qualification_bonus(workspace, monkeypatch) -> None:
-    _use_documents(monkeypatch, [_ted_document("BONUS-1")])
-    settings = Settings(root=workspace)
-
-    ingest_source(settings, source_id="ted_design_notices", limit=1)
-    with _db(workspace) as connection:
-        baseline = connection.execute("SELECT qualification_score FROM competitions").fetchone()[0]
-        connection.execute("DELETE FROM competitions")
-        connection.commit()
-
-    (workspace / "config" / "filters.yml").write_text(
-        "targeting:\n  positive_keywords:\n    - waterfront\n", encoding="utf-8"
-    )
-    ingest_source(settings, source_id="ted_design_notices", limit=1)
-    with _db(workspace) as connection:
-        boosted = connection.execute("SELECT qualification_score FROM competitions").fetchone()[0]
-
-    assert boosted == pytest.approx(baseline + 0.05)
 
 
 def test_reingest_keeps_human_status_and_source_identity(workspace, monkeypatch) -> None:

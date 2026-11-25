@@ -12,6 +12,7 @@ from arch_competition_ops.collectors.municipal.hamburg import collect_hamburg_li
 from arch_competition_ops.collectors.municipal.nettender import (
     collect_nettender_listing_documents,
 )
+from arch_competition_ops.collectors.pagination import snapshot_pages, unfinished_page
 from arch_competition_ops.models import SourceDefinition
 
 
@@ -88,7 +89,6 @@ def collect_municipal_buyer_profile_documents(
     profile_urls: list[str] | None = None,
     fetch_text: callable | None = None,
     post_text: callable | None = None,
-    include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
     resolved_urls = resolve_profile_urls(source, profile_urls)
     if not resolved_urls:
@@ -101,8 +101,9 @@ def collect_municipal_buyer_profile_documents(
     get_text = fetch_text or _default_fetch_text
     post_listing = post_text or _default_post_text
     documents: list[CollectedSourceDocument] = []
-    for url in resolved_urls:
+    for url in snapshot_pages(resolved_urls):
         if len(documents) >= limit:
+            unfinished_page()
             break
 
         payload = get_text(url)
@@ -116,7 +117,6 @@ def collect_municipal_buyer_profile_documents(
                     limit=remaining,
                     publication_date_from=publication_date_from,
                     fetch_text=get_text,
-                    include_unclassified=include_unclassified,
                 )
             )
             continue
@@ -134,7 +134,6 @@ def collect_municipal_buyer_profile_documents(
                     publication_date_from=publication_date_from,
                     fetch_text=get_text,
                     post_text=post_listing,
-                    include_unclassified=include_unclassified,
                 )
             )
             continue
@@ -149,7 +148,6 @@ def collect_municipal_buyer_profile_documents(
                     limit=remaining,
                     publication_date_from=publication_date_from,
                     fetch_text=get_text,
-                    include_unclassified=include_unclassified,
                 )
             )
             continue

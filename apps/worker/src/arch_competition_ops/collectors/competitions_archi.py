@@ -7,7 +7,7 @@ from arch_competition_ops.collectors.base import CollectedSourceDocument
 from arch_competition_ops.collectors.common import (
     fetch_text_get,
 )
-from arch_competition_ops.collectors.relevance import is_design_relevant
+from arch_competition_ops.collectors.pagination import snapshot_documents
 from arch_competition_ops.models import SourceDefinition
 from arch_competition_ops.normalizers.dates import parse_date_string
 from arch_competition_ops.normalizers.text import strip_html
@@ -28,7 +28,6 @@ def collect_competitions_archi_documents(
     limit: int = 20,
     publication_date_from: str | None = None,
     fetch_text: callable | None = None,
-    include_unclassified: bool = False,
 ) -> list[CollectedSourceDocument]:
     raw_feed = (fetch_text or _default_fetch_text)(COMPETITIONS_ARCHI_FEED_URL)
     root = ET.fromstring(raw_feed)
@@ -48,19 +47,10 @@ def collect_competitions_archi_documents(
 
         if publication_date_from and pub_date and pub_date < publication_date_from:
             continue
-        if not include_unclassified and (
-            not title
-            or not is_design_relevant(
-                title,
-                description,
-                categories=categories,
-                require_professional_category=True,
-            )
-        ):
-            continue
 
         payload = json.dumps(
             {
+                "rawNoticeHtml": ET.tostring(item, encoding="unicode"),
                 "title": title,
                 "summary": description,
                 "categories": categories,
@@ -70,7 +60,4 @@ def collect_competitions_archi_documents(
             ensure_ascii=False,
         )
         documents.append(CollectedSourceDocument(source_url=link, payload=payload))
-        if len(documents) >= limit:
-            break
-
-    return documents
+    return snapshot_documents(documents, limit)
