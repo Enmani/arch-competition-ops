@@ -12,9 +12,9 @@ from arch_competition_ops.normalizers.text import strip_html
 from arch_competition_ops.screening.fingerprints import notice_content_hash
 from arch_competition_ops.screening.models import ScreeningAnswer, canonical_json
 from arch_competition_ops.screening.notice_urls import URL, PageLinks, public_url
-from arch_competition_ops.screening.preferences import load_screening_instructions
+from arch_competition_ops.screening.preferences import answer_format
 from arch_competition_ops.screening.providers import provider_identity, structured_request
-from arch_competition_ops.screening.source_evidence import notice_evidence
+from arch_competition_ops.screening.source_evidence import notice_evidence, notice_title
 from arch_competition_ops.settings import Settings
 
 
@@ -112,15 +112,7 @@ def prepare_input(
     if source_payload is None:
         limitations.append("No source notice text supplied")
     version = notice_content_hash(source_payload or "", source_url)
-    title = row.get("title") or ""
-    if not title and (source_payload or "").lstrip().startswith("{"):
-        try:
-            envelope, _ = json.JSONDecoder().raw_decode(source_payload.lstrip())
-            original = envelope.get("title")
-            if isinstance(original, str) and original in notice_evidence(source_payload):
-                title = original
-        except ValueError:
-            pass
+    title = notice_title(source_payload or "") or row.get("title") or ""
     source_payload = notice_evidence(source_payload or "")
     text = re.sub(r"<(script|style)\b[^>]*>.*?</\1>", " ", source_payload or "", flags=re.I | re.S)
     text = strip_html(text) or ""
@@ -148,12 +140,13 @@ def prepare_input(
         if len(clean) > remaining:
             limitations.append("Input was truncated to the configured character limit")
         remaining -= len(fields[name])
+    instructions, schema = answer_format(settings)
     request = structured_request(
         settings.ai_provider,
         model_id or settings.ai_model,
-        load_screening_instructions(settings),
+        instructions,
         canonical_json({"evidence_fields": fields}),
-        ScreeningAnswer.model_json_schema(),
+        schema,
         "competition_screening",
         settings.ai_max_output_tokens,
         settings.ai_reasoning_effort,

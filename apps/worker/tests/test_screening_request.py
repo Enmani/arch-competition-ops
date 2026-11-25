@@ -3,6 +3,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+from support import REPO_ROOT
 from test_ai_screening import mock_client
 
 from arch_competition_ops.screening.inputs import prepare_input
@@ -17,6 +18,7 @@ def test_only_one_original_notice_reaches_the_model(tmp_path, provider):
     settings = Settings(
         root=tmp_path,
         ai_preferences=skill,
+        taxonomy_config=REPO_ROOT / "config/taxonomy.yml",
         ai_provider=provider,
         ai_model=("claude-haiku-5-5" if provider == "anthropic" else "gpt-6-luna"),
         anthropic_api_key="fixture-only",
@@ -55,7 +57,7 @@ def test_only_one_original_notice_reaches_the_model(tmp_path, provider):
         expected = {
             "model": "claude-haiku-5-5",
             "max_tokens": 16000,
-            "system": "Read the notice.",
+            "system": expected["instructions"],
             "messages": [{"role": "user", "content": expected["input"]}],
             "output_config": {"effort": "low", "format": {"type": "json_schema", "schema": schema}},
         }
@@ -64,7 +66,7 @@ def test_only_one_original_notice_reaches_the_model(tmp_path, provider):
         expected = {
             "model": "gpt-6-luna",
             "messages": [
-                {"role": "system", "content": "Read the notice."},
+                {"role": "system", "content": expected["instructions"]},
                 {"role": "user", "content": expected["input"]},
             ],
             "reasoning_effort": "low",
@@ -112,7 +114,12 @@ def test_only_one_original_notice_reaches_the_model(tmp_path, provider):
 def test_signed_links_in_escaped_json_are_sanitized(tmp_path):
     skill = tmp_path / "rule.md"
     skill.write_text("Read.", encoding="utf8")
-    settings = Settings(root=tmp_path, ai_preferences=skill, _env_file=None)
+    settings = Settings(
+        root=tmp_path,
+        ai_preferences=skill,
+        taxonomy_config=REPO_ROOT / "config/taxonomy.yml",
+        _env_file=None,
+    )
     payload = json.dumps({"rawNotice": r'{"url":"https:\/\/city.example\/a?id=4&token=private"}'})
     snapshot, _, _ = prepare_input(
         {

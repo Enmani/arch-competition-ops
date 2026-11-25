@@ -12,7 +12,7 @@ The review added content-based deduplication, bounded retries and discovery, pre
 
 Worker review fixes cover mixed thinking/text responses, restoration of public notice links, transient retry delays, terminal text retention and safe run logs. Reading now groups by source and finishes the original queue row. Broken or repeated pages are reported and restarted.
 
-Screening answer version 2 requests quotations only for decision evidence and derives their source in code. Facts and participation excerpts follow the same rule. Stored decisions keep their public format. In compact UTF-8 JSON the Anthropic answer schema went from 2,594 to 2,164 bytes. HTML fingerprints follow visible document structure. Providers share bounded retries and classify billing errors by status or error type.
+Screening answer version 3 generates its field instructions, schema descriptions and permitted labels from the same table used in extraction. Citations are attributed in code. Original listing titles survive missing model claims, and a quoted local deadline can include a time. Stored decisions keep their public format. HTML fingerprints follow visible document structure. Providers share bounded retries and classify billing errors by status or error type.
 
 ## Why
 

@@ -61,6 +61,7 @@ def write_source_catalog(root: Path, *source_ids: str, verifier: str | None = No
     skill = root / DEFAULT_AI_SKILL
     skill.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy(REPO_ROOT / DEFAULT_AI_SKILL, skill)
+    shutil.copy(REPO_ROOT / "config/taxonomy.yml", root / "config")
     # A checkout always has the shared procedure registry next to sources.yml.
     shutil.copy(REPO_ROOT / "config" / "procedure-type-registry.json", root / "config")
 

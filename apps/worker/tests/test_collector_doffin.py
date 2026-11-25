@@ -214,7 +214,7 @@ def test_ai_mode_drops_a_plain_works_notice_whose_detail_names_no_design_and_bui
 
 def test_forbidden_detail_is_queued_and_can_be_read_without_relisting(tmp_path, monkeypatch):
     from http_fakes import Reply, make_client
-    from support import write_source_catalog
+    from support import REPO_ROOT, write_source_catalog
 
     from arch_competition_ops.http import HttpStatusError
     from arch_competition_ops.ingest import ingest_source
@@ -231,7 +231,12 @@ def test_forbidden_detail_is_queued_and_can_be_read_without_relisting(tmp_path, 
         _source(), fetch_search_json=fake.search, fetch_detail_json=blocked
     )
     write_source_catalog(tmp_path, "ted_design_notices")
-    settings = Settings(root=tmp_path, ai_enabled=False, ai_fetch_details=False)
+    settings = Settings(
+        root=tmp_path,
+        ai_enabled=False,
+        ai_fetch_details=False,
+        taxonomy_config=REPO_ROOT / "config/taxonomy.yml",
+    )
     ingest_source(
         settings, source_id="ted_design_notices", collected_documents=documents, collect_only=True
     )

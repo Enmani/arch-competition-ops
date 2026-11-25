@@ -5,9 +5,9 @@ import json
 
 from arch_competition_ops.screening.models import ScreeningAnswer, canonical_json
 from arch_competition_ops.screening.notice_urls import URL, PageLinks, public_url
-from arch_competition_ops.screening.preferences import load_screening_instructions
+from arch_competition_ops.screening.preferences import answer_format
 from arch_competition_ops.screening.providers import provider_identity
-from arch_competition_ops.screening.source_evidence import notice_evidence
+from arch_competition_ops.screening.source_evidence import notice_evidence, notice_title
 from arch_competition_ops.settings import Settings
 
 
@@ -101,16 +101,20 @@ def notice_content_hash(payload: str, url: str) -> str:
     text = URL.sub(lambda m: public_url(m[0]), " ".join(page.text))
     text = " ".join(text.split())
     targets = sorted({target for link in page.links if (target := public_url(link))})
-    return digest(canonical_json([public_url(url) or url, text, targets]))
+    identity = [public_url(url) or url, text, targets]
+    if title := notice_title(payload):
+        identity.append(" ".join(URL.sub(lambda m: public_url(m[0]), title).split()))
+    return digest(canonical_json(identity))
 
 
 def screening_criteria_hash(settings: Settings) -> str:
+    instructions, schema = answer_format(settings)
     return digest(
         canonical_json(
             [
-                load_screening_instructions(settings),
+                instructions,
                 ScreeningAnswer.schema_version,
-                ScreeningAnswer.model_json_schema(),
+                schema,
                 provider_identity(settings),
                 settings.ai_model,
                 settings.ai_reasoning_effort,

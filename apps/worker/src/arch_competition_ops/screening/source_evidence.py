@@ -3,6 +3,25 @@
 import json
 
 
+def notice_title(payload: str) -> str:
+    text = payload.lstrip()
+    if not text.startswith("{"):
+        return ""
+    try:
+        envelope, _ = json.JSONDecoder().raw_decode(text)
+    except ValueError:
+        return ""
+    raw = envelope.get("rawNotice")
+    for source in (envelope, raw):
+        if (
+            isinstance(source, dict)
+            and isinstance(title := source.get("title"), str)
+            and title.strip()
+        ):
+            return title.strip()
+    return ""
+
+
 def notice_evidence(payload: str) -> str:
     stripped = payload.lstrip()
     if not stripped.startswith("{"):

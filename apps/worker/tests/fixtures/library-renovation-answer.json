@@ -1,0 +1,118 @@
+{
+  "source_url": "https://notices.example/library",
+  "notice": "Architectural design for the renovation of North Library\nOrganizer: City of Lyon.\nhttps://notices.example/library\nOpen procedure for architectural design services to renovate the public library in Lyon, France.\nTender deadline: 2026-12-15T12:00:00+01:00.\nEstimated design contract value: EUR 125,000.\nRegistered architects may apply; a licensed architect is required.\nTender language: French.",
+  "answer": {
+    "decision": "recommend",
+    "relevance_score": 90,
+    "summary_en": "Architectural design for the renovation of North Library",
+    "summary_zh": "公共图书馆改造设计。",
+    "reasons_en": [
+      "Open procedure for architectural design services to renovate the public library in Lyon, France."
+    ],
+    "reasons_zh": [
+      "面向建筑师。"
+    ],
+    "missing_information": [],
+    "evidence": [
+      "Open procedure for architectural design services to renovate the public library in Lyon, France."
+    ],
+    "extracted_fields": [
+      {
+        "field": "title",
+        "value": "Architectural design for the renovation of North Library",
+        "quote": "Architectural design for the renovation of North Library"
+      },
+      {
+        "field": "organizer",
+        "value": "City of Lyon",
+        "quote": "Organizer: City of Lyon."
+      },
+      {
+        "field": "official_url",
+        "value": "https://notices.example/library",
+        "quote": "https://notices.example/library"
+      },
+      {
+        "field": "location_label",
+        "value": "Lyon, France",
+        "quote": "Open procedure for architectural design services to renovate the public library in Lyon, France."
+      },
+      {
+        "field": "location_city",
+        "value": "Lyon",
+        "quote": "Open procedure for architectural design services to renovate the public library in Lyon, France."
+      },
+      {
+        "field": "deadline_at",
+        "value": "2026-12-15T12:00:00+01:00",
+        "quote": "Tender deadline: 2026-12-15T12:00:00+01:00."
+      },
+      {
+        "field": "estimated_contract_value_eur",
+        "value": "125000",
+        "quote": "Estimated design contract value: EUR 125,000."
+      },
+      {
+        "field": "eligibility_summary",
+        "value": "Registered architects may apply; a licensed architect is required.",
+        "quote": "Registered architects may apply; a licensed architect is required."
+      },
+      {
+        "field": "licensed_architect_required",
+        "value": "true",
+        "quote": "Registered architects may apply; a licensed architect is required."
+      },
+      {
+        "field": "opportunity_type",
+        "value": "public_design_services_procurement",
+        "quote": "Open procedure for architectural design services to renovate the public library in Lyon, France."
+      },
+      {
+        "field": "procedure_type",
+        "value": " OPEN ",
+        "quote": "Open procedure for architectural design services to renovate the public library in Lyon, France."
+      },
+      {
+        "field": "competition_types",
+        "value": "[\"Architecture\"]",
+        "quote": "Open procedure for architectural design services to renovate the public library in Lyon, France."
+      },
+      {
+        "field": "project_types",
+        "value": "[\"building_project\"]",
+        "quote": "Open procedure for architectural design services to renovate the public library in Lyon, France."
+      },
+      {
+        "field": "building_categories",
+        "value": "[\"civic_public\"]",
+        "quote": "Open procedure for architectural design services to renovate the public library in Lyon, France."
+      },
+      {
+        "field": "design_scopes",
+        "value": "[\"Architectural Design\"]",
+        "quote": "Open procedure for architectural design services to renovate the public library in Lyon, France."
+      },
+      {
+        "field": "project_modes",
+        "value": "[\"renovation\"]",
+        "quote": "Open procedure for architectural design services to renovate the public library in Lyon, France."
+      },
+      {
+        "field": "audience",
+        "value": "[\"professionals\"]",
+        "quote": "Registered architects may apply; a licensed architect is required."
+      },
+      {
+        "field": "languages",
+        "value": "[\"FR\"]",
+        "quote": "Tender language: French."
+      },
+      {
+        "field": "jurisdiction",
+        "value": "France",
+        "quote": "Open procedure for architectural design services to renovate the public library in Lyon, France."
+      }
+    ],
+    "notice_details": []
+  }
+}

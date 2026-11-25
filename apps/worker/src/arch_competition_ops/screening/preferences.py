@@ -2,6 +2,9 @@
 
 from importlib import resources
 
+from arch_competition_ops.config_loader import load_taxonomy
+from arch_competition_ops.screening.field_contract import render_contract
+from arch_competition_ops.screening.models import ScreeningAnswer
 from arch_competition_ops.settings import DEFAULT_AI_SKILL, Settings
 
 
@@ -26,3 +29,10 @@ def load_screening_instructions(settings: Settings) -> str:
     if not text.strip():
         raise ValueError("Screening instructions must not be empty")
     return text
+
+
+def answer_format(settings: Settings) -> tuple[str, dict]:
+    contract = render_contract(load_taxonomy(settings))
+    schema = ScreeningAnswer.model_json_schema()
+    schema["$defs"]["QuotedFact"]["description"] = contract
+    return f"{load_screening_instructions(settings)}\n\n{contract}", schema

@@ -28,7 +28,17 @@ def test_packaged_skill_works_without_the_repository(tmp_path, monkeypatch):
         "arch_competition_ops.screening.preferences.resources.files", lambda _package: bundled_root
     )
     settings = Settings(root=tmp_path / "deployment", _env_file=None)
-    assert load_screening_instructions(settings) == "Packaged skill"
+    from arch_competition_ops.screening.preferences import answer_format
+
+    (bundled_root / "_bundled/taxonomy.yml").write_text(
+        "procedure_types: [packaged_label]", encoding="utf-8"
+    )
+    instructions, schema = answer_format(settings)
+    assert instructions.startswith("Packaged skill")
+    assert "packaged_label" in schema["$defs"]["QuotedFact"]["description"]
+    settings.taxonomy_config = Path("custom-missing-taxonomy.yml")
+    with pytest.raises(FileNotFoundError, match="custom-missing-taxonomy"):
+        answer_format(settings)
 
 
 def test_missing_custom_skill_fails_instead_of_silently_using_other_preferences(tmp_path):

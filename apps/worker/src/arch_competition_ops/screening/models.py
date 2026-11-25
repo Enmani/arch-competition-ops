@@ -6,43 +6,13 @@ from typing import ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from arch_competition_ops.screening.field_contract import FactName
+
 
 class _StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-FactName = Literal[
-    "title",
-    "organizer",
-    "authority_name",
-    "official_url",
-    "location_label",
-    "location_city",
-    "location_region",
-    "deadline_at",
-    "registration_fee_eur",
-    "submission_fee_eur",
-    "estimated_contract_value_eur",
-    "estimated_contract_value_text",
-    "prize_summary",
-    "eligibility_summary",
-    "brief_pdf_url",
-    "documents_portal_url",
-    "opportunity_type",
-    "procedure_type",
-    "implementation_path",
-    "licensed_architect_required",
-    "local_partner_required",
-    "competition_types",
-    "project_types",
-    "building_categories",
-    "design_scopes",
-    "project_modes",
-    "audience",
-    "jurisdiction",
-    "languages",
-    "official_notice_id",
-]
 DetailCategory = Literal["timeline", "commercial", "eligibility", "scope", "submission"]
 
 
@@ -68,7 +38,7 @@ class _Judgment(_StrictModel):
 
 
 class ScreeningAnswer(_Judgment):
-    schema_version: ClassVar[int] = 2
+    schema_version: ClassVar[int] = 3
     evidence: list[str]
     extracted_fields: list[QuotedFact]
     notice_details: list[QuotedDetail]

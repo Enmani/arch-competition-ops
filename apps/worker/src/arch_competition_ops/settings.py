@@ -6,6 +6,7 @@ from typing import Literal
 from pydantic import AliasChoices, Field, PrivateAttr, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+DEFAULT_TAXONOMY = Path("config/taxonomy.yml")
 DEFAULT_AI_SKILL = Path("config/skills/screen-architecture-opportunities/SKILL.md")
 
 
@@ -26,7 +27,7 @@ class Settings(BaseSettings):
     root: Path = Field(default_factory=lambda: Path.cwd().resolve())
     db: Path = Path("data") / "competitions.sqlite"
     source_config: Path = Path("config") / "sources.yml"
-    taxonomy_config: Path = Path("config") / "taxonomy.yml"
+    taxonomy_config: Path = DEFAULT_TAXONOMY
     browser_storage_dir: Path = Path("artifacts") / "crawlee"
     geocode_cache: Path = Path("data") / "geocoding-cache.json"
     html_archive_dir: Path = Path("artifacts") / "html"

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+from importlib import resources
 from pathlib import Path
 from typing import Any
 
 import yaml
 
 from arch_competition_ops.models import SourceCatalog, Taxonomy
-from arch_competition_ops.settings import Settings
+from arch_competition_ops.settings import DEFAULT_TAXONOMY, Settings
 
 # AI maintenance note:
 # - Keep config/sources.yml as a thin manifest.
@@ -124,5 +125,9 @@ def load_source_catalog(settings: Settings) -> SourceCatalog:
 
 
 def load_taxonomy(settings: Settings) -> Taxonomy:
-    data = load_yaml_file(settings.resolve_path(settings.taxonomy_config))
-    return Taxonomy.model_validate(data)
+    path = settings.resolve_path(settings.taxonomy_config)
+    if not path.exists() and settings.taxonomy_config == DEFAULT_TAXONOMY:
+        bundled = resources.files("arch_competition_ops").joinpath("_bundled", "taxonomy.yml")
+        if bundled.is_file():
+            return Taxonomy.model_validate(yaml.safe_load(bundled.read_text(encoding="utf-8-sig")))
+    return Taxonomy.model_validate(load_yaml_file(path))
